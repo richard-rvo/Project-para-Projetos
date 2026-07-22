@@ -54,7 +54,7 @@
   --theme-blue-text: #1971c2;
 
   /* Layout Constants */
-  --sidebar-width: 350px;
+  --sidebar-width: 550px;
   --row-height: 52px;
   --header-height: 72px;
   --radius-card: 20px;
@@ -1867,7 +1867,7 @@ body {
   color: var(--text-primary);
 }
 
-/* PRINT STYLES */
+/* PRINT & PDF EXPORT STYLES (Full Unclipped Data Reveal) */
 @media print {
   @page {
     size: A4 landscape;
@@ -1879,24 +1879,44 @@ body {
     color: #000000 !important;
   }
 
-  .app-header, .toolbar, .header-actions, .nav-group, .export-dropdown-wrapper {
+  .app-header, .toolbar, .header-actions, .nav-group, .export-dropdown-wrapper, .sidebar-resizer, .linking-banner {
     display: none !important;
   }
 
   .gantt-board-wrapper {
     padding: 0 !important;
     overflow: visible !important;
+    height: auto !important;
   }
 
   .gantt-board {
     border: none !important;
     box-shadow: none !important;
     min-width: 100% !important;
+    overflow: visible !important;
+    height: auto !important;
+  }
+
+  .gantt-body-scroll-container {
+    max-height: none !important;
+    overflow: visible !important;
+    height: auto !important;
+    position: static !important;
+  }
+
+  .gantt-header {
+    position: static !important;
+  }
+
+  .gantt-header-sidebar, .project-header-sidebar, .task-sidebar-item {
+    position: static !important;
+    box-shadow: none !important;
   }
 
   .project-card {
     page-break-inside: avoid;
     break-inside: avoid;
     margin: 10px 0 !important;
+    overflow: visible !important;
   }
 }

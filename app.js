@@ -436,27 +436,57 @@ class GanttApp {
   exportAsPNG() {
     this.exportDropdownWrapper.classList.remove('active');
     const board = document.getElementById('ganttBoard');
+    const scrollContainer = document.querySelector('.gantt-body-scroll-container');
 
     const originalText = this.btnExportMenu.innerHTML;
     this.btnExportMenu.innerHTML = `<span>Gerando Imagem...</span>`;
 
-    html2canvas(board, {
-      scale: 2,
-      useCORS: true,
-      backgroundColor: document.documentElement.getAttribute('data-theme') === 'dark' ? '#131b2e' : '#ffffff'
-    }).then(canvas => {
-      const link = document.createElement('a');
-      link.download = `Gantt_Coqueria_${getLocalDateStr(new Date())}.png`;
-      link.href = canvas.toDataURL('image/png');
-      link.click();
-      this.btnExportMenu.innerHTML = originalText;
-      lucide.createIcons();
-    }).catch(err => {
-      console.error(err);
-      alert('Erro ao gerar imagem PNG.');
-      this.btnExportMenu.innerHTML = originalText;
-      lucide.createIcons();
-    });
+    // Save original scroll and container state
+    const origMaxHeight = scrollContainer ? scrollContainer.style.maxHeight : '';
+    const origOverflow = scrollContainer ? scrollContainer.style.overflow : '';
+    const origScrollTop = scrollContainer ? scrollContainer.scrollTop : 0;
+    const origScrollLeft = scrollContainer ? scrollContainer.scrollLeft : 0;
+
+    // Expand container to reveal all hidden/scrolled rows and date columns
+    if (scrollContainer) {
+      scrollContainer.style.maxHeight = 'none';
+      scrollContainer.style.overflow = 'visible';
+    }
+
+    setTimeout(() => {
+      const fullWidth = board.scrollWidth;
+      const fullHeight = board.scrollHeight;
+
+      html2canvas(board, {
+        scale: 2,
+        useCORS: true,
+        width: fullWidth,
+        height: fullHeight,
+        windowWidth: fullWidth + 100,
+        windowHeight: fullHeight + 100,
+        scrollX: 0,
+        scrollY: 0,
+        backgroundColor: document.documentElement.getAttribute('data-theme') === 'dark' ? '#131b2e' : '#ffffff'
+      }).then(canvas => {
+        const link = document.createElement('a');
+        link.download = `Gantt_Coqueria_${getLocalDateStr(new Date())}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+      }).catch(err => {
+        console.error(err);
+        alert('Erro ao gerar imagem PNG.');
+      }).finally(() => {
+        // Restore original layout state and scroll position
+        if (scrollContainer) {
+          scrollContainer.style.maxHeight = origMaxHeight;
+          scrollContainer.style.overflow = origOverflow;
+          scrollContainer.scrollTop = origScrollTop;
+          scrollContainer.scrollLeft = origScrollLeft;
+        }
+        this.btnExportMenu.innerHTML = originalText;
+        lucide.createIcons();
+      });
+    }, 150);
   }
 
   exportAsPDF() {
