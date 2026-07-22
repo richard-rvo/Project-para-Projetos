@@ -623,17 +623,25 @@ class GanttApp {
   }
 
   positionTodayLine() {
-    const days = this.getDaysArray();
-    const totalDays = days.length;
-    const todayIndex = days.findIndex(d => getLocalDateStr(d) === this.todayStr);
+    const todayCol = this.gridOverlay ? this.gridOverlay.querySelector('.is-today-col') : null;
 
-    if (todayIndex !== -1) {
-      // Position at the start boundary of Today's column (aligns 1:1 with start of Today's task bars)
-      const startPct = (todayIndex / totalDays) * 100;
-      this.todayLine.style.left = `calc(var(--sidebar-width) + ${startPct}%)`;
+    if (todayCol && todayCol.offsetWidth > 0) {
+      // Use exact DOM pixel offset of the highlighted today column for 100% precision
+      const centerPx = todayCol.offsetLeft + (todayCol.offsetWidth / 2);
+      this.todayLine.style.left = `calc(var(--sidebar-width) + ${centerPx}px)`;
       this.todayLine.style.display = 'block';
     } else {
-      this.todayLine.style.display = 'none';
+      const days = this.getDaysArray();
+      const totalDays = days.length;
+      const todayIndex = days.findIndex(d => getLocalDateStr(d) === this.todayStr);
+
+      if (todayIndex !== -1) {
+        const ratio = (todayIndex + 0.5) / totalDays;
+        this.todayLine.style.left = `calc(var(--sidebar-width) + (100% - var(--sidebar-width)) * ${ratio})`;
+        this.todayLine.style.display = 'block';
+      } else {
+        this.todayLine.style.display = 'none';
+      }
     }
   }
 
@@ -702,7 +710,6 @@ class GanttApp {
         </div>
 
         <div class="project-header-right-group">
-          <span class="project-meta-pill tasks-count">${totalTasks} ${totalTasks === 1 ? 'ativ.' : 'ativ.'}</span>
           <span class="project-meta-pill proj-progress ${avgProgress === 100 ? 'completed' : ''}">${avgProgress}% conc.</span>
           <div class="project-actions-inline" onclick="event.stopPropagation()">
             <button type="button" class="icon-btn-sm" title="Nova Tarefa no Projeto" onclick="event.stopPropagation(); app.openTaskModal('${proj.id}')"><i data-lucide="plus"></i></button>
