@@ -82,7 +82,7 @@ class GanttApp {
 
     // Sidebar Width State & Resizing (Compact 290px Default to avoid wasted whitespace)
     const savedWidth = Number(localStorage.getItem('gantt_sidebar_width'));
-    this.sidebarWidth = (savedWidth && savedWidth <= 320 && savedWidth >= 200) ? savedWidth : 290;
+    this.sidebarWidth = (savedWidth && savedWidth <= 530 && savedWidth >= 300) ? savedWidth : 500;
     this.applySidebarWidth();
     this.isResizingSidebar = false;
 
