@@ -19,6 +19,11 @@
   --primary-accent: #ff4757;
   --primary-accent-light: #ffe5e8;
 
+  --apple-blue: #0071e3;
+  --apple-blue-hover: #0077ed;
+  --apple-blue-dark: #0056b3;
+  --apple-blue-glow: rgba(0, 113, 227, 0.3);
+
   --today-line-color: #ff3b30;
   --grid-line-color: #f1f5f9;
 
@@ -143,9 +148,9 @@ body {
 .brand-dot {
   width: 14px;
   height: 14px;
-  background-color: var(--primary-accent);
+  background-color: var(--apple-blue, #0071e3);
   border-radius: 50%;
-  box-shadow: var(--shadow-glow);
+  box-shadow: 0 0 16px var(--apple-blue-glow, rgba(0, 113, 227, 0.4));
   animation: pulse-dot 2s infinite ease-in-out;
 }
 
@@ -169,10 +174,18 @@ body {
   font-size: 0.75rem;
   font-weight: 700;
   padding: 3px 10px;
-  background: var(--primary-accent-light);
-  color: var(--primary-accent);
+  background: rgba(0, 113, 227, 0.1);
+  color: var(--apple-blue, #0071e3);
+  border: 1px solid rgba(0, 113, 227, 0.2);
   border-radius: 20px;
   text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+[data-theme="dark"] .brand-title-group h1 span.tag {
+  background: rgba(10, 132, 255, 0.15);
+  color: #409cff;
+  border-color: rgba(10, 132, 255, 0.3);
 }
 
 .brand-subtitle {
@@ -392,15 +405,21 @@ body {
 }
 
 .btn-primary {
-  background: var(--primary-accent);
+  background: linear-gradient(135deg, var(--apple-blue, #0071e3) 0%, var(--apple-blue-dark, #0056b3) 100%);
   color: #ffffff;
-  box-shadow: var(--shadow-sm);
+  box-shadow: 0 4px 14px var(--apple-blue-glow, rgba(0, 113, 227, 0.3));
+  border: none;
 }
 
 .btn-primary:hover {
-  background: #e03137;
-  box-shadow: var(--shadow-md);
+  background: linear-gradient(135deg, var(--apple-blue-hover, #0077ed) 0%, #0062cc 100%);
+  box-shadow: 0 6px 18px rgba(0, 113, 227, 0.4);
   transform: translateY(-1px);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(0, 113, 227, 0.3);
 }
 
 .btn-secondary {
@@ -694,22 +713,60 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 1px;
   border-right: 1px solid var(--border-color-subtle);
   font-size: 0.8rem;
   font-weight: 700;
   color: var(--text-secondary);
   box-sizing: border-box;
+  padding: 3px 0;
+  transition: background-color var(--transition-fast);
+}
+
+.date-cell .weekday-sub {
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+  line-height: 1;
+}
+
+.date-cell .day-num {
+  font-size: 0.84rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  line-height: 1.1;
+}
+
+.date-cell .month-sub {
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  line-height: 1;
 }
 
 .date-cell.is-today {
   background-color: rgba(255, 107, 53, 0.08);
+}
+
+.date-cell.is-today .weekday-sub,
+.date-cell.is-today .day-num,
+.date-cell.is-today .month-sub {
   color: var(--primary-accent);
 }
 
-.date-cell .month-sub {
-  font-size: 0.68rem;
-  font-weight: 600;
-  opacity: 0.7;
+.date-cell.is-weekend {
+  background-color: rgba(15, 23, 42, 0.02);
+}
+
+.date-cell.is-weekend .weekday-sub {
+  color: var(--primary-accent);
+  opacity: 0.8;
+}
+
+[data-theme="dark"] .date-cell.is-weekend {
+  background-color: rgba(248, 250, 252, 0.03);
 }
 
 /* Gantt Body & SVG Layer */
@@ -717,6 +774,8 @@ body {
   display: flex;
   flex-direction: column;
   position: relative;
+  min-width: max-content;
+  width: 100%;
 }
 
 .dependency-svg-layer {
@@ -773,6 +832,14 @@ body {
 
 .grid-col.is-today-col {
   background: rgba(255, 107, 53, 0.04);
+}
+
+.grid-col.is-weekend-col {
+  background: rgba(15, 23, 42, 0.015);
+}
+
+[data-theme="dark"] .grid-col.is-weekend-col {
+  background: rgba(248, 250, 252, 0.015);
 }
 
 /* Real Today Line & Badge Indicator */
@@ -952,14 +1019,21 @@ body {
 }
 
 .project-header-sidebar {
+  position: sticky;
+  left: 0;
+  z-index: 22;
+  width: var(--sidebar-width);
+  min-width: var(--sidebar-width);
+  max-width: var(--sidebar-width);
   height: 48px;
-  padding: 14px 24px 8px 24px;
+  padding: 10px 18px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   background: inherit;
-  position: relative;
-  z-index: 15;
+  border-right: 1px solid var(--border-color);
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.04);
+  box-sizing: border-box;
 }
 
 .project-title {

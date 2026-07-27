@@ -585,6 +585,7 @@ class GanttApp {
     this.datesHeader.innerHTML = '';
     const days = this.getDaysArray();
     const todayIndex = days.findIndex(d => getLocalDateStr(d) === this.todayStr);
+    const weekdaysShort = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
 
     if (this.viewMode === 'weeks') {
       let currentWeekDays = [];
@@ -611,11 +612,14 @@ class GanttApp {
         const isToday = idx === todayIndex;
         const dayNum = String(day.getDate()).padStart(2, '0');
         const monthShort = day.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '');
+        const weekdayStr = weekdaysShort[day.getDay()];
+        const isWeekend = day.getDay() === 0 || day.getDay() === 6;
 
         const cell = document.createElement('div');
-        cell.className = `date-cell ${isToday ? 'is-today' : ''}`;
+        cell.className = `date-cell ${isToday ? 'is-today' : ''} ${isWeekend ? 'is-weekend' : ''}`;
         cell.innerHTML = `
-          <div>${dayNum}</div>
+          <div class="weekday-sub">${weekdayStr}</div>
+          <div class="day-num">${dayNum}</div>
           <div class="month-sub">${monthShort}</div>
         `;
         this.datesHeader.appendChild(cell);
@@ -636,9 +640,10 @@ class GanttApp {
     this.gridOverlay.innerHTML = '';
     days.forEach((day, idx) => {
       const isToday = idx === todayIndex;
+      const isWeekend = day.getDay() === 0 || day.getDay() === 6;
       const isWeekBoundary = (this.viewMode === 'weeks' && (day.getDay() === 0 || idx === days.length - 1));
       const col = document.createElement('div');
-      col.className = `grid-col ${isToday ? 'is-today-col' : ''} ${isWeekBoundary ? 'is-week-boundary' : ''}`;
+      col.className = `grid-col ${isToday ? 'is-today-col' : ''} ${isWeekend ? 'is-weekend-col' : ''} ${isWeekBoundary ? 'is-week-boundary' : ''}`;
       this.gridOverlay.appendChild(col);
     });
   }
