@@ -500,13 +500,32 @@ class GanttApp {
     this.todayStr = getLocalDateStr(this.todayDate);
 
     let baseStart = parseLocalDate(this.todayDate);
-    baseStart.setDate(baseStart.getDate() - 5 + this.viewOffsetDays);
 
-    let baseEnd = new Date(baseStart);
-    baseEnd.setDate(baseEnd.getDate() + (this.viewMode === 'weeks' ? 42 : 25));
+    if (this.viewMode === 'weeks') {
+      // In Weeks view: start 2 weeks before today, aligned to Monday
+      baseStart.setDate(baseStart.getDate() - 14 + this.viewOffsetDays);
+      const dayOfWeek = baseStart.getDay();
+      const diffToMon = (dayOfWeek === 0 ? -6 : 1 - dayOfWeek);
+      baseStart.setDate(baseStart.getDate() + diffToMon);
 
-    this.timelineStart = baseStart;
-    this.timelineEnd = baseEnd;
+      let baseEnd = new Date(baseStart);
+      baseEnd.setDate(baseEnd.getDate() + 83); // 84 days (12 full weeks)
+
+      this.timelineStart = baseStart;
+      this.timelineEnd = baseEnd;
+
+      document.documentElement.style.setProperty('--day-min-width', '15px');
+    } else {
+      baseStart.setDate(baseStart.getDate() - 5 + this.viewOffsetDays);
+
+      let baseEnd = new Date(baseStart);
+      baseEnd.setDate(baseEnd.getDate() + 25);
+
+      this.timelineStart = baseStart;
+      this.timelineEnd = baseEnd;
+
+      document.documentElement.style.setProperty('--day-min-width', '46px');
+    }
 
     const days = this.getDaysArray();
     document.documentElement.style.setProperty('--total-days', days.length);
@@ -576,8 +595,9 @@ class GanttApp {
           const endStr = `${currentWeekDays[currentWeekDays.length - 1].getDate()}/${currentWeekDays[currentWeekDays.length - 1].toLocaleDateString('pt-BR', { month: 'short' })}`;
 
           const cell = document.createElement('div');
-          cell.className = 'date-cell';
+          cell.className = 'date-cell week-cell';
           cell.style.flex = currentWeekDays.length;
+          cell.style.minWidth = `calc(var(--day-min-width, 15px) * ${currentWeekDays.length})`;
           cell.innerHTML = `
             <div style="font-weight:800;">Semana ${this.getWeekNumber(currentWeekDays[0])}</div>
             <div class="month-sub">${startStr} - ${endStr}</div>
@@ -616,8 +636,9 @@ class GanttApp {
     this.gridOverlay.innerHTML = '';
     days.forEach((day, idx) => {
       const isToday = idx === todayIndex;
+      const isWeekBoundary = (this.viewMode === 'weeks' && (day.getDay() === 0 || idx === days.length - 1));
       const col = document.createElement('div');
-      col.className = `grid-col ${isToday ? 'is-today-col' : ''}`;
+      col.className = `grid-col ${isToday ? 'is-today-col' : ''} ${isWeekBoundary ? 'is-week-boundary' : ''}`;
       this.gridOverlay.appendChild(col);
     });
   }
@@ -931,7 +952,9 @@ class GanttApp {
           progressClip.appendChild(progressBar);
           capsuleTrack.appendChild(progressClip);
 
-          const isShortCapsule = widthPct < 15;
+          const dayPx = this.viewMode === 'weeks' ? 15 : 46;
+          const estimatedPxWidth = durationDays * dayPx;
+          const isShortCapsule = estimatedPxWidth < 120 || widthPct < 8;
 
           if (isShortCapsule) {
             // Render Status & Percent Pill together OUTSIDE for short capsules
@@ -940,7 +963,9 @@ class GanttApp {
             const isCompleted = task.progress >= 100 || task.status === 'Concluído';
             const pillHtml = `<span class="capsule-percent-pill outside-pill ${isCompleted ? 'completed' : ''}">${isCompleted ? '✓ 100%' : `${task.progress}%`}</span>`;
 
-            if (isOverdue) {
+            if (estimatedPxWidth < 50) {
+              statusMeta.innerHTML = pillHtml;
+            } else if (isOverdue) {
               statusMeta.innerHTML = `<span class="status-badge atrasado">⚠️ Atrasado</span> ${pillHtml}`;
             } else {
               statusMeta.innerHTML = `<span class="status-dot"></span><span>${displayStatus}</span> ${pillHtml}`;

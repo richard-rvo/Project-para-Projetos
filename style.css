@@ -55,6 +55,7 @@
 
   /* Layout Constants */
   --sidebar-width: 550px;
+  --day-min-width: 46px;
   --row-height: 52px;
   --header-height: 72px;
   --radius-card: 20px;
@@ -492,7 +493,7 @@ body {
 .gantt-header-timeline {
   display: flex;
   flex: 1;
-  min-width: calc(46px * var(--total-days, 26));
+  min-width: calc(var(--day-min-width, 46px) * var(--total-days, 26));
   position: relative;
 }
 
@@ -679,14 +680,14 @@ body {
   display: flex;
   position: relative;
   height: 56px;
-  min-width: calc(46px * var(--total-days, 26));
+  min-width: calc(var(--day-min-width, 46px) * var(--total-days, 26));
   width: 100%;
 }
 
-/* Compact Proportional Date Columns (46px) */
+/* Compact Proportional Date Columns */
 .date-cell {
   width: calc(100% / var(--total-days, 26));
-  min-width: 46px;
+  min-width: var(--day-min-width, 46px);
   flex-shrink: 0;
   flex-grow: 1;
   display: flex;
@@ -753,17 +754,21 @@ body {
   display: flex;
   pointer-events: none;
   z-index: 1;
-  min-width: calc(46px * var(--total-days, 26));
+  min-width: calc(var(--day-min-width, 46px) * var(--total-days, 26));
 }
 
 .grid-col {
   width: calc(100% / var(--total-days, 26));
-  min-width: 46px;
+  min-width: var(--day-min-width, 46px);
   flex-shrink: 0;
   flex-grow: 1;
   border-right: 1px solid var(--border-color-subtle);
   height: 100%;
   box-sizing: border-box;
+}
+
+.grid-col.is-week-boundary {
+  border-right: 1px solid var(--border-color);
 }
 
 .grid-col.is-today-col {
@@ -809,7 +814,7 @@ body {
   border-radius: 0;
   background: var(--bg-surface);
   box-shadow: var(--shadow-sm);
-  overflow: hidden;
+  overflow: visible;
   position: relative;
   z-index: 10;
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
@@ -1028,8 +1033,8 @@ body {
   position: relative;
   display: flex;
   align-items: center;
-  overflow: hidden;
-  min-width: calc(46px * var(--total-days, 26));
+  overflow: visible;
+  min-width: calc(var(--day-min-width, 46px) * var(--total-days, 26));
 }
 
 /* Custom Hover Tooltip */
@@ -1054,6 +1059,7 @@ body {
 .capsule-track {
   position: absolute;
   height: 32px;
+  min-width: 14px;
   border-radius: var(--radius-capsule);
   display: flex;
   align-items: center;
