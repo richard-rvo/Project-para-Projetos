@@ -9,14 +9,30 @@ function parseLocalDate(dateInput) {
     return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
   }
   if (dateInput instanceof Date) {
+    if (isNaN(dateInput.getTime())) {
+      const now = new Date();
+      return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    }
     return new Date(dateInput.getFullYear(), dateInput.getMonth(), dateInput.getDate(), 0, 0, 0, 0);
   }
-  const str = String(dateInput).trim().slice(0, 10);
-  const parts = str.split('-').map(Number);
+  const str = String(dateInput).trim();
+  if (str.includes('/')) {
+    const parts = str.split('/').map(Number);
+    if (parts.length === 3) {
+      if (parts[2] > 1000) return new Date(parts[2], parts[1] - 1, parts[0], 0, 0, 0, 0);
+      if (parts[0] > 1000) return new Date(parts[0], parts[1] - 1, parts[2], 0, 0, 0, 0);
+    }
+  }
+  const isoStr = str.slice(0, 10);
+  const parts = isoStr.split('-').map(Number);
   if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
     return new Date(parts[0], parts[1] - 1, parts[2], 0, 0, 0, 0);
   }
   const d = new Date(dateInput);
+  if (isNaN(d.getTime())) {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+  }
   return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
 }
 
@@ -113,25 +129,38 @@ class GanttApp {
     document.documentElement.style.setProperty('--sidebar-width', `${this.sidebarWidth}px`);
   }
 
-  // --- Storage & Automatic Status Migration ---
+  // --- Storage & Automatic Legacy Migration ---
   loadProjects() {
-    const saved = localStorage.getItem('gantt_projects_data_v5');
-    if (saved) {
-      try {
-        const data = JSON.parse(saved);
-        if (Array.isArray(data) && data.length > 0) {
-          data.forEach(p => {
-            if (!p.tasks) p.tasks = [];
-            p.tasks.forEach(t => {
-              if (t.status === 'In Progress') t.status = 'Em Progresso';
-              if (t.status === 'To do') t.status = 'A Fazer';
-              if (t.status === 'Done') t.status = 'Concluído';
+    const keysToTry = [
+      'gantt_projects_data_v5',
+      'gantt_projects_data_v4',
+      'gantt_projects_data_v3',
+      'gantt_projects_data_v2',
+      'gantt_projects_data',
+      'gantt_projects'
+    ];
+
+    for (const key of keysToTry) {
+      const saved = localStorage.getItem(key);
+      if (saved) {
+        try {
+          const data = JSON.parse(saved);
+          if (Array.isArray(data) && data.length > 0) {
+            data.forEach(p => {
+              if (!p.tasks) p.tasks = [];
+              p.tasks.forEach(t => {
+                if (t.status === 'In Progress') t.status = 'Em Progresso';
+                if (t.status === 'To do') t.status = 'A Fazer';
+                if (t.status === 'Done') t.status = 'Concluído';
+              });
             });
-          });
-          return data;
-        }
-      } catch (e) { console.error(e); }
+            localStorage.setItem('gantt_projects_data_v5', JSON.stringify(data));
+            return data;
+          }
+        } catch (e) { console.error(`Error loading key ${key}:`, e); }
+      }
     }
+
     return JSON.parse(JSON.stringify(DEFAULT_PROJECTS));
   }
 
@@ -163,11 +192,31 @@ class GanttApp {
     this.filterStatus = document.getElementById('filterStatus');
     this.filterZoom = document.getElementById('filterZoom');
 
+    this.btnToggleCPM = document.getElementById('btnToggleCPM');
+    this.btnSaveBaseline = document.getElementById('btnSaveBaseline');
+    this.btnOpenSCurve = document.getElementById('btnOpenSCurve');
+
+    // S-Curve Modal
+    this.scurveModal = document.getElementById('scurveModal');
+    this.btnCloseSCurve = document.getElementById('btnCloseSCurve');
+    this.btnCloseSCurveFooter = document.getElementById('btnCloseSCurveFooter');
+
+    // Drawer
+    this.taskDetailsDrawer = document.getElementById('taskDetailsDrawer');
+    this.btnCloseDrawer = document.getElementById('btnCloseDrawer');
+    this.btnCancelDrawer = document.getElementById('btnCancelDrawer');
+    this.btnSaveDrawer = document.getElementById('btnSaveDrawer');
+    this.btnAddChecklistItem = document.getElementById('btnAddChecklistItem');
+    this.inputNewChecklistItem = document.getElementById('inputNewChecklistItem');
+
     // Export Dropdown
     this.exportDropdownWrapper = document.querySelector('.export-dropdown-wrapper');
     this.btnExportMenu = document.getElementById('btnExportMenu');
     this.btnExportPNG = document.getElementById('btnExportPNG');
     this.btnExportPDF = document.getElementById('btnExportPDF');
+    this.btnExportJSON = document.getElementById('btnExportJSON');
+    this.btnImportJSON = document.getElementById('btnImportJSON');
+    this.inputImportJSON = document.getElementById('inputImportJSON');
 
     // Modals
     this.projectModal = document.getElementById('projectModal');
@@ -184,6 +233,22 @@ class GanttApp {
 
   // --- Event Binding ---
   bindEvents() {
+    // App Sidebar Navigation Page Switching
+    document.querySelectorAll('.nav-item').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const pageId = btn.getAttribute('data-page');
+        if (pageId) this.switchPage(pageId);
+      });
+    });
+
+    const btnToggleSidebar = document.getElementById('btnToggleSidebar');
+    if (btnToggleSidebar) {
+      btnToggleSidebar.addEventListener('click', () => {
+        const sidebar = document.getElementById('appSidebar');
+        sidebar.classList.toggle('collapsed');
+      });
+    }
+
     // Theme Toggle
     document.getElementById('btnThemeToggle').addEventListener('click', () => {
       const currentTheme = document.documentElement.getAttribute('data-theme');
@@ -205,6 +270,60 @@ class GanttApp {
     // Export Actions
     this.btnExportPNG.addEventListener('click', () => this.exportAsPNG());
     this.btnExportPDF.addEventListener('click', () => this.exportAsPDF());
+    if (this.btnExportJSON) {
+      this.btnExportJSON.addEventListener('click', () => this.exportAsJSON());
+    }
+    if (this.btnImportJSON) {
+      this.btnImportJSON.addEventListener('click', () => this.inputImportJSON.click());
+    }
+    if (this.inputImportJSON) {
+      this.inputImportJSON.addEventListener('change', (e) => this.importFromJSON(e));
+    }
+
+    // Phase 1 Toolbar Buttons
+    if (this.btnToggleCPM) {
+      this.btnToggleCPM.addEventListener('click', () => {
+        this.showCPM = !this.showCPM;
+        this.btnToggleCPM.classList.toggle('active', this.showCPM);
+        this.render();
+      });
+    }
+
+    if (this.btnSaveBaseline) {
+      this.btnSaveBaseline.addEventListener('click', () => this.saveBaseline());
+    }
+
+    if (this.btnOpenSCurve) {
+      this.btnOpenSCurve.addEventListener('click', () => this.openSCurveModal());
+    }
+
+    if (this.btnCloseSCurve) {
+      this.btnCloseSCurve.addEventListener('click', () => this.scurveModal.classList.remove('active'));
+    }
+    if (this.btnCloseSCurveFooter) {
+      this.btnCloseSCurveFooter.addEventListener('click', () => this.scurveModal.classList.remove('active'));
+    }
+
+    if (this.btnCloseDrawer) {
+      this.btnCloseDrawer.addEventListener('click', () => this.closeTaskDrawer());
+    }
+    if (this.btnCancelDrawer) {
+      this.btnCancelDrawer.addEventListener('click', () => this.closeTaskDrawer());
+    }
+    if (this.btnSaveDrawer) {
+      this.btnSaveDrawer.addEventListener('click', () => this.saveTaskDrawer());
+    }
+    if (this.btnAddChecklistItem) {
+      this.btnAddChecklistItem.addEventListener('click', () => this.addChecklistItem());
+    }
+    if (this.inputNewChecklistItem) {
+      this.inputNewChecklistItem.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          this.addChecklistItem();
+        }
+      });
+    }
 
     // Filters
     this.searchInput.addEventListener('input', (e) => {
@@ -224,12 +343,12 @@ class GanttApp {
 
     // Timeline Navigation Past / Future
     document.getElementById('btnNavPrev').addEventListener('click', () => {
-      this.viewOffsetDays -= (this.viewMode === 'weeks' ? 28 : 7);
+      this.viewOffsetDays -= (this.viewMode === 'weeks' ? 28 : (this.viewMode === 'months' ? 90 : 7));
       this.render();
     });
 
     document.getElementById('btnNavNext').addEventListener('click', () => {
-      this.viewOffsetDays += (this.viewMode === 'weeks' ? 28 : 7);
+      this.viewOffsetDays += (this.viewMode === 'weeks' ? 28 : (this.viewMode === 'months' ? 90 : 7));
       this.render();
     });
 
@@ -494,6 +613,41 @@ class GanttApp {
     window.print();
   }
 
+  exportAsJSON() {
+    this.exportDropdownWrapper.classList.remove('active');
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(this.projects, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", `Backup_Gantt_Projetos_${getLocalDateStr(new Date())}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  }
+
+  importFromJSON(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = JSON.parse(event.target.result);
+        if (Array.isArray(data) && data.length > 0) {
+          this.projects = data;
+          this.saveProjects();
+          alert('✅ Backup de projetos restaurado com sucesso!');
+        } else {
+          alert('⚠️ O arquivo JSON selecionado é inválido ou está vazio.');
+        }
+      } catch (err) {
+        console.error(err);
+        alert('❌ Erro ao ler o arquivo JSON. Certifique-se de ser um backup válido do Gantt.');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  }
+
   // --- Bounds Calculation & Navigation ---
   calculateBounds() {
     this.todayDate = parseLocalDate(new Date());
@@ -501,8 +655,17 @@ class GanttApp {
 
     let baseStart = parseLocalDate(this.todayDate);
 
-    if (this.viewMode === 'weeks') {
-      // In Weeks view: start 2 weeks before today, aligned to Monday
+    if (this.viewMode === 'months') {
+      baseStart.setDate(1);
+      baseStart.setMonth(baseStart.getMonth() - 2 + Math.floor(this.viewOffsetDays / 30));
+      let baseEnd = new Date(baseStart);
+      baseEnd.setMonth(baseEnd.getMonth() + 12);
+      baseEnd.setDate(baseEnd.getDate() - 1);
+
+      this.timelineStart = baseStart;
+      this.timelineEnd = baseEnd;
+      document.documentElement.style.setProperty('--day-min-width', '4px');
+    } else if (this.viewMode === 'weeks') {
       baseStart.setDate(baseStart.getDate() - 14 + this.viewOffsetDays);
       const dayOfWeek = baseStart.getDay();
       const diffToMon = (dayOfWeek === 0 ? -6 : 1 - dayOfWeek);
@@ -545,6 +708,7 @@ class GanttApp {
   // --- Render Cycle ---
   render() {
     this.calculateBounds();
+    this.calculateCriticalPath();
     this.renderKPIs();
     this.renderTimelineHeader();
     this.renderGridOverlay();
@@ -587,7 +751,26 @@ class GanttApp {
     const todayIndex = days.findIndex(d => getLocalDateStr(d) === this.todayStr);
     const weekdaysShort = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
 
-    if (this.viewMode === 'weeks') {
+    if (this.viewMode === 'months') {
+      let currentMonthDays = [];
+      days.forEach((day, idx) => {
+        currentMonthDays.push(day);
+        const isLastDay = idx === days.length - 1 || (idx < days.length - 1 && days[idx + 1].getMonth() !== day.getMonth());
+        if (isLastDay) {
+          const monthName = currentMonthDays[0].toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+          const cell = document.createElement('div');
+          cell.className = 'date-cell month-cell';
+          cell.style.flex = currentMonthDays.length;
+          cell.style.minWidth = `calc(var(--day-min-width, 4px) * ${currentMonthDays.length})`;
+          cell.innerHTML = `
+            <div style="font-weight:800; text-transform:capitalize;">${monthName}</div>
+            <div class="month-sub">${currentMonthDays.length}d</div>
+          `;
+          this.datesHeader.appendChild(cell);
+          currentMonthDays = [];
+        }
+      });
+    } else if (this.viewMode === 'weeks') {
       let currentWeekDays = [];
       days.forEach((day, idx) => {
         currentWeekDays.push(day);
@@ -845,16 +1028,20 @@ class GanttApp {
         const sidebarItem = document.createElement('div');
         sidebarItem.className = 'task-sidebar-item';
         sidebarItem.innerHTML = `
-          <div class="row-drag-handle" title="Arrastrar para reordenar hierarquia" draggable="true">
+          <div class="row-drag-handle" title="Arrastar para reordenar hierarquia" draggable="true">
             <i data-lucide="grip-vertical" style="width: 14px; height: 14px;"></i>
           </div>
-          <span class="task-name" title="${task.name}">${task.name}</span>
+          <i data-lucide="corner-down-right" style="width: 14px; height: 14px; color: var(--text-muted); margin-left: 8px;"></i>
+          <span class="task-name" title="${task.name}" style="margin-left: 6px;">${task.name}</span>
           <span class="task-duration-badge">${durationText}</span>
           <div class="task-actions-inline" onclick="event.stopPropagation()">
+            <button class="icon-btn-sm" title="Detalhes da Tarefa" onclick="app.openTaskDrawer('${proj.id}', '${task.id}')"><i data-lucide="file-text"></i></button>
             <button class="icon-btn-sm" title="Editar Tarefa" onclick="app.openTaskModal('${proj.id}', '${task.id}')"><i data-lucide="edit-3"></i></button>
             <button class="icon-btn-sm" title="Excluir Tarefa" onclick="app.deleteTask('${proj.id}', '${task.id}')"><i data-lucide="trash"></i></button>
           </div>
         `;
+
+        sidebarItem.addEventListener('dblclick', () => this.openTaskDrawer(proj.id, task.id));
 
         const dragHandle = sidebarItem.querySelector('.row-drag-handle');
         dragHandle.addEventListener('dragstart', (e) => {
@@ -894,6 +1081,26 @@ class GanttApp {
         const leftPct = (startDiffDays / totalDays) * 100;
         const widthPct = (durationDays / totalDays) * 100;
 
+        // Render Baseline Bar if Baseline Data Exists
+        if (task.baselineStart && task.baselineEnd) {
+          const bStart = parseLocalDate(task.baselineStart);
+          const bEnd = parseLocalDate(task.baselineEnd);
+          if (bEnd >= firstTimelineDate && bStart <= lastTimelineDate) {
+            const effBStart = bStart < firstTimelineDate ? firstTimelineDate : bStart;
+            const effBEnd = bEnd > lastTimelineDate ? lastTimelineDate : bEnd;
+            const bStartDiff = Math.max(0, Math.round((effBStart - firstTimelineDate) / (1000 * 60 * 60 * 24)));
+            const bDuration = Math.max(1, Math.round((effBEnd - effBStart) / (1000 * 60 * 60 * 24)) + 1);
+            const bLeftPct = (bStartDiff / totalDays) * 100;
+            const bWidthPct = (bDuration / totalDays) * 100;
+
+            const baselineBar = document.createElement('div');
+            baselineBar.className = 'baseline-bar';
+            baselineBar.style.left = `${bLeftPct}%`;
+            baselineBar.style.width = `${bWidthPct}%`;
+            timelineCell.appendChild(baselineBar);
+          }
+        }
+
         // Status & Overdue Calculations
         const isPastEnd = taskEndStr < this.todayStr;
         const isNotDone = task.progress < 100 && task.status !== 'Concluído';
@@ -910,10 +1117,12 @@ class GanttApp {
           this.startLinkingMode(task, e);
         });
 
+        const isCritical = this.showCPM && task.isCritical;
+
         if (task.isMilestone) {
           const centerPct = ((startDiffDays + 0.5) / totalDays) * 100;
           const wrapper = document.createElement('div');
-          wrapper.className = 'milestone-wrapper';
+          wrapper.className = `milestone-wrapper ${isCritical ? 'is-critical-path' : ''}`;
           wrapper.style.left = `${centerPct}%`;
           wrapper.dataset.taskId = task.id;
           wrapper.dataset.projectId = proj.id;
@@ -937,7 +1146,7 @@ class GanttApp {
           timelineCell.appendChild(wrapper);
         } else {
           const capsuleTrack = document.createElement('div');
-          capsuleTrack.className = 'capsule-track';
+          capsuleTrack.className = `capsule-track ${isCritical ? 'is-critical-path' : ''}`;
           capsuleTrack.style.left = `${leftPct}%`;
           capsuleTrack.style.width = `${widthPct}%`;
 
@@ -1041,15 +1250,18 @@ class GanttApp {
   }
 
   getConnectorPath(x1, y1, x2, y2) {
-    if (x2 >= x1 + 20) {
-      const dx = x2 - x1;
-      const offset = Math.max(30, Math.min(100, dx * 0.5));
-      return `M ${x1} ${y1} C ${x1 + offset} ${y1}, ${x2 - offset} ${y2}, ${x2} ${y2}`;
+    const gap = 14;
+    // Offset for arrowhead
+    const destX = x2 - 4; 
+    
+    if (destX > x1 + gap) {
+      // Forward path: out right, down/up, right into target
+      const midX = x1 + (destX - x1) / 2;
+      return `M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${destX} ${y2}`;
     } else {
-      const xRight = x1 + 28;
-      const xLeft = x2 - 28;
-      const yMid = y1 + (y2 - y1) / 2;
-      return `M ${x1} ${y1} C ${xRight} ${y1}, ${xRight} ${yMid}, ${(xRight + xLeft) / 2} ${yMid} C ${xLeft} ${yMid}, ${xLeft} ${y2}, ${x2} ${y2}`;
+      // Backward path: out right, down/up, left, down/up, right into target
+      const midY = y1 + (y2 - y1) / 2;
+      return `M ${x1} ${y1} L ${x1 + gap} ${y1} L ${x1 + gap} ${midY} L ${destX - gap} ${midY} L ${destX - gap} ${y2} L ${destX} ${y2}`;
     }
   }
 
@@ -1136,6 +1348,9 @@ class GanttApp {
     this.dependencySvg.innerHTML = `
       <defs>
         <marker id="arrowhead" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M 0 1 L 10 5 L 0 9 z" fill="var(--text-muted)" />
+        </marker>
+        <marker id="arrowhead-hover" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
           <path d="M 0 1 L 10 5 L 0 9 z" fill="var(--primary-accent)" />
         </marker>
       </defs>
@@ -1518,6 +1733,686 @@ class GanttApp {
         proj.tasks = proj.tasks.filter(t => t.id !== taskId);
         this.saveProjects();
       }
+    }
+  }
+
+  // --- Phase 1: Critical Path Method (CPM) ---
+  calculateCriticalPath() {
+    let allTasks = [];
+    this.projects.forEach(p => {
+      p.tasks.forEach(t => {
+        t.isCritical = false;
+        const s = parseLocalDate(t.startDate || getLocalDateStr(new Date()));
+        const e = parseLocalDate(t.endDate || t.startDate);
+        const dur = Math.max(1, Math.round((e - s) / 86400000) + 1);
+        allTasks.push({
+          id: t.id,
+          taskObj: t,
+          dur: dur,
+          predecessorId: t.predecessorId,
+          es: 0,
+          ef: 0,
+          ls: Infinity,
+          lf: Infinity,
+          slack: 0
+        });
+      });
+    });
+
+    const taskMap = new Map(allTasks.map(t => [t.id, t]));
+
+    // Forward Pass
+    let maxEF = 0;
+    allTasks.forEach(t => {
+      if (t.predecessorId && taskMap.has(t.predecessorId)) {
+        const pred = taskMap.get(t.predecessorId);
+        t.es = pred.ef;
+      } else {
+        t.es = 0;
+      }
+      t.ef = t.es + t.dur;
+      if (t.ef > maxEF) maxEF = t.ef;
+    });
+
+    // Backward Pass
+    allTasks.forEach(t => {
+      const isPredecessorOfAny = allTasks.some(other => other.predecessorId === t.id);
+      if (!isPredecessorOfAny) {
+        t.lf = maxEF;
+        t.ls = t.lf - t.dur;
+      }
+    });
+
+    for (let i = allTasks.length - 1; i >= 0; i--) {
+      const t = allTasks[i];
+      const successors = allTasks.filter(other => other.predecessorId === t.id);
+      if (successors.length > 0) {
+        t.lf = Math.min(...successors.map(succ => succ.ls));
+        t.ls = t.lf - t.dur;
+      }
+      t.slack = Math.max(0, t.lf - t.ef);
+      if (t.slack === 0 && maxEF > 0) {
+        t.taskObj.isCritical = true;
+      }
+    }
+  }
+
+  // --- Phase 1: Linha de Base (Baseline) ---
+  saveBaseline() {
+    let count = 0;
+    this.projects.forEach(p => {
+      p.tasks.forEach(t => {
+        t.baselineStart = t.startDate;
+        t.baselineEnd = t.endDate;
+        t.baselineProgress = t.progress || 0;
+        count++;
+      });
+    });
+    this.saveProjects();
+    alert(`✅ Linha de Base (Baseline) salva com sucesso para ${count} tarefas!`);
+  }
+
+  // --- Phase 1: Curva S (% Planejado Baseline vs % Realizado) ---
+  openSCurveModal() {
+    const days = this.getDaysArray();
+    if (days.length === 0) return;
+
+    let totalPlannedWork = 0;
+    this.projects.forEach(p => {
+      p.tasks.forEach(t => {
+        const s = parseLocalDate(t.baselineStart || t.startDate);
+        const e = parseLocalDate(t.baselineEnd || t.endDate);
+        const dur = Math.max(1, Math.round((e - s) / 86400000) + 1);
+        totalPlannedWork += dur;
+      });
+    });
+
+    if (totalPlannedWork === 0) totalPlannedWork = 1;
+
+    const plannedData = [];
+    const realizedData = [];
+
+    days.forEach(dayDate => {
+      const dayStr = getLocalDateStr(dayDate);
+      let plannedSum = 0;
+      let realizedSum = 0;
+
+      this.projects.forEach(p => {
+        p.tasks.forEach(t => {
+          const bStart = parseLocalDate(t.baselineStart || t.startDate);
+          const bEnd = parseLocalDate(t.baselineEnd || t.endDate);
+          const bDur = Math.max(1, Math.round((bEnd - bStart) / 86400000) + 1);
+
+          if (dayDate >= bEnd) {
+            plannedSum += bDur;
+          } else if (dayDate >= bStart) {
+            const elapsed = Math.round((dayDate - bStart) / 86400000) + 1;
+            plannedSum += elapsed;
+          }
+
+          if (dayStr <= this.todayStr) {
+            const rStart = parseLocalDate(t.startDate);
+            const rEnd = parseLocalDate(t.endDate);
+            const rDur = Math.max(1, Math.round((rEnd - rStart) / 86400000) + 1);
+
+            if (dayDate >= rEnd) {
+              realizedSum += rDur * ((t.progress || 0) / 100);
+            } else if (dayDate >= rStart) {
+              const elapsed = Math.round((dayDate - rStart) / 86400000) + 1;
+              const ratio = Math.min(1, elapsed / rDur);
+              realizedSum += rDur * Math.min(ratio, (t.progress || 0) / 100);
+            }
+          }
+        });
+      });
+
+      const pPct = Math.min(100, Math.round((plannedSum / totalPlannedWork) * 100));
+      plannedData.push({ dateStr: dayStr, pct: pPct });
+
+      if (dayStr <= this.todayStr) {
+        const rPct = Math.min(100, Math.round((realizedSum / totalPlannedWork) * 100));
+        realizedData.push({ dateStr: dayStr, pct: rPct });
+      }
+    });
+
+    const todayPlanned = plannedData.find(d => d.dateStr === this.todayStr) || plannedData[plannedData.length - 1];
+    const todayRealized = realizedData[realizedData.length - 1] || { pct: 0 };
+
+    const pVal = todayPlanned ? todayPlanned.pct : 0;
+    const rVal = todayRealized ? todayRealized.pct : 0;
+    const vVal = rVal - pVal;
+
+    document.getElementById('scurvePlannedVal').textContent = `${pVal}%`;
+    document.getElementById('scurveRealizedVal').textContent = `${rVal}%`;
+    const vElem = document.getElementById('scurveVarianceVal');
+    vElem.textContent = `${vVal >= 0 ? '+' : ''}${vVal}%`;
+    vElem.style.color = vVal >= 0 ? '#2ed573' : '#ff4757';
+
+    this.renderSCurveSVG(plannedData, realizedData);
+    this.scurveModal.classList.add('active');
+  }
+
+  renderSCurveSVG(plannedData, realizedData) {
+    const svg = document.getElementById('scurveSvg');
+    svg.innerHTML = '';
+    const width = 840;
+    const height = 280;
+    const p = { top: 20, right: 20, bottom: 30, left: 40 };
+
+    const cW = width - p.left - p.right;
+    const cH = height - p.top - p.bottom;
+    const n = plannedData.length;
+    if (n === 0) return;
+
+    // Grid lines
+    [0, 25, 50, 75, 100].forEach(level => {
+      const y = p.top + cH - (level / 100) * cH;
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', p.left);
+      line.setAttribute('y1', y);
+      line.setAttribute('x2', p.left + cW);
+      line.setAttribute('y2', y);
+      line.setAttribute('stroke', 'var(--border-color)');
+      line.setAttribute('stroke-dasharray', '4 4');
+      svg.appendChild(line);
+
+      const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      label.setAttribute('x', p.left - 6);
+      label.setAttribute('y', y + 4);
+      label.setAttribute('text-anchor', 'end');
+      label.setAttribute('font-size', '10');
+      label.setAttribute('fill', 'var(--text-muted)');
+      label.textContent = `${level}%`;
+      svg.appendChild(label);
+    });
+
+    // Planned Path (Blue)
+    const pPoints = plannedData.map((d, i) => {
+      const x = p.left + (i / Math.max(1, n - 1)) * cW;
+      const y = p.top + cH - (d.pct / 100) * cH;
+      return `${x},${y}`;
+    }).join(' ');
+
+    const pPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    pPath.setAttribute('d', `M ${pPoints}`);
+    pPath.setAttribute('fill', 'none');
+    pPath.setAttribute('stroke', 'var(--apple-blue)');
+    pPath.setAttribute('stroke-width', '3');
+    pPath.setAttribute('stroke-dasharray', '6 3');
+    svg.appendChild(pPath);
+
+    // Realized Path (Green)
+    if (realizedData.length > 0) {
+      const rPoints = realizedData.map((d, i) => {
+        const x = p.left + (i / Math.max(1, n - 1)) * cW;
+        const y = p.top + cH - (d.pct / 100) * cH;
+        return `${x},${y}`;
+      }).join(' ');
+
+      const rPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      rPath.setAttribute('d', `M ${rPoints}`);
+      rPath.setAttribute('fill', 'none');
+      rPath.setAttribute('stroke', '#2ed573');
+      rPath.setAttribute('stroke-width', '3.5');
+      svg.appendChild(rPath);
+
+      // Today Dot Marker
+      const lastR = realizedData[realizedData.length - 1];
+      const lastIdx = realizedData.length - 1;
+      const tX = p.left + (lastIdx / Math.max(1, n - 1)) * cW;
+      const tY = p.top + cH - (lastR.pct / 100) * cH;
+
+      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      circle.setAttribute('cx', tX);
+      circle.setAttribute('cy', tY);
+      circle.setAttribute('r', '6');
+      circle.setAttribute('fill', '#ff4757');
+      circle.setAttribute('stroke', '#ffffff');
+      circle.setAttribute('stroke-width', '2');
+      svg.appendChild(circle);
+    }
+  }
+
+  // --- Phase 1: Task Details Drawer ---
+  openTaskDrawer(projId, taskId) {
+    let targetTask = null;
+    let projName = '';
+    this.projects.forEach(p => {
+      const found = p.tasks.find(t => t.id === taskId);
+      if (found) {
+        targetTask = found;
+        projName = p.name;
+      }
+    });
+
+    if (!targetTask) return;
+    this.activeDrawerTask = targetTask;
+
+    document.getElementById('drawerTaskType').textContent = targetTask.isMilestone ? '◆ MARCO' : 'TAREFA';
+    document.getElementById('drawerTaskName').textContent = targetTask.name;
+    document.getElementById('drawerProjectName').textContent = projName;
+    document.getElementById('drawerTaskStatus').textContent = targetTask.status || 'A Fazer';
+    document.getElementById('drawerTaskDates').textContent = `${targetTask.startDate} até ${targetTask.endDate}`;
+    document.getElementById('drawerBaselineDates').textContent = targetTask.baselineStart ? `${targetTask.baselineStart} até ${targetTask.baselineEnd}` : 'Nenhuma gravada';
+    document.getElementById('drawerAssignee').value = targetTask.assignee || '';
+    document.getElementById('drawerCost').value = targetTask.cost || '';
+    document.getElementById('drawerNotes').value = targetTask.notes || '';
+
+    this.renderDrawerChecklist();
+    this.taskDetailsDrawer.classList.add('visible');
+  }
+
+  renderDrawerChecklist() {
+    const container = document.getElementById('drawerChecklistContainer');
+    container.innerHTML = '';
+    if (!this.activeDrawerTask) return;
+
+    if (!this.activeDrawerTask.checklist) this.activeDrawerTask.checklist = [];
+
+    this.activeDrawerTask.checklist.forEach((item, idx) => {
+      const row = document.createElement('div');
+      row.className = `checklist-item ${item.done ? 'checked' : ''}`;
+      row.innerHTML = `
+        <input type="checkbox" ${item.done ? 'checked' : ''}>
+        <span style="flex:1;">${item.title}</span>
+        <button type="button" class="icon-btn-sm" onclick="app.removeChecklistItem(${idx})"><i data-lucide="trash-2"></i></button>
+      `;
+
+      row.querySelector('input').addEventListener('change', (e) => {
+        item.done = e.target.checked;
+        this.renderDrawerChecklist();
+      });
+
+      container.appendChild(row);
+    });
+    lucide.createIcons();
+  }
+
+  addChecklistItem() {
+    const input = document.getElementById('inputNewChecklistItem');
+    const title = input.value.trim();
+    if (!title || !this.activeDrawerTask) return;
+
+    if (!this.activeDrawerTask.checklist) this.activeDrawerTask.checklist = [];
+    this.activeDrawerTask.checklist.push({ title, done: false });
+    input.value = '';
+    this.renderDrawerChecklist();
+  }
+
+  removeChecklistItem(idx) {
+    if (!this.activeDrawerTask || !this.activeDrawerTask.checklist) return;
+    this.activeDrawerTask.checklist.splice(idx, 1);
+    this.renderDrawerChecklist();
+  }
+
+  closeTaskDrawer() {
+    this.taskDetailsDrawer.classList.remove('visible');
+    this.activeDrawerTask = null;
+  }
+
+  saveTaskDrawer() {
+    if (!this.activeDrawerTask) return;
+    this.activeDrawerTask.assignee = document.getElementById('drawerAssignee').value.trim();
+    this.activeDrawerTask.cost = document.getElementById('drawerCost').value;
+    this.activeDrawerTask.notes = document.getElementById('drawerNotes').value;
+    this.saveProjects();
+    this.closeTaskDrawer();
+  }
+
+  // --- SaaS Desktop App Page Navigation ---
+  switchPage(pageId) {
+    this.activePage = pageId;
+
+    document.querySelectorAll('.page-section').forEach(sec => sec.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(nav => nav.classList.remove('active'));
+
+    const targetSec = document.getElementById(pageId);
+    const navId = `nav${pageId.replace('page', '')}`;
+    const targetNav = document.getElementById(navId);
+
+    if (targetSec) targetSec.classList.add('active');
+    if (targetNav) targetNav.classList.add('active');
+
+    const breadcrumbMap = {
+      pageGantt: 'Gráfico Gantt',
+      pageSCurve: 'Curva S & Avanço',
+      pageTaskList: 'Lista de Tarefas',
+      pageProjects: 'Painel de Projetos',
+      pageSettings: 'Configurações & Dados'
+    };
+    const breadcrumbElem = document.getElementById('pageBreadcrumb');
+    if (breadcrumbElem) {
+      breadcrumbElem.textContent = `Espaço / GTP - Coqueria / ${breadcrumbMap[pageId] || 'Gráfico Gantt'}`;
+    }
+
+    if (pageId === 'pageGantt') {
+      this.render();
+    } else if (pageId === 'pageSCurve') {
+      this.renderFullSCurvePage();
+    } else if (pageId === 'pageTaskList') {
+      this.renderTaskListView();
+    } else if (pageId === 'pageProjects') {
+      this.renderProjectsGridView();
+    }
+    lucide.createIcons();
+  }
+
+  getAvatarHTML(name) {
+    if (!name || name.trim() === '') return '-';
+    const cleanName = name.trim();
+    const initials = cleanName.substring(0, 2).toUpperCase();
+    // Simple hash to pick a color
+    const colors = ['#ff6b35', '#ff4757', '#e64980', '#ae3ec9', '#2f9e44', '#1c7ed6', '#f59f00', '#0ca678'];
+    let hash = 0;
+    for (let i = 0; i < cleanName.length; i++) {
+      hash = cleanName.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const color = colors[Math.abs(hash) % colors.length];
+    return `<div class="avatar-circle" style="background:${color};" title="${cleanName}">${initials}</div>`;
+  }
+
+  getStatusClass(status) {
+    if (!status) return '';
+    const s = status.toLowerCase();
+    if (s.includes('atrasado')) return 'atrasado';
+    if (s.includes('progresso')) return 'em-progresso';
+    if (s.includes('conclu')) return 'concluido';
+    return '';
+  }
+
+  renderTaskListView() {
+    const container = document.getElementById('taskTableContainer');
+    if (!container) return;
+
+    let html = `
+      <table class="task-master-table">
+        <thead>
+          <tr>
+            <th>Tarefa</th>
+            <th>Projeto</th>
+            <th>Resp.</th>
+            <th>Início</th>
+            <th>Término</th>
+            <th>Duração</th>
+            <th>Status</th>
+            <th>Progresso</th>
+            <th>Predecessora</th>
+            <th style="text-align:right;">Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
+
+    let totalCount = 0;
+    this.projects.forEach(p => {
+      p.tasks.forEach(t => {
+        totalCount++;
+        const sDate = t.startDate || '-';
+        const eDate = t.endDate || '-';
+        const sDateObj = parseLocalDate(sDate);
+        const eDateObj = parseLocalDate(eDate);
+        const dur = Math.max(1, Math.round((eDateObj - sDateObj) / 86400000) + 1);
+        const durText = t.isMilestone ? 'Marco' : `${dur}d`;
+
+        let predName = '-';
+        if (t.predecessorId) {
+          this.projects.forEach(p2 => {
+            const pred = p2.tasks.find(tk => tk.id === t.predecessorId);
+            if (pred) predName = pred.name;
+          });
+        }
+
+        const isCompleted = t.progress >= 100 || t.status === 'Concluído';
+
+        html += `
+          <tr>
+            <td><strong>${t.name}</strong> ${t.isMilestone ? '<span class="drawer-badge">MARCO</span>' : ''}</td>
+            <td><span class="tag" style="background:rgba(0,113,227,0.1); color:var(--apple-blue);">${p.name}</span></td>
+            <td>${this.getAvatarHTML(t.assignee)}</td>
+            <td>${sDate.split('-').reverse().join('/')}</td>
+            <td>${eDate.split('-').reverse().join('/')}</td>
+            <td>${durText}</td>
+            <td><span class="status-badge ${this.getStatusClass(t.status)}">${t.status || 'A Fazer'}</span></td>
+            <td>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <div style="flex:1; height:6px; background:var(--border-color); border-radius:3px; overflow:hidden;">
+                  <div style="width:${t.progress}%; height:100%; background:${isCompleted ? '#2ed573' : 'var(--apple-blue)'}"></div>
+                </div>
+                <span>${t.progress}%</span>
+              </div>
+            </td>
+            <td>${predName}</td>
+            <td style="text-align:right;">
+              <div class="task-actions-table">
+                <button class="icon-btn-sm" onclick="app.openTaskDrawer('${p.id}', '${t.id}')" title="Detalhes"><i data-lucide="file-text"></i></button>
+                <button class="icon-btn-sm" onclick="app.openTaskModal('${p.id}', '${t.id}')" title="Editar"><i data-lucide="edit-3"></i></button>
+                <button class="icon-btn-sm" onclick="app.deleteTask('${p.id}', '${t.id}')" title="Excluir"><i data-lucide="trash"></i></button>
+              </div>
+            </td>
+          </tr>
+        `;
+      });
+    });
+
+    if (totalCount === 0) {
+      html += `<tr><td colspan="9" style="text-align:center; padding:24px; color:var(--text-muted);">Nenhuma tarefa cadastrada.</td></tr>`;
+    }
+
+    html += `</tbody></table>`;
+    container.innerHTML = html;
+  }
+
+  renderProjectsGridView() {
+    const container = document.getElementById('projectsGridContainer');
+    if (!container) return;
+
+    container.innerHTML = '';
+    this.projects.forEach(p => {
+      const taskCount = p.tasks.length;
+      let totalProg = 0;
+      let overdueCount = 0;
+
+      p.tasks.forEach(t => {
+        totalProg += Number(t.progress || 0);
+        if (t.status === 'Atrasado') overdueCount++;
+      });
+
+      const avgProg = taskCount > 0 ? Math.round(totalProg / taskCount) : 0;
+
+      const card = document.createElement('div');
+      card.className = 'project-summary-card';
+      card.innerHTML = `
+        <div class="project-summary-header">
+          <h4>${p.name}</h4>
+          <div class="task-actions-inline">
+            <button class="icon-btn-sm" onclick="app.openProjectModal('${p.id}')" title="Editar Projeto"><i data-lucide="edit-3"></i></button>
+            <button class="icon-btn-sm" onclick="app.deleteProject('${p.id}')" title="Excluir Projeto"><i data-lucide="trash"></i></button>
+          </div>
+        </div>
+
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-top:8px;">
+          <span style="font-size:0.8rem; color:var(--text-muted); font-weight:600;">Progresso Acumulado</span>
+          <span style="font-size:1.2rem; font-weight:800; color:var(--apple-blue);">${avgProg}%</span>
+        </div>
+
+        <div style="width:100%; height:8px; background:var(--border-color); border-radius:4px; overflow:hidden;">
+          <div style="width:${avgProg}%; height:100%; background:linear-gradient(90deg, var(--apple-blue), #2ed573);"></div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:8px; font-size:0.8rem;">
+          <div style="background:var(--bg-surface-hover); padding:10px; border-radius:8px;">
+            <div style="color:var(--text-muted);">Total Atividades</div>
+            <div style="font-size:1.1rem; font-weight:800;">${taskCount}</div>
+          </div>
+          <div style="background:var(--bg-surface-hover); padding:10px; border-radius:8px;">
+            <div style="color:var(--text-muted);">Atrasadas</div>
+            <div style="font-size:1.1rem; font-weight:800; color:${overdueCount > 0 ? '#ff4757' : 'var(--text-primary)'};">${overdueCount}</div>
+          </div>
+        </div>
+      `;
+      container.appendChild(card);
+    });
+  }
+
+  renderFullSCurvePage() {
+    const days = this.getDaysArray();
+    if (days.length === 0) return;
+
+    let totalPlannedWork = 0;
+    this.projects.forEach(p => {
+      p.tasks.forEach(t => {
+        const s = parseLocalDate(t.baselineStart || t.startDate);
+        const e = parseLocalDate(t.baselineEnd || t.endDate);
+        const dur = Math.max(1, Math.round((e - s) / 86400000) + 1);
+        totalPlannedWork += dur;
+      });
+    });
+
+    if (totalPlannedWork === 0) totalPlannedWork = 1;
+
+    const plannedData = [];
+    const realizedData = [];
+
+    days.forEach(dayDate => {
+      const dayStr = getLocalDateStr(dayDate);
+      let plannedSum = 0;
+      let realizedSum = 0;
+
+      this.projects.forEach(p => {
+        p.tasks.forEach(t => {
+          const bStart = parseLocalDate(t.baselineStart || t.startDate);
+          const bEnd = parseLocalDate(t.baselineEnd || t.endDate);
+          const bDur = Math.max(1, Math.round((bEnd - bStart) / 86400000) + 1);
+
+          if (dayDate >= bEnd) {
+            plannedSum += bDur;
+          } else if (dayDate >= bStart) {
+            const elapsed = Math.round((dayDate - bStart) / 86400000) + 1;
+            plannedSum += elapsed;
+          }
+
+          if (dayStr <= this.todayStr) {
+            const rStart = parseLocalDate(t.startDate);
+            const rEnd = parseLocalDate(t.endDate);
+            const rDur = Math.max(1, Math.round((rEnd - rStart) / 86400000) + 1);
+
+            if (dayDate >= rEnd) {
+              realizedSum += rDur * ((t.progress || 0) / 100);
+            } else if (dayDate >= rStart) {
+              const elapsed = Math.round((dayDate - rStart) / 86400000) + 1;
+              const ratio = Math.min(1, elapsed / rDur);
+              realizedSum += rDur * Math.min(ratio, (t.progress || 0) / 100);
+            }
+          }
+        });
+      });
+
+      const pPct = Math.min(100, Math.round((plannedSum / totalPlannedWork) * 100));
+      plannedData.push({ dateStr: dayStr, pct: pPct });
+
+      if (dayStr <= this.todayStr) {
+        const rPct = Math.min(100, Math.round((realizedSum / totalPlannedWork) * 100));
+        realizedData.push({ dateStr: dayStr, pct: rPct });
+      }
+    });
+
+    const todayPlanned = plannedData.find(d => d.dateStr === this.todayStr) || plannedData[plannedData.length - 1];
+    const todayRealized = realizedData[realizedData.length - 1] || { pct: 0 };
+
+    const pVal = todayPlanned ? todayPlanned.pct : 0;
+    const rVal = todayRealized ? todayRealized.pct : 0;
+    const vVal = rVal - pVal;
+
+    const pElem = document.getElementById('fullScurvePlanned');
+    const rElem = document.getElementById('fullScurveRealized');
+    const vElem = document.getElementById('fullScurveVariance');
+
+    if (pElem) pElem.textContent = `${pVal}%`;
+    if (rElem) rElem.textContent = `${rVal}%`;
+    if (vElem) {
+      vElem.textContent = `${vVal >= 0 ? '+' : ''}${vVal}%`;
+      vElem.style.color = vVal >= 0 ? '#2ed573' : '#ff4757';
+    }
+
+    const svg = document.getElementById('fullScurveSvg');
+    if (!svg) return;
+
+    svg.innerHTML = '';
+    const width = 940;
+    const height = 380;
+    const p = { top: 20, right: 30, bottom: 40, left: 40 };
+
+    const cW = width - p.left - p.right;
+    const cH = height - p.top - p.bottom;
+    const n = plannedData.length;
+    if (n === 0) return;
+
+    // Grid lines
+    [0, 25, 50, 75, 100].forEach(level => {
+      const y = p.top + cH - (level / 100) * cH;
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', p.left);
+      line.setAttribute('y1', y);
+      line.setAttribute('x2', p.left + cW);
+      line.setAttribute('y2', y);
+      line.setAttribute('stroke', 'var(--border-color)');
+      line.setAttribute('stroke-dasharray', '4 4');
+      svg.appendChild(line);
+
+      const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      label.setAttribute('x', p.left - 8);
+      label.setAttribute('y', y + 4);
+      label.setAttribute('text-anchor', 'end');
+      label.setAttribute('font-size', '10');
+      label.setAttribute('fill', 'var(--text-muted)');
+      label.textContent = `${level}%`;
+      svg.appendChild(label);
+    });
+
+    // Planned Path (Blue)
+    const pPoints = plannedData.map((d, i) => {
+      const x = p.left + (i / Math.max(1, n - 1)) * cW;
+      const y = p.top + cH - (d.pct / 100) * cH;
+      return `${x},${y}`;
+    }).join(' ');
+
+    const pPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    pPath.setAttribute('d', `M ${pPoints}`);
+    pPath.setAttribute('fill', 'none');
+    pPath.setAttribute('stroke', 'var(--apple-blue)');
+    pPath.setAttribute('stroke-width', '3');
+    pPath.setAttribute('stroke-dasharray', '6 3');
+    svg.appendChild(pPath);
+
+    // Realized Path (Green)
+    if (realizedData.length > 0) {
+      const rPoints = realizedData.map((d, i) => {
+        const x = p.left + (i / Math.max(1, n - 1)) * cW;
+        const y = p.top + cH - (d.pct / 100) * cH;
+        return `${x},${y}`;
+      }).join(' ');
+
+      const rPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      rPath.setAttribute('d', `M ${rPoints}`);
+      rPath.setAttribute('fill', 'none');
+      rPath.setAttribute('stroke', '#2ed573');
+      rPath.setAttribute('stroke-width', '3.5');
+      svg.appendChild(rPath);
+
+      // Today Marker
+      const lastIdx = realizedData.length - 1;
+      const lastR = realizedData[lastIdx];
+      const tX = p.left + (lastIdx / Math.max(1, n - 1)) * cW;
+      const tY = p.top + cH - (lastR.pct / 100) * cH;
+
+      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      circle.setAttribute('cx', tX);
+      circle.setAttribute('cy', tY);
+      circle.setAttribute('r', '6');
+      circle.setAttribute('fill', '#ff4757');
+      circle.setAttribute('stroke', '#ffffff');
+      circle.setAttribute('stroke-width', '2');
+      svg.appendChild(circle);
     }
   }
 }
