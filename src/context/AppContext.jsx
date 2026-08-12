@@ -21,6 +21,7 @@ export const ACTIONS = {
   SET_TASKS: 'SET_TASKS',
   ADD_TASK: 'ADD_TASK',
   UPDATE_TASK: 'UPDATE_TASK',
+  UPDATE_TASKS_BATCH: 'UPDATE_TASKS_BATCH',
   REMOVE_TASK: 'REMOVE_TASK',
   SET_ACTIVE_PAGE: 'SET_ACTIVE_PAGE',
   SET_ACTIVE_PROJECT: 'SET_ACTIVE_PROJECT',
@@ -64,6 +65,13 @@ function reducer(state, action) {
           t.id === action.payload.id ? action.payload : t
         ),
       };
+    case ACTIONS.UPDATE_TASKS_BATCH: {
+      const updateMap = new Map(action.payload.map(t => [t.id, t]));
+      return {
+        ...state,
+        tasks: state.tasks.map(t => updateMap.has(t.id) ? updateMap.get(t.id) : t),
+      };
+    }
     case ACTIONS.REMOVE_TASK:
       return {
         ...state,
@@ -148,6 +156,13 @@ export function AppProvider({ children }) {
     dispatch({ type: ACTIONS.UPDATE_TASK, payload: task });
   }, []);
 
+  const updateTasksBatch = useCallback(async (tasksToUpdate) => {
+    for (const t of tasksToUpdate) {
+      await dbSaveTask(t);
+    }
+    dispatch({ type: ACTIONS.UPDATE_TASKS_BATCH, payload: tasksToUpdate });
+  }, []);
+
   const removeTask = useCallback(async (id) => {
     await dbDeleteTask(id);
     dispatch({ type: ACTIONS.REMOVE_TASK, payload: id });
@@ -174,6 +189,7 @@ export function AppProvider({ children }) {
     removeProject,
     addTask,
     updateTask,
+    updateTasksBatch,
     removeTask,
     navigate,
     selectProject,

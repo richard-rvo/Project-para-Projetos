@@ -7,10 +7,11 @@
 /* ── Design Tokens ──────────────────────────────────────────── */
 :root {
   /* Primary palette */
-  --color-primary: hsl(220, 65%, 54%);
-  --color-primary-dark: hsl(220, 65%, 40%);
-  --color-primary-light: hsl(220, 65%, 92%);
-  --color-primary-ghost: hsla(220, 65%, 54%, 0.08);
+  --color-primary: #B90973;
+  --color-primary-dark: #8E0658;
+  --color-primary-light: #fce6f1;
+  --color-primary-ghost: rgba(185, 9, 115, 0.08);
+  --gradient-primary: linear-gradient(135deg, #FE8345 0%, #FA5E42 20%, #F73A40 40%, #E82048 60%, #D0145D 80%, #B90973 100%);
 
   /* Semantic colors */
   --color-emerald: hsl(152, 55%, 45%);
@@ -45,7 +46,7 @@
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
   --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.12);
-  --shadow-glow: 0 0 20px hsla(220, 65%, 54%, 0.15);
+  --shadow-glow: 0 0 20px rgba(185, 9, 115, 0.2);
 }
 
 /* ── Dark Theme ─────────────────────────────────────────────── */
@@ -57,8 +58,8 @@
   --color-text: #e8eaed;
   --color-text-secondary: #9ca3af;
   --color-text-muted: #6b7280;
-  --color-primary-light: hsla(220, 65%, 54%, 0.15);
-  --color-primary-ghost: hsla(220, 65%, 54%, 0.1);
+  --color-primary-light: rgba(185, 9, 115, 0.15);
+  --color-primary-ghost: rgba(185, 9, 115, 0.1);
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.2);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.4);
@@ -348,13 +349,16 @@ button:hover { transform: translateY(-1px); }
 button:active { transform: translateY(0); }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--color-primary), hsl(230, 65%, 50%));
+  background: var(--gradient-primary);
   color: #fff;
-  box-shadow: 0 2px 8px hsla(220, 65%, 54%, 0.3);
+  background-size: 200% auto;
+  transition: background-position 0.3s ease, box-shadow 0.2s ease, transform 0.1s ease;
+  box-shadow: 0 2px 8px rgba(185, 9, 115, 0.3);
 }
 
 .btn-primary:hover {
-  box-shadow: 0 4px 16px hsla(220, 65%, 54%, 0.4);
+  background-position: right center;
+  box-shadow: 0 4px 16px rgba(185, 9, 115, 0.4);
 }
 
 .btn-secondary {
@@ -1092,6 +1096,16 @@ button:active { transform: translateY(0); }
 .gantt-sheet-row.new-task-row {
   border-bottom: none;
   background: transparent;
+  opacity: 0.6;
+  transition: all 0.2s ease;
+}
+
+.gantt-sheet-row.new-task-row .gantt-cell {
+  border-right: 1px dashed var(--color-border);
+}
+
+.gantt-sheet-row.new-task-row .gantt-cell:last-child {
+  border-right: none;
 }
 
 .gantt-sheet-row.new-task-row:hover {
@@ -1445,13 +1459,13 @@ button:active { transform: translateY(0); }
 /* Baseline Bar */
 .gantt-baseline-bar {
   position: absolute;
-  top: 26px; /* Below the main bar */
-  height: 8px;
-  background: var(--color-slate-400);
-  border-radius: 4px;
-  opacity: 0.6;
+  top: 4px;
+  height: 32px;
+  background: transparent;
+  border: 2px dashed rgba(128, 128, 128, 0.4);
+  border-radius: 6px;
   pointer-events: none;
-  z-index: 1;
+  z-index: 0;
 }
 
 .gantt-bar-progress {
@@ -1499,7 +1513,6 @@ button:active { transform: translateY(0); }
   height: 32px;
   display: flex;
   align-items: center;
-  transform: translateX(-50%);
   z-index: 2;
   cursor: pointer;
 }

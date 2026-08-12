@@ -31,8 +31,8 @@ export default function Sidebar() {
       {/* Brand */}
       <div className="sidebar-header">
         <div className="sidebar-logo">
-          <div className="brand-logo-badge">
-            <Layers size={20} />
+          <div className="brand-logo-badge" style={{ background: 'transparent', padding: 0 }}>
+            <img src="/logo.png" alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '8px' }} />
           </div>
           {!collapsed && (
             <div className="logo-title-group">

@@ -3,6 +3,7 @@ import { AppContext } from '../context/AppContext';
 import Badge from '../components/Badge';
 import ProgressBar from '../components/ProgressBar';
 import Modal from '../components/Modal';
+import ConfirmDialog from '../components/ConfirmDialog';
 import {
   Plus, Trash2, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, GripVertical,
   ChevronDown, ChevronRight as ChevronRightIcon, Calendar, Milestone,
@@ -67,7 +68,7 @@ const STATUS_COLORS = {
 };
 
 export default function PageGantt() {
-  const { state, addTask, updateTask, removeTask, navigate, showToast, selectProject } = useContext(AppContext);
+  const { state, addTask, updateTask, updateTasksBatch, removeTask, navigate, showToast, selectProject } = useContext(AppContext);
   const [zoomIdx, setZoomIdx] = useState(0); // start at day level
   const [splitWidth, setSplitWidth] = useState(660);
   const [editingCell, setEditingCell] = useState(null); // { taskId, field }
@@ -78,7 +79,9 @@ export default function PageGantt() {
   const [draggedRowIndex, setDraggedRowIndex] = useState(null);
   const [dragOverRowIndex, setDragOverRowIndex] = useState(null);
   const [modalTask, setModalTask] = useState(null);
+  const [modalTaskData, setModalTaskData] = useState(null);
   const [showCriticalPath, setShowCriticalPath] = useState(false);
+  const [confirmAction, setConfirmAction] = useState(null);
   const timelineRef = useRef(null);
   const splitDragRef = useRef(null);
   const inputRef = useRef(null);
@@ -94,13 +97,69 @@ export default function PageGantt() {
     [state.tasks, state.activeProjectId]
   );
 
+  /* ── auto-scheduling ───────────────────────────────────────── */
+  const applyAutoScheduling = useCallback((changedTask, allTasks) => {
+    const updates = new Map();
+    updates.set(changedTask.id, changedTask);
+
+    const succMap = {};
+    allTasks.forEach(t => {
+      if (t.dependsOn) {
+        String(t.dependsOn).split(',').forEach(depStr => {
+          const depId = depStr.trim();
+          if (!succMap[depId]) succMap[depId] = [];
+          succMap[depId].push(t.id);
+        });
+      }
+    });
+
+    const queue = [changedTask];
+    const visited = new Set(); 
+
+    while (queue.length > 0) {
+      const current = queue.shift();
+      if (visited.has(current.id)) continue;
+      visited.add(current.id);
+
+      if (!current.endDate) continue;
+
+      const succs = succMap[current.id] || [];
+      for (const sId of succs) {
+        const sTaskBase = allTasks.find(t => t.id === sId);
+        if (!sTaskBase) continue;
+        
+        const sTask = updates.get(sId) || { ...sTaskBase };
+        
+        const currentEndMs = new Date(current.endDate + 'T12:00:00').getTime();
+        const targetStartMs = currentEndMs + 86400000; 
+        
+        if (sTask.startDate) {
+          const sStartMs = new Date(sTask.startDate + 'T12:00:00').getTime();
+          if (sStartMs < targetStartMs) {
+            const sDur = durationDays(sTask.startDate, sTask.endDate);
+            const newStartDateStr = new Date(targetStartMs).toISOString().slice(0, 10);
+            const newEndDateStr = addDays(newStartDateStr, sDur - 1);
+            
+            sTask.startDate = newStartDateStr;
+            sTask.endDate = newEndDateStr;
+            
+            updates.set(sTask.id, sTask);
+            queue.push(sTask);
+          }
+        }
+      }
+    }
+    
+    return Array.from(updates.values());
+  }, []);
+
   /* ── critical path calculation ───────────────────────────── */
   const criticalTasks = useMemo(() => {
     if (!projectTasks.length || !showCriticalPath) return new Set();
     const succMap = {};
     projectTasks.forEach(t => {
       if (t.dependsOn) {
-        t.dependsOn.split(',').forEach(depStr => {
+        String(t.dependsOn).split(',').forEach(depStr => {
           const depId = depStr.trim();
           if (!succMap[depId]) succMap[depId] = [];
           succMap[depId].push(t.id);
@@ -109,11 +168,16 @@ export default function PageGantt() {
     });
 
     const endDates = projectTasks.map(t => new Date(t.endDate + 'T12:00:00').getTime());
-    const projectEnd = Math.max(...endDates.filter(t => !isNaN(t)));
+    const validEnds = endDates.filter(t => !isNaN(t));
+    const projectEnd = validEnds.length > 0 ? Math.max(...validEnds) : Date.now();
 
     const lateFinish = {};
+    const visiting = new Set();
     const getLF = (taskId) => {
       if (lateFinish[taskId] !== undefined) return lateFinish[taskId];
+      if (visiting.has(taskId)) return projectEnd; // Evita loop infinito em deps circulares
+      
+      visiting.add(taskId);
       const succs = succMap[taskId] || [];
       if (succs.length === 0) {
         lateFinish[taskId] = projectEnd;
@@ -130,6 +194,7 @@ export default function PageGantt() {
         }
         lateFinish[taskId] = minLS === Infinity ? projectEnd : minLS;
       }
+      visiting.delete(taskId);
       return lateFinish[taskId];
     };
 
@@ -197,7 +262,7 @@ export default function PageGantt() {
   /* ── inline editing ──────────────────────────────────────── */
   const getPredecessorDisplay = (dependsOnStr) => {
     if (!dependsOnStr) return '';
-    const ids = dependsOnStr.split(',').map(s => s.trim());
+    const ids = String(dependsOnStr).split(',').map(s => s.trim());
     const rowNums = ids.map(id => {
       const idx = projectTasks.findIndex(t => t.id === id);
       return idx >= 0 ? idx + 1 : null;
@@ -206,8 +271,8 @@ export default function PageGantt() {
   };
 
   const handlePredecessorEdit = (inputValue) => {
-    if (!inputValue.trim()) return '';
-    const rowNums = inputValue.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+    if (!inputValue || !String(inputValue).trim()) return '';
+    const rowNums = String(inputValue).split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
     const ids = rowNums.map(num => {
       const task = projectTasks[num - 1];
       return task ? task.id : null;
@@ -240,13 +305,20 @@ export default function PageGantt() {
       const days = parseInt(value) || 1;
       if (task.startDate) {
         const newEnd = addDays(task.startDate, days - 1);
-        await updateTask({ ...task, endDate: newEnd });
+        const modifiedTask = { ...task, endDate: newEnd };
+        const updates = applyAutoScheduling(modifiedTask, projectTasks);
+        await updateTasksBatch(updates);
         setEditingCell(null);
         return;
       }
     }
 
-    await updateTask({ ...task, [editingCell.field]: value });
+    const modifiedTask = { ...task, [editingCell.field]: value };
+    let updates = [modifiedTask];
+    if (['startDate', 'endDate', 'duration', 'dependsOn'].includes(editingCell.field)) {
+      updates = applyAutoScheduling(modifiedTask, projectTasks);
+    }
+    await updateTasksBatch(updates);
     setEditingCell(null);
   };
 
@@ -302,11 +374,11 @@ export default function PageGantt() {
       document.removeEventListener('mousemove', handleMove);
       document.removeEventListener('mouseup', handleUp);
       if (currentDelta !== 0) {
-        await updateTask({
-          ...task,
-          startDate: addDays(origStart, currentDelta),
-          endDate: addDays(origEnd, currentDelta),
-        });
+        const newStart = addDays(origStart, currentDelta);
+        const newEnd = addDays(origEnd, currentDelta);
+        const modifiedTask = { ...task, startDate: newStart, endDate: newEnd };
+        const updates = applyAutoScheduling(modifiedTask, projectTasks);
+        await updateTasksBatch(updates);
       }
       setDraggingTask(null);
       setDragDelta(0);
@@ -380,7 +452,9 @@ export default function PageGantt() {
       if (currentDelta !== 0) {
         const newEnd = addDays(origEnd, currentDelta);
         if (newEnd >= task.startDate) {
-          await updateTask({ ...task, endDate: newEnd });
+          const modifiedTask = { ...task, endDate: newEnd };
+          const updates = applyAutoScheduling(modifiedTask, projectTasks);
+          await updateTasksBatch(updates);
         }
       }
       setDraggingTask(null);
@@ -402,24 +476,29 @@ export default function PageGantt() {
       if (modalTaskData.progress !== undefined) {
         modalTaskData.progress = Math.max(0, Math.min(100, parseInt(modalTaskData.progress) || 0));
       }
-      await updateTask(modalTaskData);
+      const updates = applyAutoScheduling(modalTaskData, projectTasks);
+      await updateTasksBatch(updates);
     }
     setModalTask(null);
   };
 
-  const handleSaveBaseline = async () => {
-    if (confirm('Deseja salvar a linha de base atual para todas as tarefas deste projeto? Isso sobrescreverá qualquer linha de base anterior.')) {
-      for (const t of projectTasks) {
-        if (t.startDate && t.endDate) {
-          await updateTask({
-            ...t,
-            baselineStart: t.startDate,
-            baselineEnd: t.endDate
-          });
+  const handleSaveBaseline = () => {
+    setConfirmAction({
+      title: 'Salvar Linha de Base',
+      message: 'Deseja salvar a linha de base atual para todas as tarefas deste projeto? Isso sobrescreverá qualquer linha de base anterior.',
+      onConfirm: async () => {
+        for (const t of projectTasks) {
+          if (t.startDate && t.endDate) {
+            await updateTask({
+              ...t,
+              baselineStart: t.startDate,
+              baselineEnd: t.endDate
+            });
+          }
         }
+        showToast('Linha de base salva com sucesso!', 'success');
       }
-      showToast('Linha de base salva com sucesso!', 'success');
-    }
+    });
   };
 
   /* ── split pane drag ─────────────────────────────────────── */
@@ -615,6 +694,7 @@ export default function PageGantt() {
               <div className="gantt-cell" style={{ width: 85 }} />
               <div className="gantt-cell" style={{ width: 45 }} />
               <div className="gantt-cell" style={{ width: 60 }} />
+              <div className="gantt-cell" style={{ width: 80 }} />
             </div>
           </div>
         </div>
@@ -726,7 +806,7 @@ export default function PageGantt() {
                     {task.startDate === task.endDate ? (
                       <div
                         className={`gantt-milestone ${isDragging ? 'dragging' : ''} ${showCriticalPath && !criticalTasks.has(task.id) ? 'dimmed' : ''}`}
-                        style={{ left: left + zoom.dayWidth / 2, '--bar-color': showCriticalPath && criticalTasks.has(task.id) ? '#ef4444' : barColor }}
+                        style={{ left: left + zoom.dayWidth / 2 - 9, '--bar-color': showCriticalPath && criticalTasks.has(task.id) ? '#ef4444' : barColor }}
                         onMouseDown={(e) => handleBarMouseDown(e, task)}
                         onDoubleClick={() => openTaskModal(task)}
                         title={`Marco: ${task.name}\nData: ${formatDateShort(task.startDate)}`}
@@ -775,13 +855,15 @@ export default function PageGantt() {
                   if (!task.dependsOn || !task.startDate || !task.endDate) return null;
                   
                   const isDragging = draggingTask === task.id;
+                  const isMilestone = task.startDate === task.endDate;
                   const offset = daysBetween(
                     timelineStart,
                     isDragging ? addDays(task.startDate, dragDelta) : task.startDate
                   );
-                  const left = offset * zoom.dayWidth;
+                  // O bico esquerdo do losango fica em (meio do dia - 13px)
+                  const left = offset * zoom.dayWidth + (isMilestone ? zoom.dayWidth / 2 - 17 : -4);
 
-                  return task.dependsOn.split(',').map((depId) => {
+                  return String(task.dependsOn).split(',').map((depId) => {
                     if (depId.trim() === task.id) return null;
                     
                     const depTask = projectTasks.find((t) => t.id === depId.trim());
@@ -791,8 +873,11 @@ export default function PageGantt() {
                     const depIsResizing = draggingTask === depTask.id + '-resize';
                     const depEndDate = depIsResizing ? addDays(depTask.endDate, dragDelta) : (depIsDragging ? addDays(depTask.endDate, dragDelta) : depTask.endDate);
                     
-                    const depEndPx = daysBetween(timelineStart, depEndDate) * zoom.dayWidth + zoom.dayWidth;
-                    
+                    const depIsMilestone = depTask.startDate === depTask.endDate;
+                    const depOffset = daysBetween(timelineStart, depEndDate);
+                    // O bico direito do losango fica em (meio do dia + 13px)
+                    const depEndPx = depOffset * zoom.dayWidth + (depIsMilestone ? zoom.dayWidth / 2 + 13 : zoom.dayWidth);
+
                     const depRow = projectTasks.indexOf(depTask);
                     const curRow = projectTasks.indexOf(task);
                     const rowH = 40;
@@ -935,13 +1020,44 @@ export default function PageGantt() {
               )}
             </div>
 
-            <div className="modal-actions">
-              <button className="btn-ghost" onClick={() => setModalTask(null)}>Cancelar</button>
-              <button className="btn-primary" onClick={handleSaveModal}>Salvar</button>
+            <div className="modal-actions" style={{ display: 'flex', justifyContent: 'space-between', marginTop: '24px' }}>
+              <button 
+                className="btn-icon-only btn-danger-ghost" 
+                title="Excluir Tarefa"
+                onClick={() => {
+                  setConfirmAction({
+                    title: 'Excluir Tarefa',
+                    message: 'Tem certeza que deseja excluir esta tarefa?',
+                    onConfirm: async () => {
+                      await removeTask(modalTaskData.id);
+                      setModalTask(null);
+                    }
+                  });
+                }}
+              >
+                <Trash2 size={18} />
+              </button>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button className="btn-ghost" onClick={() => setModalTask(null)}>Cancelar</button>
+                <button className="btn-primary" onClick={handleSaveModal}>Salvar</button>
+              </div>
             </div>
           </div>
         )}
       </Modal>
+
+      {/* ── Global Confirm Dialog ─────────────────────────────── */}
+      <ConfirmDialog
+        isOpen={!!confirmAction}
+        onClose={() => setConfirmAction(null)}
+        onConfirm={() => {
+          if (confirmAction && confirmAction.onConfirm) {
+            confirmAction.onConfirm();
+          }
+        }}
+        title={confirmAction?.title}
+        message={confirmAction?.message}
+      />
     </div>
   );
 }
