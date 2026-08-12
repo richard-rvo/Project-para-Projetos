@@ -1,81 +1,72 @@
-# 📊 Gantt Dinâmico - Painel de Controle de Projetos (GTP - COQUERIA)
+# 📊 Gantt Dinâmico - React
 
-Sistema web executivo, dinâmico e responsivo para gestão visual avançada de múltiplos projetos e atividades de engenharia. Desenvolvido com padrão de design state-of-the-art inspirando-se em ferramentas como Linear, TickTick, Todoist e Asana.
+Sistema web executivo, dinâmico e responsivo para gestão visual avançada de múltiplos projetos e atividades. Desenvolvido com padrão de design state-of-the-art e inspirado em ferramentas líderes da indústria como **MS Project**, **Linear** e **Asana**.
 
-![Versão](https://img.shields.io/badge/Vers%C3%A3o-5.5-ff4757)
-![Tecnologia](https://img.shields.io/badge/Tech-HTML5%20%7C%20CSS3%20%7C%20JS%20ES6-1c7ed6)
-![Design System](https://img.shields.io/badge/UI%2FUX-Linear%20%2F%20TickTick%20%2F%20Asana-2f9e44)
+![Versão](https://img.shields.io/badge/Vers%C3%A3o-6.0-ff4757)
+![Tecnologia](https://img.shields.io/badge/Tech-React%20%7C%20Vite%20%7C%20IndexedDB-1c7ed6)
+![Design System](https://img.shields.io/badge/UI%2FUX-Glassmorphism%20%2F%20Dark%20Mode-2f9e44)
 
 ---
 
 ## 🚀 Principais Funcionalidades
 
-### 1. 📅 Indicador "Hoje" Real e Sincronizado
-- **Tratamento de Datas sem Distorção UTC (`parseLocalDate`)**: Parsing estrito no fuso horário local da máquina (`YYYY-MM-DD` a `00:00:00.000`), eliminando deslocamentos indesejados para datas anteriores.
-- **Centralização Exata**: Indicador vertical vermelho de 2px com badge em pílula "HOJE" perfeitamente centralizado no meio da coluna da data atual.
-- **Sincronização 100% da Grade**: O cabeçalho de datas (`datesHeader`), o fundo rosado da coluna (`gridOverlay`) e o indicador de Hoje compartilham rigorosamente o mesmo índice e coordenadas.
+### 1. 📅 Gráfico Gantt (Estilo MS Project)
+- **Planilha Integrada**: Painel esquerdo em formato de tabela com colunas de `#`, Nome, Duração, Início, Término, Progresso (`%`) e Predecessoras (`Pred.`).
+- **Edição Inline Rápida**: Clique duplo em qualquer célula da planilha para editar os valores instantaneamente.
+- **Linha do Tempo Dinâmica**: Gráfico na direita com scroll sincronizado e auto-foco na data de hoje ao abrir.
+- **Drag & Drop**:
+  - Arraste tarefas pela planilha para **reordená-las**.
+  - Arraste a barra na linha do tempo para **alterar a data**.
+  - Arraste a borda direita da barra para **redimensionar a duração**.
 
-### 2. 🎛️ Minimizar/Expandir Projetos e Badges de Métricas
-- **Indicadores no Cabeçalho**: Badges dinâmicos exibindo a **quantidade de atividades** (ex: `3 ativ.`) e a **porcentagem média de conclusão** do projeto (ex: `17% conc.`).
-- **Alinhamento à Direita**: Tags de métricas posicionadas estrategicamente à direita da barra lateral, maximizando o espaço para o título do projeto.
-- **Grupo Minimizável (`Collapsible Groups`)**: Clique no cabeçalho do projeto para recolher ou expandir suas atividades. O estado é salvo automaticamente no `localStorage`.
+### 2. 🔗 Sistema de Vínculos e Predecessoras
+- **Roteamento Inteligente**: Setas de dependência desenhadas com algoritmo ortogonal, cantos suavizados e cálculo inteligente para não sobrepor barras.
+- **Prevenção de Erros**: O algoritmo filtra dependências circulares e calcula automaticamente rotas para trás (backward) de forma elegante.
 
-### 3. 📝 Editor de Tarefas Moderno de 2 Colunas (Sem Rolagem)
-- **Layout Horizontal Otimizado (820px)**: Exibe 100% das informações simultaneamente na tela sem a necessidade de barra de rolagem vertical.
-- **Edição por Duplo Clique (`dblclick`)**: 2 cliques rápidos em qualquer atividade ou linha abrem o modal de edição instantaneamente.
-- **Atalhos de Datas Separados**:
-  - **Data de Início**: Pílulas rápidas (`Hoje`, `Amanhã`, `Segunda`).
-  - **Data de Término**: Pílulas de duração (`+1d`, `+3d`, `+7d`, `+15d`, `+30d`).
-- **Controle de Progresso**: Slider interativo com pílulas rápidas de porcentagem (`0%`, `25%`, `50%`, `75%`, `100%`).
+### 3. 📈 Motor Avançado de Curva S
+- **Progresso Acumulado**: Geração real de Curva S clássica de gerenciamento de projetos.
+- **Planejado vs Realizado**: Gráfico de linha dupla que compara o progresso matemático esperado no tempo (Azul) contra o progresso realizado (Verde).
+- **Indicadores de Desvio**: Painel com cartões que mostram o "Planejado até Hoje", "Realizado Atual" e a margem de **Desvio** (ex: `+13% Adiantado`).
 
-### 4. 🔗 Painel de Vínculos de Dependência (Predecessoras e Sucessoras)
-- **Visualização Clara**: Colunas separadas para **Predecessoras** (origem) e **Sucessoras** (destino).
-- **Desvínculo em 1 Clique**: Pílulas individuais de dependência com botão vermelho `(X)` para desvincular imediatamente.
-- **Seletores de Inclusão Rápida**: Dropdowns dedicados (`+ Vincular Predecessora...` e `+ Vincular Sucessora...`) com atualização em tempo real.
-- **Conexão Interativa Visual**: Conexão arrastável ao clicar no ponto indicador (`.link-connector-dot`) da cápsula com banner flutuante em 1 única linha (`🔗 Predecessora: ... ➔ Selecione a Sucessora`).
+### 4. 🗄️ Persistência Local Avançada (IndexedDB)
+- Todos os dados são salvos localmente e de forma estruturada no IndexedDB do navegador.
+- Suporta múltiplos projetos, listas de tarefas massivas e preserva ordem e dependências sem perda de performance.
 
-### 5. ✨ Design Glassmorphism e Acabamento de Progresso sem Transbordo
-- **Recorte Perfeito (`.capsule-progress-clip`)**: Container com `overflow: hidden` que garante que o preenchimento de progresso nunca sobressaia pelas curvas da cápsula.
-- **Efeito de Vidro Gradiente**: Preenchimento tridimensional com efeito de brilho reflexivo (*shimmer*) e sombra interna.
-- **Micro-Badge de Porcentagem Flutuante (`.capsule-percent-pill`)**: Badge discreto integrado dentro ou ao lado da barra da atividade (com destaque verde `✓ 100%` quando concluída).
-
-### 6. 📌 Rolagem 2D com Sidebar Fixo (Sticky Sidebar)
-- **Aba Congelada na Esquerda**: A coluna de "Projetos & Atividades" e o nome das tarefas permanecem fixos na esquerda (`position: sticky; left: 0`) ao rolar a linha do tempo horizontalmente para datas futuras.
-- **Barra de Ações Flutuante em Overlay (`.task-actions-inline`)**: Mini-barra de ferramentas (editar/excluir) que surge suavemente no hover, eliminando espaços vagos não utilizados.
-
-### 7. 🎛️ Coluna de Atividades Redimensionável (Splitter Handle)
-- Divisor vertical interativo (`#sidebarResizer`) para ajustar livremente a largura da coluna de tarefas.
-- Largura personalizada salva no `localStorage` (com ajuste padrão otimizado de 290px).
-
-### 8. 🖼️ Exportação em Alta Resolução (PNG & PDF)
-- **Exportar Imagem (PNG)**: Renderização HD de 2x utilizando `html2canvas`.
-- **Exportar PDF / Imprimir**: Folha de estilo otimizada para impressão em modo Paisagem (A4 Landscape).
+### 5. ✨ Design Glassmorphism e Temas
+- Interface responsiva utilizando painéis de vidro translúcido (`backdrop-filter`).
+- Botão flutuante para **Alternância de Tema (Light / Dark Mode)**.
 
 ---
 
 ## 🛠️ Tecnologias Utilizadas
 
-- **HTML5**: Estrutura semântica e acessível.
-- **CSS3**: Design System moderno com Variáveis CSS (Tokens), Dark/Light Modes, Flexbox/Grid e Animações.
-- **JavaScript ES6 (Vanilla)**: Manipulação dinâmica de DOM, cálculo de datas locais e SVG de conectores.
-- **Lucide Icons**: Ícones minimalistas de alta precisão.
-- **html2canvas**: Biblioteca para conversão de elementos DOM em imagens PNG.
+- **React 18+**: Framework UI para componentes reativos.
+- **Vite**: Bundler ultra-rápido para desenvolvimento.
+- **CSS Nativo**: Variáveis CSS e Design System customizado (sem frameworks para máximo controle).
+- **Lucide React**: Ícones minimalistas de alta precisão.
+- **IndexedDB / IDB**: Armazenamento no client-side eficiente.
 
 ---
 
 ## 💻 Como Executar Localmente
 
-Como o projeto é construído em código nativo sem dependências complexas de compilação, basta servir os arquivos estáticos:
+### Pré-requisitos
+- Ter o [Node.js](https://nodejs.org/) instalado.
 
-### Opção 1: Servidor Python Nativo (Recomendado)
+### Instalação e Execução
+1. Abra o terminal na pasta do projeto:
 ```bash
-cd "/Users/richardvieira/Developer/Engenharia/Gantt Dinamico"
-python3 -m http.server 8085
+cd "/Users/richardvieira/Developer/Gantt Dinamico"
 ```
-Acesse no navegador: `http://localhost:8085`
-
-### Opção 2: Abrir o Arquivo Nativo
-Basta dar um duplo clique no arquivo `index.html` em seu gerenciador de arquivos.
+2. Instale as dependências:
+```bash
+npm install
+```
+3. Inicie o servidor de desenvolvimento:
+```bash
+npm run dev
+```
+4. Acesse no navegador: `http://localhost:5173`
 
 ---
 
@@ -83,9 +74,14 @@ Basta dar um duplo clique no arquivo `index.html` em seu gerenciador de arquivos
 
 ```
 Gantt Dinamico/
-├── index.html        # Estrutura HTML principal e Modais
-├── style.css         # Design System, Temas, Grids e Animações
-├── app.js            # Controladora da Aplicação, Eventos, SVG e Datas
-├── README.md         # Documentação de Uso e Funcionalidades
-└── DESIGN.md         # Documentação de Arquitetura de Design System
+├── src/
+│   ├── components/    # Componentes UI (Sidebar, Modals, Toasts)
+│   ├── context/       # AppContext para estado global (React Context)
+│   ├── pages/         # Telas (PageProjects, PageGantt, PageSCurve)
+│   ├── utils/         # Helpers (cálculo de datas, IndexedDB)
+│   ├── index.css      # Design System Global
+│   └── App.jsx        # Roteamento e Layout Base
+├── index.html         # Entry point do Vite
+├── package.json       # Dependências
+└── vite.config.js     # Configuração do Bundler
 ```
