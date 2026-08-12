@@ -45,7 +45,11 @@ O **Gantt Dinâmico** é uma aplicação web voltada para a gestão executiva de
 - **Linha Real (Realizado)**: Acúmulo de progresso das tarefas baseado no percentual inserido pelo usuário (Limitado à data atual).
 - Indicadores de desvio no rodapé calculando percentual adiantado ou atrasado em relação ao plano na data de Hoje.
 
-#### 4.5. Armazenamento e Persistência
+#### 4.5. Motor de Auto-Agendamento (Auto-Scheduling)
+- **Forward Pass (Efeito Dominó)**: Ao arrastar ou editar a data de uma tarefa predecessora, todas as suas tarefas sucessoras conectadas são empurradas para a frente automaticamente.
+- Recalculo dinâmico recursivo operado pelo `updateTasksBatch` respeitando finais de semana (em iterações futuras) e limites de dependência.
+
+#### 4.6. Armazenamento e Persistência
 - Todo o armazenamento utiliza o padrão **IndexedDB** através da biblioteca local.
 - Operações de leitura/escrita assíncronas para não bloquear a thread de UI durante a renderização do Gantt.
 - Preservação da ordem arrastada das tarefas e estado do usuário (ex: Tema Claro/Escuro).
@@ -62,7 +66,8 @@ O **Gantt Dinâmico** é uma aplicação web voltada para a gestão executiva de
 
 #### 5.2. Design System & UI/UX
 - Padrão **Glassmorphism**: Menus flutuantes, translucidez (`backdrop-filter: blur`), cartões com bordas suaves e sombras refinadas.
-- Cores dinâmicas em HSL ajustáveis (Tokens CSS).
+- Identidade visual **Clean White** com ações primárias e botões utilizando um gradiente vibrante (do Roxo Principal `#B90973` ao Laranja `#FE8345`).
+- Interações customizadas sem o uso de caixas nativas (Modais `ConfirmDialog` no lugar de `window.confirm`).
 - Tema nativo claro e escuro (`Dark Mode`), controlável pelo usuário.
 - Micro-interações de estado (`:hover`, `:active`) com transições suaves de 0.2s.
 
