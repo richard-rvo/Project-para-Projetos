@@ -6,7 +6,7 @@ import Modal from '../components/Modal';
 import {
   Plus, Trash2, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, GripVertical,
   ChevronDown, ChevronRight as ChevronRightIcon, Calendar, Milestone,
-  Undo2, Redo2, ArrowDownUp, Link2, Eye,
+  Undo2, Redo2, ArrowDownUp, Link2, Eye, Target, AlertCircle,
 } from 'lucide-react';
 
 function generateId() {
@@ -69,7 +69,7 @@ const STATUS_COLORS = {
 export default function PageGantt() {
   const { state, addTask, updateTask, removeTask, navigate, showToast, selectProject } = useContext(AppContext);
   const [zoomIdx, setZoomIdx] = useState(0); // start at day level
-  const [splitWidth, setSplitWidth] = useState(580);
+  const [splitWidth, setSplitWidth] = useState(660);
   const [editingCell, setEditingCell] = useState(null); // { taskId, field }
   const [editValue, setEditValue] = useState('');
   const [newTaskName, setNewTaskName] = useState('');
@@ -78,7 +78,7 @@ export default function PageGantt() {
   const [draggedRowIndex, setDraggedRowIndex] = useState(null);
   const [dragOverRowIndex, setDragOverRowIndex] = useState(null);
   const [modalTask, setModalTask] = useState(null);
-  const [modalTaskData, setModalTaskData] = useState(null);
+  const [showCriticalPath, setShowCriticalPath] = useState(false);
   const timelineRef = useRef(null);
   const splitDragRef = useRef(null);
   const inputRef = useRef(null);
@@ -93,6 +93,56 @@ export default function PageGantt() {
         .sort((a, b) => (a.order ?? 999) - (b.order ?? 999) || new Date(a.startDate) - new Date(b.startDate)),
     [state.tasks, state.activeProjectId]
   );
+
+  /* ── critical path calculation ───────────────────────────── */
+  const criticalTasks = useMemo(() => {
+    if (!projectTasks.length || !showCriticalPath) return new Set();
+    const succMap = {};
+    projectTasks.forEach(t => {
+      if (t.dependsOn) {
+        t.dependsOn.split(',').forEach(depStr => {
+          const depId = depStr.trim();
+          if (!succMap[depId]) succMap[depId] = [];
+          succMap[depId].push(t.id);
+        });
+      }
+    });
+
+    const endDates = projectTasks.map(t => new Date(t.endDate + 'T12:00:00').getTime());
+    const projectEnd = Math.max(...endDates.filter(t => !isNaN(t)));
+
+    const lateFinish = {};
+    const getLF = (taskId) => {
+      if (lateFinish[taskId] !== undefined) return lateFinish[taskId];
+      const succs = succMap[taskId] || [];
+      if (succs.length === 0) {
+        lateFinish[taskId] = projectEnd;
+      } else {
+        let minLS = Infinity;
+        for (const sId of succs) {
+          const sTask = projectTasks.find(t => t.id === sId);
+          if (sTask) {
+            const sLF = getLF(sId);
+            const durationMs = (durationDays(sTask.startDate, sTask.endDate) - 1) * 86400000;
+            const sLS = sLF - durationMs;
+            if (sLS < minLS) minLS = sLS;
+          }
+        }
+        lateFinish[taskId] = minLS === Infinity ? projectEnd : minLS;
+      }
+      return lateFinish[taskId];
+    };
+
+    const criticalSet = new Set();
+    projectTasks.forEach(t => {
+      const lf = getLF(t.id);
+      const ef = new Date(t.endDate + 'T12:00:00').getTime();
+      if (Math.abs(lf - ef) < 86400000) {
+        criticalSet.add(t.id);
+      }
+    });
+    return criticalSet;
+  }, [projectTasks, showCriticalPath]);
 
   /* ── timeline range ──────────────────────────────────────── */
   const { timelineStart, timelineDays, headerDates, monthGroups } = useMemo(() => {
@@ -357,6 +407,21 @@ export default function PageGantt() {
     setModalTask(null);
   };
 
+  const handleSaveBaseline = async () => {
+    if (confirm('Deseja salvar a linha de base atual para todas as tarefas deste projeto? Isso sobrescreverá qualquer linha de base anterior.')) {
+      for (const t of projectTasks) {
+        if (t.startDate && t.endDate) {
+          await updateTask({
+            ...t,
+            baselineStart: t.startDate,
+            baselineEnd: t.endDate
+          });
+        }
+      }
+      showToast('Linha de base salva com sucesso!', 'success');
+    }
+  };
+
   /* ── split pane drag ─────────────────────────────────────── */
   const handleSplitDrag = useCallback((e) => {
     e.preventDefault();
@@ -471,6 +536,16 @@ export default function PageGantt() {
             >Mês</button>
           </div>
           <div className="toolbar-divider" />
+          <button
+            className={`btn-ghost btn-sm ${showCriticalPath ? 'text-danger' : ''}`}
+            onClick={() => setShowCriticalPath(!showCriticalPath)}
+            title="Destacar Caminho Crítico"
+          >
+            <AlertCircle size={14} color={showCriticalPath ? '#ef4444' : 'currentColor'} /> CPM
+          </button>
+          <button className="btn-ghost btn-sm" onClick={handleSaveBaseline} title="Salvar um retrato das datas atuais">
+            <Target size={14} /> Baseline
+          </button>
           <button className="btn-primary btn-sm" onClick={() => newTaskRef.current?.focus()}>
             <Plus size={14} /> Tarefa
           </button>
@@ -490,6 +565,7 @@ export default function PageGantt() {
             <div className="gantt-cell" style={{ width: 85, justifyContent: 'center' }}>Término</div>
             <div className="gantt-cell" style={{ width: 45, justifyContent: 'center' }}>%</div>
             <div className="gantt-cell" style={{ width: 60, justifyContent: 'center' }}>Pred.</div>
+            <div className="gantt-cell" style={{ width: 80, justifyContent: 'center' }}>Recursos</div>
           </div>
 
           {/* Task rows */}
@@ -514,6 +590,7 @@ export default function PageGantt() {
                 {renderCell(task, 'endDate', formatDateShort(task.endDate), 85, 'center', 'date')}
                 {renderCell(task, 'progress', `${task.progress || 0}`, 45, 'center', 'number')}
                 {renderCell(task, 'dependsOn', getPredecessorDisplay(task.dependsOn), 60, 'center', 'text')}
+                {renderCell(task, 'resources', task.resources || '', 80, 'left', 'text')}
               </div>
             ))}
 
@@ -633,26 +710,51 @@ export default function PageGantt() {
 
                 return (
                   <div key={task.id} className="gantt-bar-row">
-                    {/* Bar */}
-                    <div
-                      className={`gantt-bar ${isDragging ? 'dragging' : ''}`}
-                      style={{ left, width, '--bar-color': barColor }}
-                      onMouseDown={(e) => handleBarMouseDown(e, task)}
-                      onDoubleClick={() => openTaskModal(task)}
-                      title={`${task.name}\n${formatDateShort(task.startDate)} → ${formatDateShort(task.endDate)}\nProgresso: ${task.progress || 0}%`}
-                    >
-                      {/* Progress fill */}
-                      <div className="gantt-bar-progress" style={{ width: `${task.progress || 0}%` }} />
-
-                      {/* Label */}
-                      {width > 50 && <span className="gantt-bar-label">{task.name}</span>}
-
-                      {/* Resize handle */}
+                    {/* Baseline */}
+                    {task.baselineStart && task.baselineEnd && (
                       <div
-                        className="gantt-bar-resize"
-                        onMouseDown={(e) => handleResizeMouseDown(e, task)}
+                        className="gantt-baseline-bar"
+                        style={{
+                          left: daysBetween(timelineStart, task.baselineStart) * zoom.dayWidth,
+                          width: Math.max(durationDays(task.baselineStart, task.baselineEnd) * zoom.dayWidth, zoom.dayWidth)
+                        }}
+                        title={`Linha de Base\nInício: ${formatDateShort(task.baselineStart)}\nTérmino: ${formatDateShort(task.baselineEnd)}`}
                       />
-                    </div>
+                    )}
+
+                    {/* Bar or Milestone */}
+                    {task.startDate === task.endDate ? (
+                      <div
+                        className={`gantt-milestone ${isDragging ? 'dragging' : ''} ${showCriticalPath && !criticalTasks.has(task.id) ? 'dimmed' : ''}`}
+                        style={{ left: left + zoom.dayWidth / 2, '--bar-color': showCriticalPath && criticalTasks.has(task.id) ? '#ef4444' : barColor }}
+                        onMouseDown={(e) => handleBarMouseDown(e, task)}
+                        onDoubleClick={() => openTaskModal(task)}
+                        title={`Marco: ${task.name}\nData: ${formatDateShort(task.startDate)}`}
+                      >
+                        <div className="gantt-milestone-diamond" style={{ background: showCriticalPath && criticalTasks.has(task.id) ? '#ef4444' : undefined }} />
+                        <span className="gantt-milestone-label">{task.name}</span>
+                      </div>
+                    ) : (
+                      <div
+                        className={`gantt-bar ${isDragging ? 'dragging' : ''} ${task.isBlocked ? 'is-blocked' : ''} ${showCriticalPath && criticalTasks.has(task.id) ? 'is-critical' : ''} ${showCriticalPath && !criticalTasks.has(task.id) ? 'dimmed' : ''}`}
+                        style={{ left, width, '--bar-color': showCriticalPath && criticalTasks.has(task.id) ? '#ef4444' : barColor }}
+                        onMouseDown={(e) => handleBarMouseDown(e, task)}
+                        onDoubleClick={() => openTaskModal(task)}
+                        title={`${task.name}\n${formatDateShort(task.startDate)} → ${formatDateShort(task.endDate)}\nProgresso: ${task.progress || 0}%\n${task.isBlocked ? '⚠️ BLOQUEADO: ' + (task.blockReason || '') : ''}`}
+                      >
+                        {/* Progress fill */}
+                        <div className="gantt-bar-progress" style={{ width: `${task.progress || 0}%` }} />
+
+                        {/* Label */}
+                        {width > 50 && <span className="gantt-bar-label">{task.name}</span>}
+
+                        {/* Resize handle */}
+                        <div
+                          className="gantt-bar-resize"
+                          onMouseDown={(e) => handleResizeMouseDown(e, task)}
+                        />
+                      </div>
+                    )}
 
                     {/* Dependency lines are now drawn in a global layer below */}
                   </div>
@@ -717,13 +819,15 @@ export default function PageGantt() {
                       pathD = `M ${depEndPx} ${depY} L ${depEndPx + pad - r} ${depY} Q ${depEndPx + pad} ${depY} ${depEndPx + pad} ${depY + r * dirY1} L ${depEndPx + pad} ${midY - r * dirY1} Q ${depEndPx + pad} ${midY} ${depEndPx + pad - r} ${midY} L ${left - pad + r} ${midY} Q ${left - pad} ${midY} ${left - pad} ${midY + r * dirY2} L ${left - pad} ${curY - r * dirY2} Q ${left - pad} ${curY} ${left - pad + r} ${curY} L ${left} ${curY}`;
                     }
 
+                    const isCriticalDep = showCriticalPath && criticalTasks.has(task.id) && criticalTasks.has(depTask.id);
+
                     return (
                       <path
                         key={`${task.id}-${depId}`}
                         d={pathD}
                         fill="none"
-                        stroke="#8ba1b7"
-                        strokeWidth={1.5}
+                        stroke={isCriticalDep ? '#ef4444' : '#8ba1b7'}
+                        strokeWidth={isCriticalDep ? 2.5 : 1.5}
                         markerEnd="url(#arrow)"
                       />
                     );
@@ -801,6 +905,36 @@ export default function PageGantt() {
                 onChange={(e) => setModalTaskData({ ...modalTaskData, dependsOn: handlePredecessorEdit(e.target.value) })}
               />
             </div>
+            <div className="form-group">
+              <label>Recursos / Mão de Obra</label>
+              <input
+                type="text"
+                placeholder="Ex: 2 Mecânicos, 1 Guindaste"
+                value={modalTaskData.resources || ''}
+                onChange={(e) => setModalTaskData({ ...modalTaskData, resources: e.target.value })}
+              />
+            </div>
+            
+            <div className="form-group" style={{ marginTop: '12px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={!!modalTaskData.isBlocked}
+                  onChange={(e) => setModalTaskData({ ...modalTaskData, isBlocked: e.target.checked })}
+                />
+                <span style={{ color: 'var(--color-danger)', fontWeight: 600 }}>Sinalizar Impedimento</span>
+              </label>
+              {modalTaskData.isBlocked && (
+                <input
+                  type="text"
+                  placeholder="Motivo do impedimento..."
+                  value={modalTaskData.blockReason || ''}
+                  onChange={(e) => setModalTaskData({ ...modalTaskData, blockReason: e.target.value })}
+                  style={{ marginTop: '8px', borderLeft: '3px solid var(--color-danger)' }}
+                />
+              )}
+            </div>
+
             <div className="modal-actions">
               <button className="btn-ghost" onClick={() => setModalTask(null)}>Cancelar</button>
               <button className="btn-primary" onClick={handleSaveModal}>Salvar</button>

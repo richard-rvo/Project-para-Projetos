@@ -57,6 +57,37 @@ export default function PageProjects() {
     return Math.round(projTasks.reduce((s, t) => s + (t.progress || 0), 0) / projTasks.length);
   };
 
+  const getProjectHealth = (projectId) => {
+    const projTasks = tasks.filter((t) => t.projectId === projectId);
+    if (projTasks.length === 0) return { label: 'Saúde: N/A', color: 'gray' };
+    
+    const actualProgress = Math.round(projTasks.reduce((s, t) => s + (t.progress || 0), 0) / projTasks.length);
+
+    const starts = projTasks.map(t => new Date(t.startDate + 'T12:00:00').getTime()).filter(n => !isNaN(n));
+    const ends = projTasks.map(t => new Date(t.endDate + 'T12:00:00').getTime()).filter(n => !isNaN(n));
+    
+    if (starts.length === 0 || ends.length === 0) return { label: 'Saúde: N/A', color: 'gray' };
+    
+    const minStart = Math.min(...starts);
+    const maxEnd = Math.max(...ends);
+    const todayMs = new Date(new Date().toISOString().slice(0,10) + 'T12:00:00').getTime();
+    
+    let plannedProgress = 0;
+    if (todayMs >= maxEnd) {
+      plannedProgress = 100;
+    } else if (todayMs <= minStart) {
+      plannedProgress = 0;
+    } else {
+      plannedProgress = Math.round(((todayMs - minStart) / (maxEnd - minStart)) * 100);
+    }
+
+    const deviation = actualProgress - plannedProgress;
+
+    if (deviation >= -5) return { label: 'Saúde: Boa', color: 'green' };
+    if (deviation >= -15) return { label: 'Saúde: Atenção', color: 'orange' };
+    return { label: 'Saúde: Crítica', color: 'red' };
+  };
+
   const getStatusBadge = (status) => {
     const map = {
       'Planejado': { color: 'blue', label: 'Planejado' },
@@ -126,6 +157,7 @@ export default function PageProjects() {
             const progress = getProjectProgress(project.id);
             const taskCount = tasks.filter((t) => t.projectId === project.id).length;
             const badge = getStatusBadge(project.status);
+            const health = getProjectHealth(project.id);
             return (
               <div key={project.id} className="project-card glass-card" onClick={() => openProject(project.id)}>
                 <div className="project-card-header">
@@ -141,6 +173,7 @@ export default function PageProjects() {
                 {project.description && <p className="project-card-desc">{project.description}</p>}
                 <div className="project-card-meta">
                   <Badge label={badge.label} color={badge.color} />
+                  <Badge label={health.label} color={health.color} />
                   <span className="meta-item"><Calendar size={14} /> {project.startDate || '—'}</span>
                   <span className="meta-item">{taskCount} tarefa{taskCount !== 1 ? 's' : ''}</span>
                 </div>
