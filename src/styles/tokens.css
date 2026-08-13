@@ -61,6 +61,10 @@
   --sched-baseline: oklch(0.700 0.028 265);
   --sched-slack: oklch(0.780 0.045 250);
 
+  /* Faixa de fim de semana da timeline. Token próprio porque
+     reutilizar uma superfície inverte o contraste no tema escuro. */
+  --gantt-weekend: oklch(0.22 0.01 265 / 0.045);
+
   /* Variantes suaves — fundo de badge/pill sem competir com o texto */
   --sched-not-started-soft: oklch(0.655 0.021 265 / 0.13);
   --sched-on-track-soft: oklch(0.600 0.140 250 / 0.13);
@@ -162,6 +166,7 @@
   --sched-critical: oklch(0.620 0.215 18);
   --sched-baseline: oklch(0.470 0.022 265);
   --sched-slack: oklch(0.430 0.040 250);
+  --gantt-weekend: oklch(1 0 0 / 0.035);
 
   --sched-not-started-soft: oklch(0.640 0.022 265 / 0.20);
   --sched-on-track-soft: oklch(0.685 0.135 250 / 0.20);
@@ -272,6 +277,7 @@
   --color-sched-critical: var(--sched-critical);
   --color-sched-baseline: var(--sched-baseline);
   --color-sched-slack: var(--sched-slack);
+  --color-gantt-weekend: var(--gantt-weekend);
   --color-sched-not-started-soft: var(--sched-not-started-soft);
   --color-sched-on-track-soft: var(--sched-on-track-soft);
   --color-sched-at-risk-soft: var(--sched-at-risk-soft);

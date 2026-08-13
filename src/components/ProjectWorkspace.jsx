@@ -2,7 +2,7 @@ import React, { useContext } from 'react';
 import { AppContext } from '../context/AppContext';
 import { PageScroll } from '../App';
 import PageProjectOverview from '../pages/PageProjectOverview';
-import PageGantt from '../pages/PageGantt';
+import GanttView from '../views/gantt/GanttView';
 import PageKanban from '../pages/PageKanban';
 import PageSCurve from '../pages/PageSCurve';
 import PageTaskList from '../pages/PageTaskList';
@@ -25,7 +25,7 @@ export default function ProjectWorkspace() {
 
   switch (state.activeProjectTab || 'overview') {
     case 'gantt':
-      return <PageGantt />;
+      return <GanttView />;
     case 'kanban':
       return <PageScroll><PageKanban /></PageScroll>;
     case 'scurve':
