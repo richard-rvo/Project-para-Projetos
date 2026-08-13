@@ -12,46 +12,18 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { calculateTaskPlannedProgress } from '../utils/progress';
+import {
+  daysBetween,
+  addDays,
+  today,
+  durationDays,
+  formatDateShort,
+  getMonthLabel,
+  getDayOfWeekChar,
+} from '../utils/schedule';
 
 function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-}
-
-/* ── date helpers ────────────────────────────────────────────── */
-function daysBetween(a, b) {
-  return Math.round((new Date(b) - new Date(a)) / 86400000);
-}
-
-function addDays(dateStr, days) {
-  const d = new Date(dateStr);
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-
-function today() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function formatDateShort(dateStr) {
-  if (!dateStr) return '';
-  const d = new Date(dateStr + 'T12:00:00');
-  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
-}
-
-function getMonthLabel(dateStr) {
-  const d = new Date(dateStr + 'T12:00:00');
-  return d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-}
-
-function getDayOfWeekChar(dateStr) {
-  const d = new Date(dateStr + 'T12:00:00');
-  const names = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
-  return names[d.getDay()];
-}
-
-function durationDays(start, end) {
-  if (!start || !end) return 0;
-  return daysBetween(start, end) + 1;
 }
 
 /* ── zoom configs ────────────────────────────────────────────── */
@@ -63,15 +35,21 @@ const ZOOM_LEVELS = [
 
 /* ── status config ───────────────────────────────────────────── */
 const STATUS_OPTIONS = ['Não Iniciada', 'Em Andamento', 'Concluída', 'Atrasada'];
+
+/* Cor de status vem dos tokens de estado de cronograma — nunca de
+   literal hex. Trocar o tema troca a barra junto. */
 const STATUS_COLORS = {
-  'Não Iniciada': '#94a3b8',
-  'Em Andamento': '#3b82f6',
-  'Concluída': '#22c55e',
-  'Atrasada': '#ef4444',
+  'Não Iniciada': 'var(--sched-not-started)',
+  'Em Andamento': 'var(--sched-on-track)',
+  'Concluída': 'var(--sched-done)',
+  'Atrasada': 'var(--sched-late)',
 };
 
+const COLOR_CRITICAL = 'var(--sched-critical)';
+const COLOR_DEP_LINE = 'var(--sched-baseline)';
+
 export default function PageGantt() {
-  const { state, addTask, updateTask, updateTasksBatch, removeTask, showToast } = useContext(AppContext);
+  const { state, addTask, updateTask, updateTasksBatch, removeTask, showToast, openTaskInspector } = useContext(AppContext);
   const [zoomIdx, setZoomIdx] = useState(0); // start at day level
   const [splitWidth, setSplitWidth] = useState(660);
   const [editingCell, setEditingCell] = useState(null); // { taskId, field }
@@ -725,7 +703,7 @@ export default function PageGantt() {
             onClick={() => setShowCriticalPath(!showCriticalPath)}
             title="Destacar Caminho Crítico"
           >
-            <AlertCircle size={14} color={showCriticalPath ? '#ef4444' : 'currentColor'} /> CPM
+            <AlertCircle size={14} color={showCriticalPath ? COLOR_CRITICAL : 'currentColor'} /> CPM
           </button>
           <button className="btn-ghost btn-sm" onClick={handleSaveBaseline} title="Salvar um retrato das datas atuais">
             <Target size={14} /> Baseline
@@ -973,17 +951,17 @@ export default function PageGantt() {
                     {task.startDate === task.endDate ? (
                       <div
                         className={`gantt-milestone ${isDragging ? 'dragging' : ''} ${showCriticalPath && !criticalTasks.has(task.id) ? 'dimmed' : ''}`}
-                        style={{ left: left + zoom.dayWidth / 2 - 9, '--bar-color': showCriticalPath && criticalTasks.has(task.id) ? '#ef4444' : barColor }}
+                        style={{ left: left + zoom.dayWidth / 2 - 9, '--bar-color': showCriticalPath && criticalTasks.has(task.id) ? COLOR_CRITICAL : barColor }}
                         onMouseDown={(e) => handleBarMouseDown(e, task)}
                         title={`Marco: ${task.name}\nData: ${formatDateShort(task.startDate)}`}
                       >
-                        <div className="gantt-milestone-diamond" style={{ background: showCriticalPath && criticalTasks.has(task.id) ? '#ef4444' : undefined }} />
+                        <div className="gantt-milestone-diamond" style={{ background: showCriticalPath && criticalTasks.has(task.id) ? COLOR_CRITICAL : undefined }} />
                         {showGanttLabels && <span className="gantt-milestone-label">{task.name}</span>}
                       </div>
                     ) : (
                       <div
                         className={`gantt-bar ${isDragging ? 'dragging' : ''} ${task.isBlocked ? 'is-blocked' : ''} ${showCriticalPath && criticalTasks.has(task.id) ? 'is-critical' : ''} ${showCriticalPath && !criticalTasks.has(task.id) ? 'dimmed' : ''}`}
-                        style={{ left, width, '--bar-color': showCriticalPath && criticalTasks.has(task.id) ? '#ef4444' : barColor }}
+                        style={{ left, width, '--bar-color': showCriticalPath && criticalTasks.has(task.id) ? COLOR_CRITICAL : barColor }}
                         onMouseDown={(e) => handleBarMouseDown(e, task)}
                         title={`${task.name}\n${formatDateShort(task.startDate)} → ${formatDateShort(task.endDate)}\nProgresso: ${task.progress || 0}%\n${task.isBlocked ? '⚠️ BLOQUEADO: ' + (task.blockReason || '') : ''}`}
                       >
@@ -1013,7 +991,7 @@ export default function PageGantt() {
               <svg className="gantt-dep-svg" style={{ width: totalWidth, height: projectTasks.length * 40 }}>
                 <defs>
                   <marker id="arrow" markerWidth="6" markerHeight="6" refX="6" refY="3" orient="auto">
-                    <polygon points="0 0, 6 3, 0 6" fill="#8ba1b7" />
+                    <polygon points="0 0, 6 3, 0 6" fill={COLOR_DEP_LINE} />
                   </marker>
                 </defs>
                 {projectTasks.map((task) => {
@@ -1076,7 +1054,7 @@ export default function PageGantt() {
                         key={`${task.id}-${depId}`}
                         d={pathD}
                         fill="none"
-                        stroke={isCriticalDep ? '#ef4444' : '#8ba1b7'}
+                        stroke={isCriticalDep ? COLOR_CRITICAL : COLOR_DEP_LINE}
                         strokeWidth={isCriticalDep ? 2.5 : 1.5}
                         markerEnd="url(#arrow)"
                       />

@@ -3,14 +3,9 @@ import { AppContext } from '../context/AppContext';
 import ProgressBar from '../components/ProgressBar';
 import Badge from '../components/Badge';
 import { FileBarChart, Printer, ChevronDown, AlertTriangle, CheckSquare, TrendingUp, Calendar } from 'lucide-react';
-import { calculateProjectMetrics, daysBetweenUTC } from '../utils/progress';
+import { calculateProjectMetrics } from '../utils/progress';
+import { addDays as addDaysUTC, durationDays, today } from '../utils/schedule';
 
-/* ── date helpers (UTC-safe) ─────────────────────────────────── */
-function addDaysUTC(dateStr, days) {
-  const d = new Date(dateStr + 'T00:00:00Z');
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
 function formatDate(dateStr) {
   if (!dateStr) return '—';
   return new Date(dateStr + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -30,7 +25,7 @@ export default function PageReports() {
   const projTasks = useMemo(() => tasks.filter((t) => t.projectId === selectedProjectId), [tasks, selectedProjectId]);
   const projAnoms = useMemo(() => anomalies.filter((a) => a.projectId === selectedProjectId), [anomalies, selectedProjectId]);
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = today();
 
   /* ── KPIs ─────────────────────────────────────────────────────── */
   const kpis = useMemo(() => {
@@ -60,12 +55,12 @@ export default function PageReports() {
     if (!starts.length || !ends.length) return { planned: [], actual: [] };
     const minDate = starts[0];
     const maxDate = ends[ends.length - 1];
-    const totalDays = daysBetweenUTC(minDate, maxDate) + 1;
+    const totalDays = durationDays(minDate, maxDate);
     if (totalDays <= 0) return { planned: [], actual: [] };
 
     const totalDur = projTasks.reduce((s, t) => {
       if (!t.startDate || !t.endDate) return s;
-      return s + Math.max(1, daysBetweenUTC(t.startDate, t.endDate));
+      return s + Math.max(1, durationDays(t.startDate, t.endDate));
     }, 0);
 
     const step = Math.max(1, Math.floor(totalDays / 20));
@@ -76,9 +71,9 @@ export default function PageReports() {
       let pSum = 0;
       projTasks.forEach((t) => {
         if (!t.startDate || !t.endDate) return;
-        const dur  = Math.max(1, daysBetweenUTC(t.startDate, t.endDate));
+        const dur  = Math.max(1, durationDays(t.startDate, t.endDate));
         const w    = totalDur > 0 ? dur / totalDur : 1 / projTasks.length;
-        const elap = daysBetweenUTC(t.startDate, d) + 1;
+        const elap = durationDays(t.startDate, d);
         pSum += Math.max(0, Math.min(100, (elap / dur) * 100)) * w;
       });
       planned.push({ day: i, date: d, value: Math.min(100, pSum) });
@@ -89,9 +84,9 @@ export default function PageReports() {
           const cur = t.progress || 0;
           if (cur === 0) return;
           const endCalc = (t.status === 'Concluída' && t.endDate && t.endDate < todayStr) ? t.endDate : todayStr;
-          const totalEl = Math.max(1, daysBetweenUTC(t.startDate, endCalc) + 1);
-          const elap    = daysBetweenUTC(t.startDate, d) + 1;
-          const dur     = Math.max(1, daysBetweenUTC(t.startDate, t.endDate || todayStr));
+          const totalEl = Math.max(1, durationDays(t.startDate, endCalc));
+          const elap    = durationDays(t.startDate, d);
+          const dur     = Math.max(1, durationDays(t.startDate, t.endDate || todayStr));
           const w       = totalDur > 0 ? dur / totalDur : 1 / projTasks.length;
           let hist = 0;
           if (elap <= 0) hist = 0;

@@ -2,17 +2,7 @@ import React, { useContext, useMemo, useState } from 'react';
 import { AppContext } from '../context/AppContext';
 import { TrendingUp } from 'lucide-react';
 
-/* ── date helpers (UTC-safe, DST-safe) ───────────────────────── */
-function daysBetween(a, b) {
-  const da = new Date(a + 'T00:00:00Z').getTime();
-  const db = new Date(b + 'T00:00:00Z').getTime();
-  return Math.round((db - da) / 86400000);
-}
-function addDays(dateStr, days) {
-  const d = new Date(dateStr + 'T00:00:00Z');
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
+import { daysBetween, addDays, durationDays, today } from '../utils/schedule';
 
 export default function PageSCurve() {
   const { state } = useContext(AppContext);
@@ -56,13 +46,13 @@ export default function PageSCurve() {
 
     const minDate   = starts[0];
     const maxDate   = ends[ends.length - 1];
-    const totalDays = daysBetween(minDate, maxDate) + 1;
-    const todayStr  = new Date().toISOString().slice(0, 10);
+    const totalDays = durationDays(minDate, maxDate);
+    const todayStr  = today();
 
     /* ── Weighted total duration (for proportional progress) ── */
     const totalDuration = projectTasks.reduce((sum, t) => {
       if (!t.startDate || !t.endDate) return sum;
-      return sum + Math.max(1, daysBetween(t.startDate, t.endDate));
+      return sum + Math.max(1, durationDays(t.startDate, t.endDate));
     }, 0) || 1;
 
     /* ── Sample every N days to avoid crowded labels ────────── */
@@ -81,9 +71,9 @@ export default function PageSCurve() {
       let pSum = 0;
       projectTasks.forEach((t) => {
         if (!t.startDate || !t.endDate) return;
-        const dur    = Math.max(1, daysBetween(t.startDate, t.endDate));
+        const dur    = Math.max(1, durationDays(t.startDate, t.endDate));
         const weight = dur / totalDuration;
-        const elapsed = daysBetween(t.startDate, d) + 1;
+        const elapsed = durationDays(t.startDate, d);
         const expected = Math.max(0, Math.min(100, (elapsed / dur) * 100));
         pSum += expected * weight;
       });
@@ -96,14 +86,14 @@ export default function PageSCurve() {
           if (!t.startDate) return;
           const cur = t.progress || 0;
           if (cur === 0) return;
-          const dur = Math.max(1, daysBetween(t.startDate, t.endDate || todayStr));
+          const dur = Math.max(1, durationDays(t.startDate, t.endDate || todayStr));
           const weight = dur / totalDuration;
           const endCalcDate =
             t.status === 'Concluída' && t.endDate && t.endDate < todayStr
               ? t.endDate
               : todayStr;
-          const totalElapsed = Math.max(1, daysBetween(t.startDate, endCalcDate) + 1);
-          const elapsedToDay = daysBetween(t.startDate, d) + 1;
+          const totalElapsed = Math.max(1, durationDays(t.startDate, endCalcDate));
+          const elapsedToDay = durationDays(t.startDate, d);
           let histProgress = 0;
           if (elapsedToDay <= 0) histProgress = 0;
           else if (elapsedToDay >= totalElapsed) histProgress = cur;
@@ -118,7 +108,7 @@ export default function PageSCurve() {
   }, [projectTasks]);
 
   /* ── Deviation ─────────────────────────────────────────────── */
-  const todayStr      = new Date().toISOString().slice(0, 10);
+  const todayStr      = today();
   const lastActual    = curveData.actual.length > 0 ? curveData.actual[curveData.actual.length - 1].value : 0;
   const plannedTodayObj = curveData.planned.find((p) => p.date === todayStr)
     || curveData.planned[curveData.planned.length - 1];

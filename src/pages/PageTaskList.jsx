@@ -4,7 +4,20 @@ import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import Badge from '../components/Badge';
 import ProgressBar from '../components/ProgressBar';
-import { Plus, Trash2, Edit3, Search, ChevronUp, ChevronDown, Filter } from 'lucide-react';
+import {
+  Plus,
+  Trash2,
+  Edit3,
+  Search,
+  ChevronUp,
+  ChevronDown,
+  Filter,
+  CheckSquare,
+  CheckCircle2,
+  X,
+  Eye,
+  Sparkles,
+} from 'lucide-react';
 
 function generateId() {
   return Date.now() + Math.random().toString(36).slice(2, 9);
@@ -14,7 +27,7 @@ const STATUS_OPTIONS = ['Não Iniciada', 'Em Andamento', 'Concluída', 'Atrasada
 const STATUS_COLORS = { 'Não Iniciada': 'gray', 'Em Andamento': 'blue', 'Concluída': 'green', 'Atrasada': 'red' };
 
 export default function PageTaskList() {
-  const { state, addTask, updateTask, removeTask, showToast } = useContext(AppContext);
+  const { state, addTask, updateTask, updateTasksBatch, removeTask, openTaskInspector, showToast } = useContext(AppContext);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('Todos');
   const [sortCol, setSortCol] = useState('name');
@@ -22,6 +35,8 @@ export default function PageTaskList() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editTask, setEditTask] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
+  const [selectedTaskIds, setSelectedTaskIds] = useState([]);
+  const [showBulkConfirmDelete, setShowBulkConfirmDelete] = useState(false);
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 12;
 
@@ -58,6 +73,43 @@ export default function PageTaskList() {
     return sortDir === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />;
   };
 
+  // Selection Logic
+  const handleSelectAll = (e) => {
+    if (e.target.checked) {
+      setSelectedTaskIds(filtered.map((t) => t.id));
+    } else {
+      setSelectedTaskIds([]);
+    }
+  };
+
+  const handleSelectOne = (e, taskId) => {
+    e.stopPropagation();
+    if (e.target.checked) {
+      setSelectedTaskIds((prev) => [...prev, taskId]);
+    } else {
+      setSelectedTaskIds((prev) => prev.filter((id) => id !== taskId));
+    }
+  };
+
+  // Bulk Actions
+  const handleBulkComplete = async () => {
+    const toUpdate = state.tasks
+      .filter((t) => selectedTaskIds.includes(t.id))
+      .map((t) => ({ ...t, progress: 100, status: 'Concluída' }));
+    await updateTasksBatch(toUpdate);
+    showToast(`${toUpdate.length} tarefas concluídas!`, 'success');
+    setSelectedTaskIds([]);
+  };
+
+  const handleBulkDelete = async () => {
+    for (const id of selectedTaskIds) {
+      await removeTask(id);
+    }
+    showToast(`${selectedTaskIds.length} tarefas excluídas.`, 'info');
+    setSelectedTaskIds([]);
+    setShowBulkConfirmDelete(false);
+  };
+
   const openEdit = (task) => {
     setEditTask(task);
     setForm({ name: task.name, startDate: task.startDate, endDate: task.endDate, status: task.status, progress: task.progress || 0, assignee: task.assignee || '', projectId: task.projectId });
@@ -83,6 +135,8 @@ export default function PageTaskList() {
     const p = state.projects.find((pr) => pr.id === projectId);
     return p ? p.name : '—';
   };
+
+  const allSelected = filtered.length > 0 && selectedTaskIds.length === filtered.length;
 
   return (
     <div className="page-section" id="pageTaskList">
@@ -122,30 +176,56 @@ export default function PageTaskList() {
             <table className="task-table">
               <thead>
                 <tr>
+                  <th style={{ width: '40px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={handleSelectAll}
+                    />
+                  </th>
                   <th onClick={() => toggleSort('name')} className="sortable">Tarefa <SortIcon col="name" /></th>
                   <th onClick={() => toggleSort('assignee')} className="sortable">Responsável <SortIcon col="assignee" /></th>
                   <th onClick={() => toggleSort('startDate')} className="sortable">Início <SortIcon col="startDate" /></th>
                   <th onClick={() => toggleSort('endDate')} className="sortable">Fim <SortIcon col="endDate" /></th>
                   <th onClick={() => toggleSort('status')} className="sortable">Status <SortIcon col="status" /></th>
                   <th onClick={() => toggleSort('progress')} className="sortable">Progresso <SortIcon col="progress" /></th>
-                  <th>Ações</th>
+                  <th style={{ textAlign: 'right' }}>Ações</th>
                 </tr>
               </thead>
               <tbody>
-                {paginated.map((task) => (
-                  <tr key={task.id}>
-                    <td className="task-name-cell">{task.name}</td>
-                    <td>{task.assignee || '—'}</td>
-                    <td>{task.startDate || '—'}</td>
-                    <td>{task.endDate || '—'}</td>
-                    <td><Badge label={task.status} color={STATUS_COLORS[task.status] || 'gray'} /></td>
-                    <td><ProgressBar value={task.progress || 0} showLabel height={6} /></td>
-                    <td className="actions-cell">
-                      <button className="btn-icon-only" onClick={() => openEdit(task)} title="Editar"><Edit3 size={15} /></button>
-                      <button className="btn-icon-only btn-danger-ghost" onClick={() => setConfirmId(task.id)} title="Excluir"><Trash2 size={15} /></button>
-                    </td>
-                  </tr>
-                ))}
+                {paginated.map((task) => {
+                  const isSelected = selectedTaskIds.includes(task.id);
+                  return (
+                    <tr key={task.id} className={isSelected ? 'selected-row' : ''}>
+                      <td style={{ textAlign: 'center' }}>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={(e) => handleSelectOne(e, task.id)}
+                        />
+                      </td>
+                      <td className="task-name-cell" onClick={() => openTaskInspector(task.id)} style={{ cursor: 'pointer' }}>
+                        <span className="task-name-text">{task.name}</span>
+                      </td>
+                      <td>{task.assignee || '—'}</td>
+                      <td>{task.startDate || '—'}</td>
+                      <td>{task.endDate || '—'}</td>
+                      <td><Badge label={task.status} color={STATUS_COLORS[task.status] || 'gray'} /></td>
+                      <td><ProgressBar value={task.progress || 0} showLabel height={6} /></td>
+                      <td className="actions-cell">
+                        <button className="btn-icon-only" onClick={() => openTaskInspector(task.id)} title="Inspecionar (Painel Lateral)">
+                          <Eye size={15} />
+                        </button>
+                        <button className="btn-icon-only" onClick={() => openEdit(task)} title="Editar Modal">
+                          <Edit3 size={15} />
+                        </button>
+                        <button className="btn-icon-only btn-danger-ghost" onClick={() => setConfirmId(task.id)} title="Excluir">
+                          <Trash2 size={15} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -161,6 +241,27 @@ export default function PageTaskList() {
             </div>
           )}
         </>
+      )}
+
+      {/* Floating Bulk Actions Dock (ClickUp style) */}
+      {selectedTaskIds.length > 0 && (
+        <div className="bulk-actions-dock">
+          <div className="bulk-dock-info">
+            <span className="bulk-count-badge">{selectedTaskIds.length}</span>
+            <span>tarefa(s) selecionada(s)</span>
+          </div>
+          <div className="bulk-dock-buttons">
+            <button className="btn btn-sm btn-success" onClick={handleBulkComplete}>
+              <CheckCircle2 size={14} /> Concluir Todas
+            </button>
+            <button className="btn btn-sm btn-danger" onClick={() => setShowBulkConfirmDelete(true)}>
+              <Trash2 size={14} /> Excluir em Lote
+            </button>
+            <button className="btn-icon-sm" onClick={() => setSelectedTaskIds([])} title="Limpar seleção">
+              <X size={16} />
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Task Modal */}
@@ -195,7 +296,6 @@ export default function PageTaskList() {
           <label>Responsável</label>
           <input type="text" value={form.assignee} onChange={(e) => setForm({ ...form, assignee: e.target.value })} placeholder="Nome do responsável" />
         </div>
-        {/* Project is always set from context inside ProjectWorkspace */}
         <div className="modal-actions">
           <button className="btn-secondary" onClick={() => { setModalOpen(false); setEditTask(null); }}>Cancelar</button>
           <button className="btn-primary" onClick={handleSave}>{editTask ? 'Salvar' : 'Criar'}</button>
@@ -209,6 +309,17 @@ export default function PageTaskList() {
         title="Excluir Tarefa"
         message="Tem certeza que deseja excluir esta tarefa?"
       />
+
+      {showBulkConfirmDelete && (
+        <ConfirmDialog
+          isOpen={showBulkConfirmDelete}
+          onClose={() => setShowBulkConfirmDelete(false)}
+          onConfirm={handleBulkDelete}
+          title="Excluir em Lote"
+          message={`Tem certeza que deseja excluir as ${selectedTaskIds.length} tarefas selecionadas?`}
+          confirmVariant="danger"
+        />
+      )}
     </div>
   );
 }

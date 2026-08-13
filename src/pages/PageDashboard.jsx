@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 
 import { calculateProjectMetrics } from '../utils/progress';
+import { today } from '../utils/schedule';
 
 function formatDate(dateStr) {
   if (!dateStr) return '—';
@@ -25,7 +26,7 @@ export default function PageDashboard() {
   const { state, selectProject } = useContext(AppContext);
   const { projects, tasks, anomalies } = state;
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = today();
 
   /* ── Global KPIs ──────────────────────────────────────────────── */
   const kpis = useMemo(() => {

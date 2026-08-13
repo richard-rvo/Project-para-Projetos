@@ -1,10 +1,10 @@
 import React, { useContext } from 'react';
 import { AppContext } from '../context/AppContext';
 import ThemeToggle from './ThemeToggle';
-import { Bell, ChevronRight, ChevronDown } from 'lucide-react';
+import { Bell, ChevronRight, ChevronDown, Search } from 'lucide-react';
 
 export default function Header() {
-  const { state, selectProject, setProjectTab } = useContext(AppContext);
+  const { state, selectProject, setProjectTab, toggleCommandPalette } = useContext(AppContext);
 
   /* ── Breadcrumb logic ───────────────────────────────────────── */
   const isInsideProject = state.activePage === 'pageProjectWorkspace';
@@ -22,6 +22,7 @@ export default function Header() {
   const TAB_LABELS = {
     overview:  'Visão Geral',
     gantt:     'Gantt',
+    kanban:    'Quadro',
     scurve:    'Curva S',
     tasklist:  'Tarefas',
     anomalies: 'Anomalias',
@@ -61,6 +62,17 @@ export default function Header() {
       </div>
 
       <div className="header-right">
+        {/* Apple Spotlight Command Palette Button */}
+        <button
+          className="header-command-btn"
+          onClick={() => toggleCommandPalette(true)}
+          title="Buscar (⌘K)"
+        >
+          <Search size={14} />
+          <span>Pesquisar...</span>
+          <kbd className="command-kbd">⌘K</kbd>
+        </button>
+
         {/* Quick project switcher when inside a project */}
         {isInsideProject && state.projects.length > 1 && (
           <div className="header-project-switcher">

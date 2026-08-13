@@ -11,11 +11,15 @@ const initialState = {
   tasks: [],
   anomalies: [],
   activeProjectId: null,
-  activeProjectTab: 'overview',   // 'overview' | 'gantt' | 'scurve' | 'tasklist' | 'anomalies'
+  activeProjectTab: 'overview',   // 'overview' | 'gantt' | 'kanban' | 'scurve' | 'tasklist' | 'anomalies'
   activePage: 'pageProjects',     // global page when no project workspace is open
   theme: localStorage.getItem('projeta_theme') || 'light',
   toast: null,
   sidebarCollapsed: false,
+  inspectorTaskId: null,
+  isCommandPaletteOpen: false,
+  showCriticalPath: false,
+  showBaseline: false,
 };
 
 /* ── action types ───────────────────────────────────────────── */
@@ -39,6 +43,10 @@ export const ACTIONS = {
   SET_THEME: 'SET_THEME',
   SET_TOAST: 'SET_TOAST',
   TOGGLE_SIDEBAR: 'TOGGLE_SIDEBAR',
+  SET_INSPECTOR_TASK: 'SET_INSPECTOR_TASK',
+  TOGGLE_COMMAND_PALETTE: 'TOGGLE_COMMAND_PALETTE',
+  TOGGLE_CRITICAL_PATH: 'TOGGLE_CRITICAL_PATH',
+  TOGGLE_BASELINE: 'TOGGLE_BASELINE',
 };
 
 /* ── reducer ────────────────────────────────────────────────── */
@@ -122,6 +130,14 @@ function reducer(state, action) {
       return { ...state, toast: action.payload };
     case ACTIONS.TOGGLE_SIDEBAR:
       return { ...state, sidebarCollapsed: !state.sidebarCollapsed };
+    case ACTIONS.SET_INSPECTOR_TASK:
+      return { ...state, inspectorTaskId: action.payload };
+    case ACTIONS.TOGGLE_COMMAND_PALETTE:
+      return { ...state, isCommandPaletteOpen: action.payload !== undefined ? action.payload : !state.isCommandPaletteOpen };
+    case ACTIONS.TOGGLE_CRITICAL_PATH:
+      return { ...state, showCriticalPath: action.payload !== undefined ? action.payload : !state.showCriticalPath };
+    case ACTIONS.TOGGLE_BASELINE:
+      return { ...state, showBaseline: action.payload !== undefined ? action.payload : !state.showBaseline };
     default:
       return state;
   }
@@ -241,6 +257,26 @@ export function AppProvider({ children }) {
     dispatch({ type: ACTIONS.SET_TOAST, payload: { message, type } });
   }, []);
 
+  const openTaskInspector = useCallback((taskId) => {
+    dispatch({ type: ACTIONS.SET_INSPECTOR_TASK, payload: taskId });
+  }, []);
+
+  const closeTaskInspector = useCallback(() => {
+    dispatch({ type: ACTIONS.SET_INSPECTOR_TASK, payload: null });
+  }, []);
+
+  const toggleCommandPalette = useCallback((isOpen) => {
+    dispatch({ type: ACTIONS.TOGGLE_COMMAND_PALETTE, payload: isOpen });
+  }, []);
+
+  const toggleCriticalPath = useCallback((show) => {
+    dispatch({ type: ACTIONS.TOGGLE_CRITICAL_PATH, payload: show });
+  }, []);
+
+  const toggleBaseline = useCallback((show) => {
+    dispatch({ type: ACTIONS.TOGGLE_BASELINE, payload: show });
+  }, []);
+
   const value = {
     state,
     dispatch,
@@ -259,6 +295,11 @@ export function AppProvider({ children }) {
     selectProject,
     setProjectTab,
     showToast,
+    openTaskInspector,
+    closeTaskInspector,
+    toggleCommandPalette,
+    toggleCriticalPath,
+    toggleBaseline,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

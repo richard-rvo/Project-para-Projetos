@@ -3,6 +3,8 @@ import { AppContext } from './context/AppContext';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import Toast from './components/Toast';
+import TaskInspectorDrawer from './components/TaskInspectorDrawer';
+import CommandPalette from './components/CommandPalette';
 import ProjectWorkspace from './components/ProjectWorkspace';
 import PageDashboard from './pages/PageDashboard';
 import PageProjects from './pages/PageProjects';
@@ -39,6 +41,8 @@ function App() {
         <Header />
         <main className="page-container">{renderPage()}</main>
       </div>
+      <TaskInspectorDrawer />
+      <CommandPalette />
       <Toast />
     </div>
   );

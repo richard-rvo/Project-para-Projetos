@@ -1,0 +1,337 @@
+/* ═══════════════════════════════════════════════════════════════
+   PROJETA — Design Tokens  ·  "Precision Calm"
+   Apple (calma, hierarquia, material)
+   × MS Project (densidade, rigor de cronograma)
+   × ClickUp (velocidade, comando, views)
+
+   Camadas:
+     1. :root            → valores semânticos do tema claro
+     2. [data-theme=dark]→ overrides do tema escuro
+     3. [data-density]   → densidade adaptativa
+     4. @theme inline    → expõe os tokens como utilitários Tailwind
+
+   REGRA: nenhum componente declara cor literal. Tudo vem daqui.
+   ═══════════════════════════════════════════════════════════════ */
+
+@import 'tailwindcss';
+
+/* Fornece animate-in/animate-out/fade-in/zoom-in/slide-in — as classes
+   de entrada e saída que os primitivos Radix do shadcn usam. */
+@import 'tw-animate-css';
+
+/* Dark mode dirigido por data-theme (setado por AppContext no <html>).
+   Cobre o próprio elemento e seus descendentes. */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+/* ───────────────────────────────────────────────────────────────
+   1. TEMA CLARO (base)
+   ─────────────────────────────────────────────────────────────── */
+:root {
+  /* ── Superfícies ──────────────────────────────────────────────
+     0 = fundo da aplicação   1 = painel/card
+     2 = alternativa sutil    3 = recuado (headers, trilhos)      */
+  --surface-0: oklch(0.976 0.002 265);
+  --surface-1: oklch(1 0 0);
+  --surface-2: oklch(0.988 0.002 265);
+  --surface-3: oklch(0.955 0.004 265);
+  --surface-inset: oklch(0.935 0.005 265);
+
+  /* ── Texto ────────────────────────────────────────────────────
+     1 = primário   2 = secundário   3 = terciário/desabilitado   */
+  --text-1: oklch(0.22 0.011 265);
+  --text-2: oklch(0.47 0.012 265);
+  --text-3: oklch(0.635 0.012 265);
+  --text-on-accent: oklch(1 0 0);
+
+  /* ── Traços ───────────────────────────────────────────────────
+     hairline = divisórias internas (0.5px em telas @2x)
+     strong   = bordas de controle e limites de painel            */
+  --line-hairline: oklch(0.22 0.011 265 / 0.09);
+  --line-strong: oklch(0.22 0.011 265 / 0.17);
+
+  /* ── Estados de cronograma ────────────────────────────────────
+     A ÚNICA fonte de cor semântica do produto. Substitui os
+     STATUS_COLORS que viviam hardcoded dentro do PageGantt.      */
+  --sched-not-started: oklch(0.655 0.021 265);
+  --sched-on-track: oklch(0.600 0.140 250);
+  --sched-at-risk: oklch(0.720 0.150 75);
+  --sched-late: oklch(0.585 0.200 25);
+  --sched-done: oklch(0.620 0.135 155);
+  --sched-critical: oklch(0.520 0.235 15);
+  --sched-baseline: oklch(0.700 0.028 265);
+  --sched-slack: oklch(0.780 0.045 250);
+
+  /* Variantes suaves — fundo de badge/pill sem competir com o texto */
+  --sched-not-started-soft: oklch(0.655 0.021 265 / 0.13);
+  --sched-on-track-soft: oklch(0.600 0.140 250 / 0.13);
+  --sched-at-risk-soft: oklch(0.720 0.150 75 / 0.16);
+  --sched-late-soft: oklch(0.585 0.200 25 / 0.13);
+  --sched-done-soft: oklch(0.620 0.135 155 / 0.14);
+  --sched-critical-soft: oklch(0.520 0.235 15 / 0.13);
+
+  /* ── Marca ────────────────────────────────────────────────────
+     Acento raro. Permitido APENAS em: botão primário, anel de
+     foco, logo e barra de progresso do projeto.                  */
+  --brand: #b90973;
+  --brand-hover: #a00863;
+  --brand-soft: oklch(0.46 0.23 350 / 0.10);
+  --brand-gradient: linear-gradient(
+    135deg,
+    #fe8345 0%,
+    #fa5e42 20%,
+    #f73a40 40%,
+    #e82048 60%,
+    #d0145d 80%,
+    #b90973 100%
+  );
+
+  /* ── Elevação ─────────────────────────────────────────────────
+     Sombras com tinta neutra fria, nunca preto puro.             */
+  --elev-1: 0 1px 2px oklch(0.22 0.011 265 / 0.06);
+  --elev-2:
+    0 2px 4px oklch(0.22 0.011 265 / 0.06), 0 4px 12px oklch(0.22 0.011 265 / 0.05);
+  --elev-3:
+    0 4px 8px oklch(0.22 0.011 265 / 0.07), 0 12px 28px oklch(0.22 0.011 265 / 0.08);
+  --elev-4:
+    0 8px 16px oklch(0.22 0.011 265 / 0.08), 0 24px 56px oklch(0.22 0.011 265 / 0.12);
+
+  /* ── Overlay / material ───────────────────────────────────────
+     Vidro é para overlays sobre conteúdo — NUNCA para superfícies
+     densas de dados.                                             */
+  --overlay-scrim: oklch(0.22 0.011 265 / 0.28);
+  --overlay-material: oklch(1 0 0 / 0.78);
+  --overlay-blur: 20px;
+
+  /* ── Raio ─────────────────────────────────────────────────────
+     Menor que o antigo 8/12/20 — raio grande destrói densidade.  */
+  --radius-control: 6px;
+  --radius-card: 10px;
+  --radius-sheet: 14px;
+  --radius-pill: 9999px;
+
+  /* ── Tipografia ───────────────────────────────────────────────
+     SF primeiro (Apple nativo), Inter como fallback.             */
+  --font-ui:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui,
+    'Segoe UI', sans-serif;
+  --font-numeric:
+    'SF Mono', 'SFMono-Regular', ui-monospace, 'Menlo', monospace;
+
+  --text-micro: 0.6875rem; /* 11px — rótulos de coluna, badges  */
+  --text-small: 0.75rem;   /* 12px — metadados, células densas  */
+  --text-body: 0.8125rem;  /* 13px — corpo denso (grade, tabela)*/
+  --text-read: 0.9375rem;  /* 15px — corpo de leitura           */
+  --text-title: 1.1875rem; /* 19px — títulos de seção           */
+  --text-display: 1.75rem; /* 28px — números de destaque        */
+
+  /* ── Movimento ────────────────────────────────────────────────
+     3 durações, 2 easings. Nada mais.                            */
+  --dur-1: 120ms; /* estado de controle (hover, press)  */
+  --dur-2: 200ms; /* transição de painel                */
+  --dur-3: 320ms; /* entrada de overlay                 */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-spring: cubic-bezier(0.34, 1.26, 0.64, 1);
+
+  /* ── Foco ─────────────────────────────────────────────────────  */
+  --focus-ring: 0 0 0 2px var(--surface-1), 0 0 0 4px var(--brand);
+}
+
+/* ───────────────────────────────────────────────────────────────
+   2. TEMA ESCURO
+   ─────────────────────────────────────────────────────────────── */
+[data-theme='dark'] {
+  --surface-0: oklch(0.168 0.008 265);
+  --surface-1: oklch(0.212 0.009 265);
+  --surface-2: oklch(0.243 0.010 265);
+  --surface-3: oklch(0.280 0.010 265);
+  --surface-inset: oklch(0.140 0.008 265);
+
+  --text-1: oklch(0.955 0.004 265);
+  --text-2: oklch(0.725 0.009 265);
+  --text-3: oklch(0.560 0.011 265);
+
+  --line-hairline: oklch(1 0 0 / 0.09);
+  --line-strong: oklch(1 0 0 / 0.17);
+
+  /* Estados: elevados em lightness para manter contraste no escuro */
+  --sched-not-started: oklch(0.640 0.022 265);
+  --sched-on-track: oklch(0.685 0.135 250);
+  --sched-at-risk: oklch(0.780 0.145 75);
+  --sched-late: oklch(0.660 0.185 25);
+  --sched-done: oklch(0.700 0.130 155);
+  --sched-critical: oklch(0.620 0.215 18);
+  --sched-baseline: oklch(0.470 0.022 265);
+  --sched-slack: oklch(0.430 0.040 250);
+
+  --sched-not-started-soft: oklch(0.640 0.022 265 / 0.20);
+  --sched-on-track-soft: oklch(0.685 0.135 250 / 0.20);
+  --sched-at-risk-soft: oklch(0.780 0.145 75 / 0.20);
+  --sched-late-soft: oklch(0.660 0.185 25 / 0.20);
+  --sched-done-soft: oklch(0.700 0.130 155 / 0.20);
+  --sched-critical-soft: oklch(0.620 0.215 18 / 0.22);
+
+  --brand: #d81a8b;
+  --brand-hover: #e93a9d;
+  --brand-soft: oklch(0.56 0.22 350 / 0.16);
+
+  --elev-1: 0 1px 2px oklch(0 0 0 / 0.40);
+  --elev-2: 0 2px 4px oklch(0 0 0 / 0.40), 0 4px 12px oklch(0 0 0 / 0.34);
+  --elev-3: 0 4px 8px oklch(0 0 0 / 0.44), 0 12px 28px oklch(0 0 0 / 0.40);
+  --elev-4: 0 8px 16px oklch(0 0 0 / 0.48), 0 24px 56px oklch(0 0 0 / 0.52);
+
+  --overlay-scrim: oklch(0 0 0 / 0.55);
+  --overlay-material: oklch(0.212 0.009 265 / 0.80);
+
+  --focus-ring: 0 0 0 2px var(--surface-0), 0 0 0 4px var(--brand);
+}
+
+/* ───────────────────────────────────────────────────────────────
+   3. DENSIDADE ADAPTATIVA
+   Confortável = leitura executiva · Compacto = trabalho de plano
+   ─────────────────────────────────────────────────────────────── */
+:root,
+[data-density='comfortable'] {
+  --gantt-row-h: 40px;
+  --gantt-header-h: 56px;
+  --grid-cell-px: 10px;
+  --density-pad: 16px;
+  --density-pad-sm: 10px;
+  --control-h: 32px;
+  --control-h-sm: 26px;
+}
+
+[data-density='compact'] {
+  --gantt-row-h: 30px;
+  --gantt-header-h: 46px;
+  --grid-cell-px: 7px;
+  --density-pad: 10px;
+  --density-pad-sm: 6px;
+  --control-h: 28px;
+  --control-h-sm: 23px;
+}
+
+/* ───────────────────────────────────────────────────────────────
+   4. PONTE SHADCN/UI
+   Os primitivos Radix consomem estes nomes. Mapeá-los sobre os
+   tokens acima faz todo componente shadcn nascer no tema certo.
+   ─────────────────────────────────────────────────────────────── */
+:root {
+  --background: var(--surface-0);
+  --foreground: var(--text-1);
+  --card: var(--surface-1);
+  --card-foreground: var(--text-1);
+  --popover: var(--surface-1);
+  --popover-foreground: var(--text-1);
+  --primary: var(--brand);
+  --primary-foreground: var(--text-on-accent);
+  --secondary: var(--surface-3);
+  --secondary-foreground: var(--text-1);
+  --muted: var(--surface-3);
+  --muted-foreground: var(--text-2);
+  --accent: var(--surface-3);
+  --accent-foreground: var(--text-1);
+  --destructive: var(--sched-late);
+  --destructive-foreground: var(--text-on-accent);
+  --border: var(--line-hairline);
+  --input: var(--line-strong);
+  --ring: var(--brand);
+  --radius: var(--radius-card);
+
+  /* Séries de gráfico (Curva S, dashboards) — ordem de uso fixa */
+  --chart-1: var(--sched-on-track);
+  --chart-2: var(--sched-done);
+  --chart-3: var(--sched-at-risk);
+  --chart-4: var(--sched-late);
+  --chart-5: var(--sched-not-started);
+}
+
+/* ───────────────────────────────────────────────────────────────
+   5. EXPOSIÇÃO COMO UTILITÁRIOS TAILWIND
+   `inline` faz o utilitário referenciar a var em vez de embutir o
+   valor — sem isso o dark mode não acompanharia a troca de tema.
+   ─────────────────────────────────────────────────────────────── */
+@theme inline {
+  /* Superfícies e texto */
+  --color-surface-0: var(--surface-0);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-surface-inset: var(--surface-inset);
+  --color-text-1: var(--text-1);
+  --color-text-2: var(--text-2);
+  --color-text-3: var(--text-3);
+  --color-line: var(--line-hairline);
+  --color-line-strong: var(--line-strong);
+
+  /* Estados de cronograma */
+  --color-sched-not-started: var(--sched-not-started);
+  --color-sched-on-track: var(--sched-on-track);
+  --color-sched-at-risk: var(--sched-at-risk);
+  --color-sched-late: var(--sched-late);
+  --color-sched-done: var(--sched-done);
+  --color-sched-critical: var(--sched-critical);
+  --color-sched-baseline: var(--sched-baseline);
+  --color-sched-slack: var(--sched-slack);
+  --color-sched-not-started-soft: var(--sched-not-started-soft);
+  --color-sched-on-track-soft: var(--sched-on-track-soft);
+  --color-sched-at-risk-soft: var(--sched-at-risk-soft);
+  --color-sched-late-soft: var(--sched-late-soft);
+  --color-sched-done-soft: var(--sched-done-soft);
+  --color-sched-critical-soft: var(--sched-critical-soft);
+
+  /* Marca */
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-soft: var(--brand-soft);
+
+  /* Ponte shadcn */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  /* Raio */
+  --radius-control: var(--radius-control);
+  --radius-card: var(--radius-card);
+  --radius-sheet: var(--radius-sheet);
+
+  /* Tipografia */
+  --font-sans: var(--font-ui);
+  --font-mono: var(--font-numeric);
+  --text-micro: var(--text-micro);
+  --text-small: var(--text-small);
+  --text-body: var(--text-body);
+  --text-read: var(--text-read);
+  --text-title: var(--text-title);
+  --text-display: var(--text-display);
+
+  /* Elevação */
+  --shadow-elev-1: var(--elev-1);
+  --shadow-elev-2: var(--elev-2);
+  --shadow-elev-3: var(--elev-3);
+  --shadow-elev-4: var(--elev-4);
+
+  /* Movimento */
+  --ease-standard: var(--ease-standard);
+  --ease-spring: var(--ease-spring);
+}

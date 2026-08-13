@@ -2,12 +2,14 @@ import React, { useContext } from 'react';
 import { AppContext } from '../context/AppContext';
 import PageProjectOverview from '../pages/PageProjectOverview';
 import PageGantt from '../pages/PageGantt';
+import PageKanban from '../pages/PageKanban';
 import PageSCurve from '../pages/PageSCurve';
 import PageTaskList from '../pages/PageTaskList';
 import PageProjectAnomalies from '../pages/PageProjectAnomalies';
 import {
   LayoutGrid,
   BarChart2,
+  Columns,
   TrendingUp,
   CheckSquare,
   AlertTriangle,
@@ -17,6 +19,7 @@ import {
 const TABS = [
   { id: 'overview',  icon: LayoutGrid,    label: 'Visão Geral'  },
   { id: 'gantt',     icon: BarChart2,     label: 'Gantt'        },
+  { id: 'kanban',    icon: Columns,       label: 'Quadro'       },
   { id: 'scurve',    icon: TrendingUp,    label: 'Curva S'      },
   { id: 'tasklist',  icon: CheckSquare,   label: 'Tarefas'      },
   { id: 'anomalies', icon: AlertTriangle, label: 'Anomalias'    },
@@ -38,6 +41,7 @@ export default function ProjectWorkspace() {
     switch (activeTab) {
       case 'overview':  return <PageProjectOverview />;
       case 'gantt':     return <PageGantt />;
+      case 'kanban':    return <PageKanban />;
       case 'scurve':    return <PageSCurve />;
       case 'tasklist':  return <PageTaskList />;
       case 'anomalies': return <PageProjectAnomalies />;

@@ -1,0 +1,100 @@
+/* ═══════════════════════════════════════════════════════════════
+   BASE — padrões de elemento sobre o preflight do Tailwind
+   Só o que é global de verdade. Componente nenhum mora aqui.
+   ═══════════════════════════════════════════════════════════════ */
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+html {
+  /* 13px é o corpo denso; o texto de leitura sobe via token.
+     Base em 100% preserva o zoom do usuário.                    */
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--font-ui);
+  font-size: var(--text-read);
+  line-height: 1.45;
+  background: var(--surface-0);
+  color: var(--text-1);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Números de cronograma nunca podem dançar de largura entre frames.
+   Datas, durações e percentuais dependem disso para alinhar. */
+input[type='date'],
+input[type='number'],
+time,
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* ── Foco ─────────────────────────────────────────────────────
+   Anel visível em tudo que recebe teclado. Sem exceção: o Gantt
+   inteiro é navegável sem mouse.                                */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--radius-control);
+}
+
+/* Remove o anel quando o foco veio do mouse, mantendo-o no teclado */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+::selection {
+  background: var(--brand-soft);
+  color: var(--text-1);
+}
+
+/* ── Scrollbars ───────────────────────────────────────────────
+   Discretas e sobrepostas — o Gantt não pode perder área útil.  */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: var(--radius-pill);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-3);
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ── Movimento reduzido ───────────────────────────────────────  */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 
 import { calculateProjectMetrics } from '../utils/progress';
+import { today } from '../utils/schedule';
 
 function formatDate(dateStr) {
   if (!dateStr) return '—';
@@ -37,7 +38,7 @@ export default function PageProjectOverview() {
   const delayed   = tasks.filter((t) => t.status === 'Atrasada').length;
   const openAnoms = anomalies.filter((a) => a.status === 'aberta').length;
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = today();
 
   /* Upcoming tasks (next 14 days, not done) */
   const upcoming = tasks
