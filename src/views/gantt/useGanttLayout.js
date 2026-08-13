@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { viewStart, viewEnd } from './useGanttTasks';
 import {
   addDays,
   daysBetween,
@@ -25,8 +26,8 @@ export function useGanttLayout(tasks, dayWidth, tick) {
   return useMemo(() => {
     const todayStr = today();
 
-    const starts = tasks.map((t) => t.startDate).filter(Boolean).sort();
-    const ends = tasks.map((t) => t.endDate).filter(Boolean).sort();
+    const starts = tasks.map((t) => viewStart(t)).filter(Boolean).sort();
+    const ends = tasks.map((t) => viewEnd(t)).filter(Boolean).sort();
 
     const firstDate = starts[0] || todayStr;
     const lastDate = ends[ends.length - 1] || addDays(todayStr, 30);

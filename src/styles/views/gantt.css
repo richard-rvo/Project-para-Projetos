@@ -44,6 +44,15 @@
     overscroll-behavior: contain;
   }
 
+  /* A grade recebe foco para captar o teclado, mas o indicador de
+     foco é a célula ativa — um anel em volta do painel inteiro só
+     poluiria. */
+  .gantt-scroller:focus,
+  .gantt-scroller:focus-visible {
+    outline: none;
+    box-shadow: none;
+  }
+
   .gantt-canvas {
     position: relative;
     min-width: 100%;
@@ -752,4 +761,141 @@
     font-weight: 600;
     color: var(--sched-late);
   }
+
+  /* ═══════════════════════════════════════════════════════════
+     ONDA B — interação
+     ═══════════════════════════════════════════════════════════ */
+
+  /* Célula ativa do teclado. Anel interno, para não deslocar nada
+     nem competir com a seleção da linha. */
+  .gantt-cell.is-active {
+    box-shadow: inset 0 0 0 2px var(--brand);
+    border-radius: 3px;
+  }
+
+  /* ── Pontos conectores ────────────────────────────────────────
+     Só aparecem no hover da barra: visíveis em 300 linhas de uma
+     vez, virariam ruído puro. */
+  .gantt-link-dot {
+    position: absolute;
+    top: 50%;
+    width: 11px;
+    height: 11px;
+    translate: 0 -50%;
+    border-radius: 50%;
+    background: var(--surface-1);
+    border: 2.5px solid var(--brand);
+    opacity: 0;
+    cursor: crosshair;
+    z-index: 7;
+    transition:
+      opacity var(--dur-1) var(--ease-standard),
+      scale var(--dur-1) var(--ease-spring);
+  }
+
+  .gantt-link-dot.is-left { left: -6px; }
+  .gantt-link-dot.is-right { right: -6px; }
+
+  .gantt-bar:hover .gantt-link-dot { opacity: 1; }
+  .gantt-link-dot:hover { scale: 1.25; }
+
+  /* Alvo válido enquanto a ligação está sendo arrastada */
+  .gantt-row.is-link-target .gantt-bar,
+  .gantt-row.is-link-target .gantt-milestone-shape {
+    box-shadow: 0 0 0 2px var(--surface-1), 0 0 0 4px var(--brand);
+  }
+
+  .gantt-row.is-link-target .gantt-row-time {
+    background: var(--brand-soft);
+  }
+
+  .gantt-link-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 40;
+    overflow: visible;
+    pointer-events: none;
+  }
+
+  .gantt-link-line {
+    stroke: var(--brand);
+    stroke-width: 2;
+    stroke-dasharray: 5 4;
+    stroke-linecap: round;
+  }
+
+  .gantt-link-origin { fill: var(--brand); }
+
+  /* ── Alça de progresso ────────────────────────────────────── */
+  .gantt-progress-grip {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 9px;
+    translate: -50% 0;
+    cursor: ew-resize;
+    opacity: 0;
+    z-index: 6;
+    transition: opacity var(--dur-1) var(--ease-standard);
+  }
+
+  .gantt-progress-grip::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 3px;
+    height: 62%;
+    translate: -50% -50%;
+    border-radius: 2px;
+    background: oklch(1 0 0 / 0.9);
+    box-shadow: 0 0 0 1px oklch(0 0 0 / 0.2);
+  }
+
+  .gantt-bar:hover .gantt-progress-grip { opacity: 1; }
+
+  /* ── Menu de contexto ─────────────────────────────────────── */
+  .gantt-ctx {
+    position: fixed;
+    z-index: 80;
+    min-width: 232px;
+    padding: 4px;
+    border-radius: var(--radius-card);
+    border: 1px solid var(--line-hairline);
+    background: var(--surface-1);
+    box-shadow: var(--elev-4);
+    animation: gantt-tip-in var(--dur-1) var(--ease-standard);
+  }
+
+  .gantt-ctx-item {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    width: 100%;
+    height: 30px;
+    padding: 0 8px;
+    border-radius: 5px;
+    font-size: var(--text-body);
+    color: var(--text-1);
+    text-align: left;
+    transition: background var(--dur-1) var(--ease-standard);
+  }
+
+  .gantt-ctx-item:hover:not(:disabled) { background: var(--surface-3); }
+  .gantt-ctx-item:disabled { color: var(--text-3); cursor: not-allowed; }
+  .gantt-ctx-item.is-danger { color: var(--sched-late); }
+  .gantt-ctx-item.is-danger:hover:not(:disabled) { background: var(--sched-late-soft); }
+
+  .gantt-ctx-hint {
+    font-size: var(--text-micro);
+    font-family: var(--font-ui);
+    color: var(--text-3);
+  }
+
+  .gantt-ctx-sep {
+    height: 1px;
+    margin: 4px 6px;
+    background: var(--line-hairline);
+  }
+
 }

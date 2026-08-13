@@ -7,6 +7,25 @@ import { addDays, daysBetween, durationDays, today } from '../../utils/schedule'
    sem atravessar JSX.
    ═══════════════════════════════════════════════════════════════ */
 
+/* ── Acessores de exibição ─────────────────────────────────────────
+   Uma tarefa-resumo mostra os valores agregados dos filhos, mas
+   GUARDA os seus próprios. Renderize sempre com estes acessores;
+   grave sempre nos campos crus.                                    */
+
+export const viewStart = (t) => t.rollup?.startDate ?? t.startDate;
+export const viewEnd = (t) => t.rollup?.endDate ?? t.endDate;
+export const viewProgress = (t) => t.rollup?.progress ?? t.progress ?? 0;
+
+/**
+ * Remove tudo que é derivado antes de persistir. Sem isso o rollup e
+ * as marcas de hierarquia acabariam gravados no IndexedDB como se
+ * fossem dados do usuário.
+ */
+export function stripComputed(task) {
+  const { rollup, hasChildren, isSummary, ...stored } = task;
+  return stored;
+}
+
 /** Lista de predecessoras a partir do campo (hoje CSV de ids). */
 export function parseDependencies(dependsOn) {
   if (!dependsOn) return [];
@@ -51,19 +70,29 @@ export function useProjectTasks(allTasks, projectId, collapsedIds) {
 
       if (!task.hasChildren) continue;
 
-      const starts = children.map((c) => c.startDate).filter(Boolean).sort();
-      const ends = children.map((c) => c.endDate).filter(Boolean).sort();
-      if (starts.length) task.startDate = starts[0];
-      if (ends.length) task.endDate = ends[ends.length - 1];
+      /* O rollup vai para um campo SEPARADO, nunca por cima de
+         startDate/endDate/progress.
+
+         Escrever direto nos campos era corrupção de dados silenciosa:
+         qualquer edição partia deste clone, então virar tarefa-pai
+         apagava as datas guardadas da tarefa e gravava as calculadas
+         no lugar. Desindentá-la depois não as trazia de volta. */
+      const starts = children.map((c) => viewStart(c)).filter(Boolean).sort();
+      const ends = children.map((c) => viewEnd(c)).filter(Boolean).sort();
 
       let totalDur = 0;
       let earned = 0;
       children.forEach((c) => {
-        const d = durationDays(c.startDate, c.endDate) || 1;
+        const d = durationDays(viewStart(c), viewEnd(c)) || 1;
         totalDur += d;
-        earned += d * (c.progress || 0);
+        earned += d * viewProgress(c);
       });
-      task.progress = totalDur > 0 ? Math.round(earned / totalDur) : 0;
+
+      task.rollup = {
+        startDate: starts[0] || task.startDate,
+        endDate: ends[ends.length - 1] || task.endDate,
+        progress: totalDur > 0 ? Math.round(earned / totalDur) : 0,
+      };
     }
 
     /* Aplica o colapso: some com os descendentes de quem está fechado */
@@ -113,7 +142,8 @@ export function useAutoScheduling() {
       const current = queue.shift();
       if (visited.has(current.id)) continue;
       visited.add(current.id);
-      if (!current.endDate) continue;
+      const currentEnd = viewEnd(current);
+      if (!currentEnd) continue;
 
       for (const succId of successors.get(current.id) || []) {
         const base = allTasks.find((t) => t.id === succId);
@@ -122,7 +152,11 @@ export function useAutoScheduling() {
         const succ = updates.get(succId) || { ...base };
         if (!succ.startDate) continue;
 
-        const earliestStart = addDays(current.endDate, 1);
+        /* Resumo tem datas derivadas dos filhos: empurrá-lo seria
+           gravar valor calculado como se fosse do usuário. */
+        if (succ.hasChildren) continue;
+
+        const earliestStart = addDays(currentEnd, 1);
         if (succ.startDate >= earliestStart) continue;
 
         const dur = durationDays(succ.startDate, succ.endDate);
@@ -156,7 +190,7 @@ export function useCriticalPath(tasks, enabled) {
     const byId = new Map(tasks.map((t) => [t.id, t]));
 
     const finishes = tasks
-      .map((t) => t.endDate)
+      .map((t) => viewEnd(t))
       .filter(Boolean)
       .sort();
     const projectEnd = finishes[finishes.length - 1] || today();
@@ -179,7 +213,7 @@ export function useCriticalPath(tasks, enabled) {
           const succ = byId.get(succId);
           if (!succ) continue;
           const succLF = getLateFinish(succId);
-          const dur = Math.max(1, durationDays(succ.startDate, succ.endDate));
+          const dur = Math.max(1, durationDays(viewStart(succ), viewEnd(succ)));
           /* Late start da sucessora = LF − duração + 1; o predecessor
              precisa terminar um dia antes disso. */
           const succLateStart = addDays(succLF, -(dur - 1));
@@ -196,8 +230,9 @@ export function useCriticalPath(tasks, enabled) {
 
     const critical = new Set();
     tasks.forEach((t) => {
-      if (!t.endDate) return;
-      const slack = daysBetween(t.endDate, getLateFinish(t.id));
+      const end = viewEnd(t);
+      if (!end) return;
+      const slack = daysBetween(end, getLateFinish(t.id));
       if (slack <= 0) critical.add(t.id);
     });
     return critical;

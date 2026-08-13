@@ -1,6 +1,7 @@
 import React from 'react';
 import { ChevronRight, GripVertical } from 'lucide-react';
-import { isMilestone, clampProgress } from '../../utils/schedule';
+import { isMilestone } from '../../utils/schedule';
+import { viewStart, viewEnd, viewProgress } from './useGanttTasks';
 import { STATUS_MODIFIER } from './ganttConfig';
 
 /* ═══════════════════════════════════════════════════════════════
@@ -40,6 +41,11 @@ export default function GanttRow({ task, index, ctx }) {
     onRowDragOver,
     onRowDrop,
     onRowDragEnd,
+    onBeginLink,
+    onProgressDrag,
+    onContextMenu,
+    activeCell,
+    linkTargetId,
     dragOverIndex,
     editValue,
     editInputRef,
@@ -52,8 +58,8 @@ export default function GanttRow({ task, index, ctx }) {
 
   /* Enquanto arrasta, a barra segue o cursor sem gravar no banco. */
   const preview = dragPreview?.taskId === task.id ? dragPreview : null;
-  const startDate = preview?.startDate ?? task.startDate;
-  const endDate = preview?.endDate ?? task.endDate;
+  const startDate = preview?.startDate ?? viewStart(task);
+  const endDate = preview?.endDate ?? viewEnd(task);
 
   const milestone = isMilestone({ ...task, startDate, endDate });
   const hasDates = Boolean(startDate && endDate);
@@ -64,6 +70,7 @@ export default function GanttRow({ task, index, ctx }) {
     task.isSummary ? 'is-summary' : '',
     dragOverIndex === index ? 'is-drop-target' : '',
     preview ? 'is-dragging' : '',
+    linkTargetId === task.id ? 'is-link-target' : '',
   ]
     .filter(Boolean)
     .join(' ');
@@ -74,6 +81,7 @@ export default function GanttRow({ task, index, ctx }) {
       data-row={index}
       onMouseDown={(e) => onRowMouseDown(e, task, index)}
       onDoubleClick={() => onOpenDetails(task)}
+      onContextMenu={(e) => onContextMenu(e, task)}
       draggable={!editingCell}
       onDragStart={(e) => onRowDragStart(e, index)}
       onDragOver={(e) => onRowDragOver(e, index)}
@@ -91,15 +99,19 @@ export default function GanttRow({ task, index, ctx }) {
           const editing =
             editingCell?.taskId === task.id && editingCell?.field === col.field;
           const locked = task.isSummary && col.summaryLocked;
+          const isActive =
+            activeCell?.taskId === task.id && activeCell?.colId === col.id;
 
           return (
             <div
               key={col.id}
+              data-col={col.id}
               className={[
                 'gantt-cell',
                 `is-${col.align}`,
                 editing ? 'is-editing' : '',
                 locked ? 'is-locked' : '',
+                isActive && !editing ? 'is-active' : '',
               ]
                 .filter(Boolean)
                 .join(' ')}
@@ -157,7 +169,13 @@ export default function GanttRow({ task, index, ctx }) {
       </div>
 
       {/* ── Timeline ─────────────────────────────────────────── */}
-      <div className="gantt-row-time" style={{ width: layout.totalWidth }}>
+      {/* data-task-id é o alvo que o arrasto de ligação procura via
+          elementFromPoint — evita montar um listener por barra. */}
+      <div
+        className="gantt-row-time"
+        style={{ width: layout.totalWidth }}
+        data-task-id={task.id}
+      >
         {task.baselineStart && task.baselineEnd && (
           <div
             className="gantt-baseline"
@@ -204,15 +222,36 @@ export default function GanttRow({ task, index, ctx }) {
           >
             <span
               className="gantt-bar-fill"
-              style={{ width: `${clampProgress(task.progress)}%` }}
+              style={{ width: `${viewProgress(task)}%` }}
             />
             {showBarLabels && <BarLabel task={task} layout={layout} start={startDate} end={endDate} />}
+
             {!task.isSummary && (
-              <span
-                className="gantt-bar-handle"
-                onMouseDown={(e) => onResizeMouseDown(e, task)}
-                title="Arrastar para ajustar o término"
-              />
+              <>
+                {/* Alça de progresso: arrastar a fronteira do preenchimento
+                    define a % sem abrir formulário nenhum. */}
+                <span
+                  className="gantt-progress-grip"
+                  style={{ left: `${viewProgress(task)}%` }}
+                  onMouseDown={(e) => onProgressDrag(e, task)}
+                  title="Arrastar para ajustar o progresso"
+                />
+                <span
+                  className="gantt-bar-handle"
+                  onMouseDown={(e) => onResizeMouseDown(e, task)}
+                  title="Arrastar para ajustar o término"
+                />
+                <span
+                  className="gantt-link-dot is-left"
+                  onMouseDown={(e) => onBeginLink(e, task, 'left')}
+                  title="Arraste para criar uma dependência"
+                />
+                <span
+                  className="gantt-link-dot is-right"
+                  onMouseDown={(e) => onBeginLink(e, task, 'right')}
+                  title="Arraste para criar uma dependência"
+                />
+              </>
             )}
           </div>
         )}

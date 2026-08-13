@@ -1,5 +1,6 @@
 import React from 'react';
-import { formatDateShort, durationDays, clampProgress } from '../../utils/schedule';
+import { formatDateShort, durationDays } from '../../utils/schedule';
+import { viewStart, viewEnd, viewProgress } from './useGanttTasks';
 
 /* ═══════════════════════════════════════════════════════════════
    Tooltip da barra.
@@ -16,9 +17,11 @@ export default function GanttTooltip({ data }) {
   if (!data) return null;
 
   const { task, x, y, flipX } = data;
-  const progress = clampProgress(task.progress);
+  const progress = viewProgress(task);
   const planned = task.baselineStart && task.baselineEnd;
-  const duration = durationDays(task.startDate, task.endDate);
+  const start = viewStart(task);
+  const end = viewEnd(task);
+  const duration = durationDays(start, end);
 
   return (
     <div
@@ -35,7 +38,7 @@ export default function GanttTooltip({ data }) {
       <dl className="gantt-tooltip-grid">
         <dt>Período</dt>
         <dd className="tabular">
-          {formatDateShort(task.startDate)} → {formatDateShort(task.endDate)}
+          {formatDateShort(start)} → {formatDateShort(end)}
         </dd>
 
         <dt>Duração</dt>

@@ -16,6 +16,7 @@ import {
   clampProgress,
 } from '../../utils/schedule';
 import { calculateTaskPlannedProgress } from '../../utils/progress';
+import { viewStart, viewEnd, viewProgress } from './useGanttTasks';
 
 /* ── Zoom ──────────────────────────────────────────────────────── */
 
@@ -97,7 +98,7 @@ export const COLUMNS = [
     editable: true,
     type: 'number',
     summaryLocked: true,
-    render: (t, ctx) => ctx.formatDuration(durationDays(t.startDate, t.endDate)),
+    render: (t, ctx) => ctx.formatDuration(durationDays(viewStart(t), viewEnd(t))),
   },
   {
     id: 'start',
@@ -108,7 +109,7 @@ export const COLUMNS = [
     editable: true,
     type: 'date',
     summaryLocked: true,
-    render: (t) => formatDateShort(t.startDate),
+    render: (t) => formatDateShort(viewStart(t)),
   },
   {
     id: 'end',
@@ -119,7 +120,7 @@ export const COLUMNS = [
     editable: true,
     type: 'date',
     summaryLocked: true,
-    render: (t) => formatDateShort(t.endDate),
+    render: (t) => formatDateShort(viewEnd(t)),
   },
   {
     id: 'progress',
@@ -130,7 +131,7 @@ export const COLUMNS = [
     editable: true,
     type: 'number',
     summaryLocked: true,
-    render: (t) => `${clampProgress(t.progress)}%`,
+    render: (t) => `${viewProgress(t)}%`,
   },
   {
     id: 'planned',

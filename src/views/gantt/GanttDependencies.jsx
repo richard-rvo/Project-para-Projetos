@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { parseDependencies } from './useGanttTasks';
+import { parseDependencies, viewStart, viewEnd } from './useGanttTasks';
 import { isMilestone } from '../../utils/schedule';
 
 /* ═══════════════════════════════════════════════════════════════
@@ -19,12 +19,14 @@ const ELBOW = 11;
 const R = 5;
 
 function edgesOf(task, layout) {
-  if (isMilestone(task)) {
-    const center = layout.xOf(task.startDate) + layout.dayWidth / 2;
+  const start = viewStart(task);
+  const end = viewEnd(task);
+  if (isMilestone({ startDate: start, endDate: end })) {
+    const center = layout.xOf(start) + layout.dayWidth / 2;
     return { left: center - MILESTONE_HALF, right: center + MILESTONE_HALF };
   }
-  const left = layout.xOf(task.startDate);
-  return { left, right: left + layout.widthOf(task.startDate, task.endDate) };
+  const left = layout.xOf(start);
+  return { left, right: left + layout.widthOf(start, end) };
 }
 
 /**
@@ -85,7 +87,7 @@ export default function GanttDependencies({
     const result = [];
 
     tasks.forEach((task, rowIndex) => {
-      if (!task.startDate || !task.endDate) return;
+      if (!viewStart(task) || !viewEnd(task)) return;
 
       parseDependencies(task.dependsOn).forEach((depId) => {
         if (depId === task.id) return;
@@ -93,7 +95,7 @@ export default function GanttDependencies({
         if (depIndex === undefined) return;
 
         const dep = tasks[depIndex];
-        if (!dep.startDate || !dep.endDate) return;
+        if (!viewStart(dep) || !viewEnd(dep)) return;
 
         const from = edgesOf(dep, layout);
         const to = edgesOf(task, layout);

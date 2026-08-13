@@ -73,20 +73,27 @@ export function ViewBarButton({
   children,
   active,
   variant = 'ghost',
+  disabled,
   className,
   ...props
 }) {
   return (
     <button
       type="button"
+      disabled={disabled}
       className={cn(
-        'flex h-7.5 shrink-0 items-center gap-1.5 rounded-[6px] px-2.5',
+        'flex h-7.5 shrink-0 items-center gap-1.5 rounded-[6px]',
+        /* Sem rótulo o botão vira quadrado, para não ficar um retângulo
+           largo com um ícone perdido no meio. */
+        children ? 'px-2.5' : 'w-7.5 justify-center px-0',
         'text-small font-medium transition-colors duration-100',
-        variant === 'primary'
-          ? 'bg-brand text-white hover:bg-brand-hover'
-          : active
-            ? 'bg-brand-soft text-brand'
-            : 'text-text-2 hover:bg-surface-3 hover:text-text-1',
+        disabled
+          ? 'cursor-not-allowed text-text-3 opacity-45'
+          : variant === 'primary'
+            ? 'bg-brand text-white hover:bg-brand-hover'
+            : active
+              ? 'bg-brand-soft text-brand'
+              : 'text-text-2 hover:bg-surface-3 hover:text-text-1',
         className
       )}
       {...props}

@@ -14,6 +14,7 @@ import ConfirmDialog from '../../components/ConfirmDialog';
 import * as XLSX from 'xlsx';
 import {
   AlertCircle, Calendar, Download, Plus, Settings, Target, Indent, Outdent, Trash2,
+  Undo2, Redo2,
 } from 'lucide-react';
 
 import {
@@ -25,12 +26,18 @@ import {
   DEFAULT_GRID_W, MIN_GRID_W, MAX_GRID_W,
   rowHeightFor, loadVisibleColumns, saveVisibleColumns,
 } from './ganttConfig';
-import { useProjectTasks, useAutoScheduling, useCriticalPath } from './useGanttTasks';
+import {
+  useProjectTasks, useAutoScheduling, useCriticalPath,
+  viewStart, viewEnd, viewProgress, stripComputed,
+} from './useGanttTasks';
 import { useGanttLayout } from './useGanttLayout';
+import { useGanttKeyboard } from './useGanttKeyboard';
+import { useGanttLinking, linkTasks } from './useGanttLinking';
 import GanttHeader from './GanttHeader';
 import GanttRow from './GanttRow';
 import GanttDependencies from './GanttDependencies';
 import GanttTooltip from './GanttTooltip';
+import GanttContextMenu from './GanttContextMenu';
 
 function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -38,7 +45,8 @@ function generateId() {
 
 export default function GanttView() {
   const {
-    state, addTask, updateTask, updateTasksBatch, removeTask, showToast,
+    state, addTask, addTasks, updateTasksBatch, removeTasks, showToast,
+    undo, redo, canUndo, canRedo,
   } = useContext(AppContext);
 
   const rowH = rowHeightFor(state.density);
@@ -61,6 +69,9 @@ export default function GanttView() {
   const [newTaskName, setNewTaskName] = useState('');
   const [modalTask, setModalTask] = useState(null);
   const [confirmAction, setConfirmAction] = useState(null);
+  const [activeCell, setActiveCell] = useState(null);
+  const [contextMenu, setContextMenu] = useState(null);
+  const clipboardRef = useRef([]);
 
   const [scheduleSettings, setScheduleSettings] = useState(() => {
     try {
@@ -84,6 +95,13 @@ export default function GanttView() {
   const applyAutoScheduling = useAutoScheduling();
   const criticalIds = useCriticalPath(tasks, showCriticalPath);
   const layout = useGanttLayout(tasks, zoom.dayWidth, zoom.tick);
+
+  /* Barreira única de escrita: nada derivado (rollup, hasChildren,
+     isSummary) chega ao IndexedDB. */
+  const saveTasks = useCallback(
+    (list, label) => updateTasksBatch(list.map(stripComputed), label),
+    [updateTasksBatch]
+  );
 
   const columns = useMemo(
     () => COLUMNS.filter((c) => c.alwaysOn || visibleCols[c.id]),
@@ -151,6 +169,17 @@ export default function GanttView() {
   /* ── Seleção ────────────────────────────────────────────────── */
   const handleRowMouseDown = useCallback((e, task, index) => {
     if (e.button !== 0) return;
+
+    /* Clicar move o cursor de teclado para a coluna clicada, para o
+       usuário poder alternar mouse e teclado sem perder o lugar. */
+    /* Clique em <div> não move foco sozinho. Trazemos o foco para a
+       grade para que as setas e o Tab cheguem ao Gantt em vez de
+       continuarem no último input tocado. */
+    scrollerRef.current?.focus({ preventScroll: true });
+
+    const colId = e.target.closest?.('[data-col]')?.getAttribute('data-col');
+    setActiveCell({ taskId: task.id, colId: colId || 'name' });
+
     setSelectedIds((prev) => {
       if (e.shiftKey && prev.size) {
         const next = new Set(prev);
@@ -201,7 +230,7 @@ export default function GanttView() {
 
     /* Só o que mexe no cronograma dispara o forward pass. */
     const reschedules = ['duration', 'start', 'end', 'dependencies'].includes(editingCell.colId);
-    await updateTasksBatch(reschedules ? applyAutoScheduling(modified, tasks) : [modified]);
+    await saveTasks(reschedules ? applyAutoScheduling(modified, tasks) : [modified]);
     setEditingCell(null);
   }, [editingCell, editValue, tasks, parseDurationToDays, predecessorFromLabel, applyAutoScheduling, updateTasksBatch]);
 
@@ -240,7 +269,7 @@ export default function GanttView() {
       if (newEnd < newStart) return; // resize não pode inverter a barra
 
       const modified = { ...task, startDate: newStart, endDate: newEnd };
-      await updateTasksBatch(applyAutoScheduling(modified, tasks));
+      await saveTasks(applyAutoScheduling(modified, tasks));
     };
 
     document.addEventListener('mousemove', onMove);
@@ -292,7 +321,7 @@ export default function GanttView() {
     const updates = reordered
       .map((t, i) => (t.order !== i ? { ...t, order: i } : null))
       .filter(Boolean);
-    if (updates.length) await updateTasksBatch(updates);
+    if (updates.length) await saveTasks(updates);
     setDraggedIndex(null);
   }, [draggedIndex, tasks, updateTasksBatch]);
 
@@ -341,7 +370,7 @@ export default function GanttView() {
       const updates = tasks
         .filter((t) => t.startDate && t.endDate)
         .map((t) => ({ ...t, baselineStart: t.startDate, baselineEnd: t.endDate }));
-      await updateTasksBatch(updates);
+      await saveTasks(updates);
       showToast('Linha de base salva', 'success');
     },
   });
@@ -361,12 +390,152 @@ export default function GanttView() {
     XLSX.writeFile(wb, `${activeProject?.name || 'Projeto'}_Gantt.xlsx`);
   };
 
+  /* ── Hierarquia ─────────────────────────────────────────────── */
+  const targetTasks = useCallback(() => {
+    if (selectedIds.size) return tasks.filter((t) => selectedIds.has(t.id));
+    const active = tasks.find((t) => t.id === activeCell?.taskId);
+    return active ? [active] : [];
+  }, [tasks, selectedIds, activeCell]);
+
+  const handleIndent = useCallback(async (delta) => {
+    const targets = targetTasks();
+    if (!targets.length) return;
+
+    const updates = targets.map((task) => {
+      const index = tasks.findIndex((t) => t.id === task.id);
+      const prev = tasks[index - 1];
+      /* Não dá para indentar além de um nível abaixo da linha acima —
+         isso produziria um "filho" sem pai. */
+      const ceiling = prev ? (prev.indentLevel || 0) + 1 : 0;
+      const next = Math.max(0, Math.min(ceiling, (task.indentLevel || 0) + delta));
+      return next === (task.indentLevel || 0) ? null : { ...task, indentLevel: next };
+    }).filter(Boolean);
+
+    if (updates.length) await saveTasks(updates, 'Alterar hierarquia');
+  }, [tasks, targetTasks, updateTasksBatch]);
+
+  /* ── Clipboard ──────────────────────────────────────────────── */
+  const handleCopy = useCallback(() => {
+    const targets = targetTasks();
+    if (!targets.length) return;
+    clipboardRef.current = targets.map((t) => ({ ...t }));
+    showToast(`${targets.length} tarefa(s) copiada(s)`, 'info');
+  }, [targetTasks, showToast]);
+
+  const pasteTasks = useCallback(async (source) => {
+    if (!source.length) return;
+    /* Cópias entram sem dependências: os ids referenciados apontam
+       para as tarefas originais e a cópia herdaria vínculos errados. */
+    const clones = source.map((t, i) => ({
+      ...t,
+      id: generateId(),
+      name: `${t.name} (cópia)`,
+      dependsOn: '',
+      order: tasks.length + i,
+    }));
+    await addTasks(clones);
+    setSelectedIds(new Set(clones.map((c) => c.id)));
+  }, [tasks.length, addTasks]);
+
+  const handlePaste = useCallback(() => pasteTasks(clipboardRef.current), [pasteTasks]);
+  const handleDuplicate = useCallback(() => pasteTasks(targetTasks()), [pasteTasks, targetTasks]);
+
+  const handleDeleteSelected = useCallback(() => {
+    const targets = targetTasks();
+    if (!targets.length) return;
+    setConfirmAction({
+      title: targets.length > 1 ? 'Excluir tarefas' : 'Excluir tarefa',
+      message: targets.length > 1
+        ? `Excluir ${targets.length} tarefas selecionadas?`
+        : `Excluir "${targets[0].name}"?`,
+      onConfirm: async () => {
+        await removeTasks(targets.map((t) => t.id));
+        setSelectedIds(new Set());
+      },
+    });
+  }, [targetTasks, removeTasks]);
+
+  /* ── Ligação por arrasto ────────────────────────────────────── */
+  const handleLink = useCallback(async (predecessor, successor) => {
+    const result = linkTasks(predecessor, successor, tasks);
+    if (!result.ok) {
+      showToast(result.reason, 'error');
+      return;
+    }
+    await saveTasks(applyAutoScheduling(result.task, tasks), 'Criar dependência');
+  }, [tasks, applyAutoScheduling, updateTasksBatch, showToast]);
+
+  const { linkDrag, beginLink } = useGanttLinking({
+    tasks, scrollerRef, onLink: handleLink,
+  });
+
+  /* ── Arrastar progresso ─────────────────────────────────────── */
+  const handleProgressDrag = useCallback((e, task) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const bar = e.currentTarget.parentElement;
+    const box = bar.getBoundingClientRect();
+    let next = clampProgress(task.progress);
+
+    const onMove = (ev) => {
+      next = clampProgress(Math.round(((ev.clientX - box.left) / box.width) * 100));
+      /* Escrita imperativa: durante o arrasto não há re-render, então
+         mover a alça pelo DOM mantém o gesto fluido. */
+      bar.querySelector('.gantt-bar-fill').style.width = `${next}%`;
+      e.target.style.left = `${next}%`;
+    };
+
+    const onUp = async () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      if (next !== clampProgress(task.progress)) {
+        await saveTasks([{ ...task, progress: next }], 'Ajustar progresso');
+      }
+    };
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, [updateTasksBatch]);
+
+  /* ── Menu de contexto ───────────────────────────────────────── */
+  const handleContextMenu = useCallback((e, task) => {
+    e.preventDefault();
+    if (!selectedIds.has(task.id)) setSelectedIds(new Set([task.id]));
+    setContextMenu({ x: e.clientX, y: e.clientY, task });
+  }, [selectedIds]);
+
+  /* ── Teclado ────────────────────────────────────────────────── */
+  useGanttKeyboard({
+    enabled: !modalTask && !confirmAction,
+    tasks, columns, activeCell, setActiveCell, editingCell,
+    startEdit, commitEdit,
+    cancelEdit: () => setEditingCell(null),
+    selectedIds, setSelectedIds,
+    onIndent: handleIndent,
+    onDeleteSelected: handleDeleteSelected,
+    onDuplicateSelected: handleDuplicate,
+    onCopySelected: handleCopy,
+    onPasteClipboard: handlePaste,
+    onToggleCollapse: (id, collapse) => setCollapsedIds((prev) => {
+      const next = new Set(prev);
+      collapse ? next.add(id) : next.delete(id);
+      return next;
+    }),
+    onUndo: undo,
+    onRedo: redo,
+  });
+
   if (!activeProject) return null;
 
   const ctx = {
     columns, gridWidth, layout, selectedIds, editingCell, collapsedIds,
     criticalIds, showCriticalPath, showBarLabels, dragPreview, dragOverIndex,
     editValue, editInputRef, formatDuration, predecessorLabel,
+    activeCell,
+    linkTargetId: linkDrag?.targetId || null,
+    onBeginLink: beginLink,
+    onProgressDrag: handleProgressDrag,
+    onContextMenu: handleContextMenu,
     onRowMouseDown: handleRowMouseDown,
     onToggleCollapse: toggleCollapse,
     onStartEdit: startEdit,
@@ -410,6 +579,9 @@ export default function GanttView() {
         <ViewBarButton icon={Target} onClick={handleSaveBaseline} title="Gravar as datas atuais">
           Baseline
         </ViewBarButton>
+        <ViewBarDivider />
+        <ViewBarButton icon={Undo2} onClick={undo} disabled={!canUndo} title="Desfazer (⌘Z)" />
+        <ViewBarButton icon={Redo2} onClick={redo} disabled={!canRedo} title="Refazer (⇧⌘Z)" />
 
         <div className="ml-auto" />
 
@@ -475,7 +647,7 @@ export default function GanttView() {
 
       {/* ── Corpo: UM scroller para os dois eixos ───────────────── */}
       <div className="gantt-body">
-        <div className="gantt-scroller" ref={scrollerRef}>
+        <div className="gantt-scroller" ref={scrollerRef} tabIndex={0}>
           <div
             className="gantt-canvas"
             style={{
@@ -525,6 +697,20 @@ export default function GanttView() {
                 <GanttRow key={task.id} task={task} index={index} ctx={ctx} />
               ))}
 
+              {/* Linha elástica do arrasto de ligação */}
+              {linkDrag && (
+                <svg className="gantt-link-layer" aria-hidden="true">
+                  <line
+                    className="gantt-link-line"
+                    x1={linkDrag.from.x}
+                    y1={linkDrag.from.y}
+                    x2={linkDrag.to.x}
+                    y2={linkDrag.to.y}
+                  />
+                  <circle className="gantt-link-origin" cx={linkDrag.from.x} cy={linkDrag.from.y} r="4" />
+                </svg>
+              )}
+
               {/* Linha de entrada rápida */}
               <div className="gantt-row is-new">
                 <div className="gantt-row-grid" style={{ width: gridWidth }}>
@@ -561,12 +747,28 @@ export default function GanttView() {
         <GanttTooltip data={tooltip} />
       </div>
 
+      <GanttContextMenu
+        data={contextMenu}
+        onClose={() => setContextMenu(null)}
+        selectionCount={selectedIds.size}
+        actions={{
+          openDetails: (task) => setModalTask({ ...task }),
+          indent: handleIndent,
+          copy: handleCopy,
+          paste: handlePaste,
+          duplicate: handleDuplicate,
+          remove: handleDeleteSelected,
+          clearDependencies: (task) =>
+            saveTasks([{ ...task, dependsOn: '' }], 'Remover predecessoras'),
+        }}
+      />
+
       <TaskDetailsModal
         task={modalTask}
         onChange={setModalTask}
         onClose={() => setModalTask(null)}
         onSave={async () => {
-          await updateTasksBatch(applyAutoScheduling(modalTask, tasks));
+          await saveTasks(applyAutoScheduling(modalTask, tasks));
           setModalTask(null);
         }}
         onDelete={() => setConfirmAction({

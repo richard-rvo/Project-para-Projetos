@@ -1,4 +1,4 @@
-import React, { createContext, useReducer, useEffect, useCallback } from 'react';
+import React, { createContext, useReducer, useEffect, useCallback, useRef } from 'react';
 import {
   initDB, getAllProjects, saveProject as dbSaveProject, deleteProject as dbDeleteProject,
   saveTask as dbSaveTask, deleteTask as dbDeleteTask, getAllTasks,
@@ -21,6 +21,10 @@ const initialState = {
   railPinned: localStorage.getItem('projeta_rail_pinned') === 'true',
   /* 'comfortable' = leitura executiva · 'compact' = trabalho de plano */
   density: localStorage.getItem('projeta_density') || 'comfortable',
+
+  /* Histórico de edição de tarefas. Não é persistido: desfazer vale
+     para a sessão, como em qualquer editor. */
+  history: { past: [], future: [] },
   inspectorTaskId: null,
   isCommandPaletteOpen: false,
   showCriticalPath: false,
@@ -49,6 +53,9 @@ export const ACTIONS = {
   SET_TOAST: 'SET_TOAST',
   TOGGLE_RAIL_PINNED: 'TOGGLE_RAIL_PINNED',
   SET_DENSITY: 'SET_DENSITY',
+  PUSH_HISTORY: 'PUSH_HISTORY',
+  UNDO: 'UNDO',
+  REDO: 'REDO',
   SET_INSPECTOR_TASK: 'SET_INSPECTOR_TASK',
   TOGGLE_COMMAND_PALETTE: 'TOGGLE_COMMAND_PALETTE',
   TOGGLE_CRITICAL_PATH: 'TOGGLE_CRITICAL_PATH',
@@ -78,7 +85,7 @@ function reducer(state, action) {
         activeProjectId:
           state.activeProjectId === action.payload ? null : state.activeProjectId,
         activePage:
-          state.activeProjectId === action.payload ? 'pageProjects' : state.activePage,
+          state.activeProjectId === action.payload ? 'pagePortfolio' : state.activePage,
       };
     case ACTIONS.SET_TASKS:
       return { ...state, tasks: action.payload };
@@ -126,7 +133,7 @@ function reducer(state, action) {
         ...state,
         activeProjectId: action.payload,
         activeProjectTab: 'overview',
-        activePage: action.payload ? 'pageProjectWorkspace' : 'pageProjects',
+        activePage: action.payload ? 'pageProjectWorkspace' : 'pagePortfolio',
       };
     case ACTIONS.SET_ACTIVE_PROJECT_TAB:
       return { ...state, activeProjectTab: action.payload };
@@ -138,6 +145,39 @@ function reducer(state, action) {
       return { ...state, railPinned: !state.railPinned };
     case ACTIONS.SET_DENSITY:
       return { ...state, density: action.payload };
+
+    /* Uma ação nova invalida o futuro — é o comportamento esperado
+       de qualquer editor. Teto de 60 passos para não crescer sem fim. */
+    case ACTIONS.PUSH_HISTORY:
+      return {
+        ...state,
+        history: {
+          past: [...state.history.past, action.payload].slice(-60),
+          future: [],
+        },
+      };
+    case ACTIONS.UNDO: {
+      const entry = state.history.past.at(-1);
+      if (!entry) return state;
+      return {
+        ...state,
+        history: {
+          past: state.history.past.slice(0, -1),
+          future: [...state.history.future, entry],
+        },
+      };
+    }
+    case ACTIONS.REDO: {
+      const entry = state.history.future.at(-1);
+      if (!entry) return state;
+      return {
+        ...state,
+        history: {
+          past: [...state.history.past, entry],
+          future: state.history.future.slice(0, -1),
+        },
+      };
+    }
     case ACTIONS.SET_INSPECTOR_TASK:
       return { ...state, inspectorTaskId: action.payload };
     case ACTIONS.TOGGLE_COMMAND_PALETTE:
@@ -156,6 +196,13 @@ export const AppContext = createContext();
 
 export function AppProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState);
+
+  /* Espelhos do estado para os callbacks estáveis. Sem eles, um
+     useCallback com deps [] leria sempre o primeiro render. */
+  const tasksRef = useRef(state.tasks);
+  const historyRef = useRef(state.history);
+  useEffect(() => { tasksRef.current = state.tasks; }, [state.tasks]);
+  useEffect(() => { historyRef.current = state.history; }, [state.history]);
 
   /* Boot: init DB + load all data */
   useEffect(() => {
@@ -218,29 +265,93 @@ export function AppProvider({ children }) {
     dispatch({ type: ACTIONS.SET_TOAST, payload: { message: 'Projeto removido', type: 'info' } });
   }, []);
 
-  const addTask = useCallback(async (task) => {
-    const id = await dbSaveTask(task);
-    const saved = { ...task, id };
-    dispatch({ type: ACTIONS.ADD_TASK, payload: saved });
-    return saved;
+  /* ── Tarefas + histórico de desfazer ──────────────────────────
+     O histórico guarda DADOS, não funções: cada entrada carrega o
+     estado anterior e o posterior das tarefas afetadas. Desfazer é
+     regravar `before`; refazer é regravar `after`. Serializável e
+     sem closures presas a um render antigo.
+
+     As primitivas `commit*` são as que realmente escrevem; as
+     públicas apenas gravam a entrada de histórico antes. É assim que
+     undo/redo não entram no próprio histórico.                     */
+
+  const commitUpsert = useCallback(async (list) => {
+    for (const t of list) await dbSaveTask(t);
+    dispatch({ type: ACTIONS.UPDATE_TASKS_BATCH, payload: list });
   }, []);
 
-  const updateTask = useCallback(async (task) => {
-    await dbSaveTask(task);
-    dispatch({ type: ACTIONS.UPDATE_TASK, payload: task });
-  }, []);
-
-  const updateTasksBatch = useCallback(async (tasksToUpdate) => {
-    for (const t of tasksToUpdate) {
+  const commitInsert = useCallback(async (list) => {
+    for (const t of list) {
       await dbSaveTask(t);
+      dispatch({ type: ACTIONS.ADD_TASK, payload: t });
     }
-    dispatch({ type: ACTIONS.UPDATE_TASKS_BATCH, payload: tasksToUpdate });
   }, []);
 
-  const removeTask = useCallback(async (id) => {
-    await dbDeleteTask(id);
-    dispatch({ type: ACTIONS.REMOVE_TASK, payload: id });
+  const commitDelete = useCallback(async (ids) => {
+    for (const id of ids) {
+      await dbDeleteTask(id);
+      dispatch({ type: ACTIONS.REMOVE_TASK, payload: id });
+    }
   }, []);
+
+  const record = useCallback((entry) => {
+    dispatch({ type: ACTIONS.PUSH_HISTORY, payload: entry });
+  }, []);
+
+  const addTask = useCallback(async (task) => {
+    await commitInsert([task]);
+    record({ label: 'Adicionar tarefa', added: [task], before: [], after: [] });
+    return task;
+  }, [commitInsert, record]);
+
+  const addTasks = useCallback(async (list) => {
+    if (!list.length) return;
+    await commitInsert(list);
+    record({ label: 'Adicionar tarefas', added: list, before: [], after: [] });
+  }, [commitInsert, record]);
+
+  const updateTasksBatch = useCallback(async (tasksToUpdate, label = 'Editar tarefas') => {
+    if (!tasksToUpdate?.length) return;
+    const current = tasksRef.current;
+    const before = tasksToUpdate
+      .map((t) => current.find((x) => x.id === t.id))
+      .filter(Boolean);
+    await commitUpsert(tasksToUpdate);
+    record({ label, before, after: tasksToUpdate, added: [] });
+  }, [commitUpsert, record]);
+
+  const updateTask = useCallback(
+    (task) => updateTasksBatch([task], 'Editar tarefa'),
+    [updateTasksBatch]
+  );
+
+  const removeTasks = useCallback(async (ids, label = 'Excluir tarefas') => {
+    const current = tasksRef.current;
+    const removed = ids.map((id) => current.find((t) => t.id === id)).filter(Boolean);
+    if (!removed.length) return;
+    await commitDelete(ids);
+    record({ label, removed, before: [], after: [] });
+  }, [commitDelete, record]);
+
+  const removeTask = useCallback((id) => removeTasks([id], 'Excluir tarefa'), [removeTasks]);
+
+  const undo = useCallback(async () => {
+    const entry = historyRef.current.past.at(-1);
+    if (!entry) return;
+    if (entry.added?.length) await commitDelete(entry.added.map((t) => t.id));
+    if (entry.removed?.length) await commitInsert(entry.removed);
+    if (entry.before?.length) await commitUpsert(entry.before);
+    dispatch({ type: ACTIONS.UNDO });
+  }, [commitDelete, commitInsert, commitUpsert]);
+
+  const redo = useCallback(async () => {
+    const entry = historyRef.current.future.at(-1);
+    if (!entry) return;
+    if (entry.added?.length) await commitInsert(entry.added);
+    if (entry.removed?.length) await commitDelete(entry.removed.map((t) => t.id));
+    if (entry.after?.length) await commitUpsert(entry.after);
+    dispatch({ type: ACTIONS.REDO });
+  }, [commitInsert, commitDelete, commitUpsert]);
 
   const addAnomaly = useCallback(async (anomaly) => {
     const id = await dbSaveAnomaly(anomaly);
@@ -317,9 +428,15 @@ export function AppProvider({ children }) {
     updateProject,
     removeProject,
     addTask,
+    addTasks,
     updateTask,
     updateTasksBatch,
     removeTask,
+    removeTasks,
+    undo,
+    redo,
+    canUndo: state.history.past.length > 0,
+    canRedo: state.history.future.length > 0,
     addAnomaly,
     updateAnomaly,
     removeAnomaly,
