@@ -110,12 +110,6 @@ export default function PageTaskList() {
     setShowBulkConfirmDelete(false);
   };
 
-  const openEdit = (task) => {
-    setEditTask(task);
-    setForm({ name: task.name, startDate: task.startDate, endDate: task.endDate, status: task.status, progress: task.progress || 0, assignee: task.assignee || '', projectId: task.projectId });
-    setModalOpen(true);
-  };
-
   const handleSave = async () => {
     if (!form.name.trim()) { showToast('Nome é obrigatório', 'error'); return; }
     if (!form.startDate || !form.endDate) { showToast('Datas são obrigatórias', 'error'); return; }
@@ -214,9 +208,6 @@ export default function PageTaskList() {
                       <td className="actions-cell">
                         <button className="btn-icon-only" onClick={() => openTaskInspector(task.id)} title="Inspecionar (Painel Lateral)">
                           <Eye size={15} />
-                        </button>
-                        <button className="btn-icon-only" onClick={() => openEdit(task)} title="Editar Modal">
-                          <Edit3 size={15} />
                         </button>
                         <button className="btn-icon-only btn-danger-ghost" onClick={() => setConfirmId(task.id)} title="Excluir">
                           <Trash2 size={15} />

@@ -1,5 +1,6 @@
 import React, { useContext } from 'react';
 import { AppContext } from './context/AppContext';
+import { useGlobalShortcuts } from './hooks/useGlobalShortcuts';
 import AppRail from './components/shell/AppRail';
 import TopBar from './components/shell/TopBar';
 import Toast from './components/Toast';
@@ -21,6 +22,7 @@ export function PageScroll({ children }) {
 
 function App() {
   const { state } = useContext(AppContext);
+  useGlobalShortcuts();
 
   const renderPage = () => {
     switch (state.activePage) {

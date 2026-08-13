@@ -9,12 +9,10 @@ import {
   DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent,
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import Modal from '../../components/Modal';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import * as XLSX from 'xlsx';
 import {
-  AlertCircle, Calendar, Download, Plus, Settings, Target, Indent, Outdent, Trash2,
-  Undo2, Redo2,
+  AlertCircle, Calendar, Download, Plus, Settings, Target, Undo2, Redo2,
 } from 'lucide-react';
 
 import {
@@ -22,7 +20,7 @@ import {
 } from '../../utils/schedule';
 import { calculateTaskPlannedProgress } from '../../utils/progress';
 import {
-  ZOOM_LEVELS, COLUMNS, STATUS_OPTIONS, DURATION_UNITS,
+  ZOOM_LEVELS, COLUMNS, DURATION_UNITS,
   DEFAULT_GRID_W, MIN_GRID_W, MAX_GRID_W,
   rowHeightFor, loadVisibleColumns, saveVisibleColumns,
 } from './ganttConfig';
@@ -46,7 +44,7 @@ function generateId() {
 export default function GanttView() {
   const {
     state, addTask, addTasks, updateTasksBatch, removeTasks, showToast,
-    undo, redo, canUndo, canRedo,
+    undo, redo, canUndo, canRedo, openTaskInspector,
   } = useContext(AppContext);
 
   const rowH = rowHeightFor(state.density);
@@ -67,7 +65,6 @@ export default function GanttView() {
   const [draggedIndex, setDraggedIndex] = useState(null);
   const [tooltip, setTooltip] = useState(null);
   const [newTaskName, setNewTaskName] = useState('');
-  const [modalTask, setModalTask] = useState(null);
   const [confirmAction, setConfirmAction] = useState(null);
   const [activeCell, setActiveCell] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
@@ -506,7 +503,7 @@ export default function GanttView() {
 
   /* ── Teclado ────────────────────────────────────────────────── */
   useGanttKeyboard({
-    enabled: !modalTask && !confirmAction,
+    enabled: !state.inspectorTaskId && !confirmAction,
     tasks, columns, activeCell, setActiveCell, editingCell,
     startEdit, commitEdit,
     cancelEdit: () => setEditingCell(null),
@@ -521,8 +518,6 @@ export default function GanttView() {
       collapse ? next.add(id) : next.delete(id);
       return next;
     }),
-    onUndo: undo,
-    onRedo: redo,
   });
 
   if (!activeProject) return null;
@@ -547,7 +542,7 @@ export default function GanttView() {
     onBarEnter: showTooltip,
     onBarMove: moveTooltip,
     onBarLeave: () => setTooltip(null),
-    onOpenDetails: (task) => setModalTask({ ...task }),
+    onOpenDetails: (task) => openTaskInspector(task.id),
     onRowDragStart: (e, i) => { setDraggedIndex(i); e.dataTransfer.effectAllowed = 'move'; },
     onRowDragOver: (e, i) => { e.preventDefault(); if (dragOverIndex !== i) setDragOverIndex(i); },
     onRowDrop: handleRowDrop,
@@ -752,7 +747,7 @@ export default function GanttView() {
         onClose={() => setContextMenu(null)}
         selectionCount={selectedIds.size}
         actions={{
-          openDetails: (task) => setModalTask({ ...task }),
+          openDetails: (task) => openTaskInspector(task.id),
           indent: handleIndent,
           copy: handleCopy,
           paste: handlePaste,
@@ -763,23 +758,6 @@ export default function GanttView() {
         }}
       />
 
-      <TaskDetailsModal
-        task={modalTask}
-        onChange={setModalTask}
-        onClose={() => setModalTask(null)}
-        onSave={async () => {
-          await saveTasks(applyAutoScheduling(modalTask, tasks));
-          setModalTask(null);
-        }}
-        onDelete={() => setConfirmAction({
-          title: 'Excluir tarefa',
-          message: `Excluir "${modalTask.name}"? A ação não pode ser desfeita.`,
-          onConfirm: async () => { await removeTask(modalTask.id); setModalTask(null); },
-        })}
-        predecessorLabel={predecessorLabel}
-        predecessorFromLabel={predecessorFromLabel}
-      />
-
       <ConfirmDialog
         isOpen={!!confirmAction}
         onClose={() => setConfirmAction(null)}
@@ -788,88 +766,5 @@ export default function GanttView() {
         message={confirmAction?.message}
       />
     </div>
-  );
-}
-
-/* ── Modal de detalhes ────────────────────────────────────────────
-   Temporário: a Fase 4 troca por um Inspector único, eliminando o
-   terceiro caminho de edição.                                     */
-
-function TaskDetailsModal({
-  task, onChange, onClose, onSave, onDelete, predecessorLabel, predecessorFromLabel,
-}) {
-  if (!task) return null;
-  const set = (patch) => onChange({ ...task, ...patch });
-
-  return (
-    <Modal isOpen={!!task} onClose={onClose} title="Detalhes da tarefa">
-      <div className="modal-body">
-        <div className="form-group">
-          <label>Nome</label>
-          <input value={task.name} onChange={(e) => set({ name: e.target.value })} />
-        </div>
-        <div className="form-row">
-          <div className="form-group">
-            <label>Início</label>
-            <input type="date" value={task.startDate || ''} onChange={(e) => set({ startDate: e.target.value })} />
-          </div>
-          <div className="form-group">
-            <label>Término</label>
-            <input type="date" value={task.endDate || ''} onChange={(e) => set({ endDate: e.target.value })} />
-          </div>
-        </div>
-        <div className="form-row">
-          <div className="form-group">
-            <label>Progresso (%)</label>
-            <input type="number" min="0" max="100" value={task.progress ?? 0}
-              onChange={(e) => set({ progress: clampProgress(e.target.value) })} />
-          </div>
-          <div className="form-group">
-            <label>Status</label>
-            <select value={task.status || ''} onChange={(e) => set({ status: e.target.value })}>
-              {STATUS_OPTIONS.map((s) => <option key={s}>{s}</option>)}
-            </select>
-          </div>
-        </div>
-        <div className="form-group">
-          <label>Predecessoras (números de linha)</label>
-          <input placeholder="Ex: 1, 3" value={predecessorLabel(task.dependsOn)}
-            onChange={(e) => set({ dependsOn: predecessorFromLabel(e.target.value) })} />
-        </div>
-        <div className="form-row">
-          <div className="form-group">
-            <label>Recursos</label>
-            <input value={task.resources || ''} onChange={(e) => set({ resources: e.target.value })} />
-          </div>
-          <div className="form-group">
-            <label>Grupo</label>
-            <input value={task.resourceGroup || ''} onChange={(e) => set({ resourceGroup: e.target.value })} />
-          </div>
-        </div>
-        <div className="form-group">
-          <label>Hierarquia (nível {task.indentLevel || 0})</label>
-          <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-            <button type="button" className="btn-secondary btn-sm"
-              onClick={() => set({ indentLevel: Math.max(0, (task.indentLevel || 0) - 1) })}>
-              <Outdent size={14} /> Recuar
-            </button>
-            <button type="button" className="btn-secondary btn-sm"
-              onClick={() => set({ indentLevel: (task.indentLevel || 0) + 1 })}>
-              <Indent size={14} /> Avançar
-            </button>
-          </div>
-        </div>
-
-        <div className="modal-actions" style={{ display: 'flex', justifyContent: 'space-between', marginTop: 24 }}>
-          <button className="btn-icon-only btn-danger-ghost" title="Excluir tarefa" onClick={onDelete}>
-            <Trash2 size={18} />
-          </button>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn-ghost" onClick={onClose}>Cancelar</button>
-            <button className="btn-primary" onClick={onSave}>Salvar</button>
-          </div>
-        </div>
-      </div>
-    </Modal>
   );
 }

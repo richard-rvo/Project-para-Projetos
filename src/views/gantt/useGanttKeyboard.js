@@ -44,8 +44,6 @@ export function useGanttKeyboard({
   onCopySelected,
   onPasteClipboard,
   onToggleCollapse,
-  onUndo,
-  onRedo,
 }) {
   /* Cálculo FORA de qualquer updater de estado.
      Disparar setSelectedIds de dentro do updater de setActiveCell
@@ -84,13 +82,6 @@ export function useGanttKeyboard({
       if (!editing && !e.target.closest?.('.gantt-view')) return;
 
       const mod = e.metaKey || e.ctrlKey;
-
-      /* Desfazer / refazer valem inclusive durante a edição de célula */
-      if (mod && e.key.toLowerCase() === 'z') {
-        e.preventDefault();
-        e.shiftKey ? onRedo() : onUndo();
-        return;
-      }
 
       if (editing) {
         if (e.key === 'Tab') {
@@ -157,7 +148,7 @@ export function useGanttKeyboard({
     enabled, editingCell, activeCell, tasks, columns, selectedIds,
     moveCell, startEdit, commitEdit, cancelEdit, setSelectedIds,
     onIndent, onDeleteSelected, onDuplicateSelected, onCopySelected,
-    onPasteClipboard, onToggleCollapse, onUndo, onRedo,
+    onPasteClipboard, onToggleCollapse,
   ]);
 
   return { moveCell };

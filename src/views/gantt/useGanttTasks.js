@@ -132,7 +132,12 @@ function buildSuccessorMap(tasks) {
  * conseguirá responder.
  */
 export function useAutoScheduling() {
-  return useCallback((changedTask, allTasks) => {
+  return useCallback(applyForwardPass, []);
+}
+
+/** A mesma regra fora de hook, para o Inspector poder reaproveitá-la. */
+export function applyForwardPass(changedTask, allTasks) {
+  {
     const updates = new Map([[changedTask.id, changedTask]]);
     const successors = buildSuccessorMap(allTasks);
     const queue = [changedTask];
@@ -169,7 +174,7 @@ export function useAutoScheduling() {
     }
 
     return Array.from(updates.values());
-  }, []);
+  }
 }
 
 /**
