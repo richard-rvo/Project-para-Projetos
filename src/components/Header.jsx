@@ -1,36 +1,92 @@
 import React, { useContext } from 'react';
 import { AppContext } from '../context/AppContext';
 import ThemeToggle from './ThemeToggle';
-import { Search, Bell } from 'lucide-react';
+import { Bell, ChevronRight, ChevronDown } from 'lucide-react';
 
 export default function Header() {
-  const { state } = useContext(AppContext);
+  const { state, selectProject, setProjectTab } = useContext(AppContext);
+
+  /* ── Breadcrumb logic ───────────────────────────────────────── */
+  const isInsideProject = state.activePage === 'pageProjectWorkspace';
+  const activeProject = state.projects.find((p) => p.id === state.activeProjectId);
 
   const pageTitles = {
-    pageGantt: 'Gráfico Gantt',
-    pageSCurve: 'Curva S & Avanço',
-    pageTaskList: 'Lista de Tarefas',
-    pageProjects: 'Painel de Projetos',
-    pageSettings: 'Configurações & Dados',
+    pageDashboard:        'Dashboard',
+    pageProjects:         'Projetos',
+    pageAnomalies:        'Anomalias',
+    pageReports:          'Relatórios',
+    pageSettings:         'Configurações & Dados',
+    pageProjectWorkspace: activeProject?.name || 'Projeto',
   };
+
+  const TAB_LABELS = {
+    overview:  'Visão Geral',
+    gantt:     'Gantt',
+    scurve:    'Curva S',
+    tasklist:  'Tarefas',
+    anomalies: 'Anomalias',
+  };
+
+  /* Anomaly badge count for active project */
+  const openAnomaliesCount = state.anomalies.filter(
+    (a) => a.projectId === state.activeProjectId && a.status === 'aberta'
+  ).length;
 
   return (
     <header className="app-header">
       <div className="header-left">
-        <h1 className="header-page-title">{pageTitles[state.activePage] || 'Gantt Dinâmico'}</h1>
+        {isInsideProject ? (
+          /* Breadcrumb: Projetos > Nome do Projeto > Tab Ativa */
+          <nav className="header-breadcrumb" aria-label="breadcrumb">
+            <button
+              className="breadcrumb-item breadcrumb-link"
+              onClick={() => selectProject(null)}
+            >
+              Projetos
+            </button>
+            <ChevronRight size={14} className="breadcrumb-sep" />
+            <span className="breadcrumb-item breadcrumb-current">
+              {activeProject?.name || 'Projeto'}
+            </span>
+            <ChevronRight size={14} className="breadcrumb-sep" />
+            <span className="breadcrumb-item breadcrumb-tab">
+              {TAB_LABELS[state.activeProjectTab] || state.activeProjectTab}
+            </span>
+          </nav>
+        ) : (
+          <h1 className="header-page-title">
+            {pageTitles[state.activePage] || 'Projeta'}
+          </h1>
+        )}
       </div>
+
       <div className="header-right">
-        <div className="header-search">
-          <Search size={16} />
-          <input type="text" placeholder="Buscar..." className="search-input" />
-        </div>
-        <button className="btn-icon-only" title="Notificações">
+        {/* Quick project switcher when inside a project */}
+        {isInsideProject && state.projects.length > 1 && (
+          <div className="header-project-switcher">
+            <select
+              className="project-switcher-select"
+              value={state.activeProjectId || ''}
+              onChange={(e) => {
+                const id = e.target.value;
+                if (id) selectProject(id);
+              }}
+              title="Trocar projeto"
+            >
+              {state.projects.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+            <ChevronDown size={14} className="project-switcher-arrow" />
+          </div>
+        )}
+        <button className="btn-icon-only" title="Notificações" style={{ position: 'relative' }}>
           <Bell size={18} />
+          {openAnomaliesCount > 0 && (
+            <span className="notif-badge">{openAnomaliesCount > 9 ? '9+' : openAnomaliesCount}</span>
+          )}
         </button>
         <ThemeToggle />
-        <div className="header-avatar" title="Usuário">
-          <span>U</span>
-        </div>
       </div>
     </header>
   );

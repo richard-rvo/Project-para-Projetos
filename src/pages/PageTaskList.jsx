@@ -195,15 +195,7 @@ export default function PageTaskList() {
           <label>Responsável</label>
           <input type="text" value={form.assignee} onChange={(e) => setForm({ ...form, assignee: e.target.value })} placeholder="Nome do responsável" />
         </div>
-        {!state.activeProjectId && (
-          <div className="form-group">
-            <label>Projeto</label>
-            <select value={form.projectId} onChange={(e) => setForm({ ...form, projectId: e.target.value })}>
-              <option value="">Selecionar projeto...</option>
-              {state.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          </div>
-        )}
+        {/* Project is always set from context inside ProjectWorkspace */}
         <div className="modal-actions">
           <button className="btn-secondary" onClick={() => { setModalOpen(false); setEditTask(null); }}>Cancelar</button>
           <button className="btn-primary" onClick={handleSave}>{editTask ? 'Salvar' : 'Criar'}</button>

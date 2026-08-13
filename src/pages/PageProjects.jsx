@@ -5,6 +5,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import ProgressBar from '../components/ProgressBar';
 import Badge from '../components/Badge';
 import { Plus, Trash2, BarChart2, Calendar, Target, TrendingUp, FolderOpen } from 'lucide-react';
+import { calculateProjectMetrics } from '../utils/progress';
 
 function generateId() {
   return Date.now() + Math.random().toString(36).slice(2, 9);
@@ -24,13 +25,13 @@ export default function PageProjects() {
     const total = projects.length;
     const active = projects.filter((p) => p.status === 'Em Andamento').length;
     const completed = projects.filter((p) => p.status === 'Concluído').length;
-    const avgProgress = total > 0
-      ? Math.round(projects.reduce((sum, p) => {
-          const projTasks = tasks.filter((t) => t.projectId === p.id);
-          if (projTasks.length === 0) return sum;
-          return sum + projTasks.reduce((s, t) => s + (t.progress || 0), 0) / projTasks.length;
-        }, 0) / total)
-      : 0;
+    let sumProgress = 0;
+    projects.forEach(p => {
+      const projTasks = tasks.filter((t) => t.projectId === p.id);
+      const metrics = calculateProjectMetrics(projTasks);
+      sumProgress += metrics.progress;
+    });
+    const avgProgress = total > 0 ? Math.round(sumProgress / total) : 0;
     return { total, active, completed, avgProgress };
   }, [projects, tasks]);
 
@@ -48,44 +49,12 @@ export default function PageProjects() {
 
   const openProject = (id) => {
     selectProject(id);
-    navigate('pageGantt');
+    navigate('pageProjectWorkspace');
   };
 
-  const getProjectProgress = (projectId) => {
+  const getProjectMetrics = (projectId) => {
     const projTasks = tasks.filter((t) => t.projectId === projectId);
-    if (projTasks.length === 0) return 0;
-    return Math.round(projTasks.reduce((s, t) => s + (t.progress || 0), 0) / projTasks.length);
-  };
-
-  const getProjectHealth = (projectId) => {
-    const projTasks = tasks.filter((t) => t.projectId === projectId);
-    if (projTasks.length === 0) return { label: 'Saúde: N/A', color: 'gray' };
-    
-    const actualProgress = Math.round(projTasks.reduce((s, t) => s + (t.progress || 0), 0) / projTasks.length);
-
-    const starts = projTasks.map(t => new Date(t.startDate + 'T12:00:00').getTime()).filter(n => !isNaN(n));
-    const ends = projTasks.map(t => new Date(t.endDate + 'T12:00:00').getTime()).filter(n => !isNaN(n));
-    
-    if (starts.length === 0 || ends.length === 0) return { label: 'Saúde: N/A', color: 'gray' };
-    
-    const minStart = Math.min(...starts);
-    const maxEnd = Math.max(...ends);
-    const todayMs = new Date(new Date().toISOString().slice(0,10) + 'T12:00:00').getTime();
-    
-    let plannedProgress = 0;
-    if (todayMs >= maxEnd) {
-      plannedProgress = 100;
-    } else if (todayMs <= minStart) {
-      plannedProgress = 0;
-    } else {
-      plannedProgress = Math.round(((todayMs - minStart) / (maxEnd - minStart)) * 100);
-    }
-
-    const deviation = actualProgress - plannedProgress;
-
-    if (deviation >= -5) return { label: 'Saúde: Boa', color: 'green' };
-    if (deviation >= -15) return { label: 'Saúde: Atenção', color: 'orange' };
-    return { label: 'Saúde: Crítica', color: 'red' };
+    return calculateProjectMetrics(projTasks);
   };
 
   const getStatusBadge = (status) => {
@@ -154,10 +123,15 @@ export default function PageProjects() {
       ) : (
         <div className="projects-grid">
           {projects.map((project) => {
-            const progress = getProjectProgress(project.id);
+            const metrics = getProjectMetrics(project.id);
             const taskCount = tasks.filter((t) => t.projectId === project.id).length;
             const badge = getStatusBadge(project.status);
-            const health = getProjectHealth(project.id);
+            
+            let healthColor = 'gray';
+            if (metrics.health === 'Boa') healthColor = 'green';
+            else if (metrics.health === 'Atenção') healthColor = 'orange';
+            else if (metrics.health === 'Crítica') healthColor = 'red';
+            
             return (
               <div key={project.id} className="project-card glass-card" onClick={() => openProject(project.id)}>
                 <div className="project-card-header">
@@ -173,11 +147,11 @@ export default function PageProjects() {
                 {project.description && <p className="project-card-desc">{project.description}</p>}
                 <div className="project-card-meta">
                   <Badge label={badge.label} color={badge.color} />
-                  <Badge label={health.label} color={health.color} />
+                  <Badge label={`Saúde: ${metrics.health}`} color={healthColor} />
                   <span className="meta-item"><Calendar size={14} /> {project.startDate || '—'}</span>
                   <span className="meta-item">{taskCount} tarefa{taskCount !== 1 ? 's' : ''}</span>
                 </div>
-                <ProgressBar value={progress} showLabel />
+                <ProgressBar value={metrics.progress} showLabel />
               </div>
             );
           })}

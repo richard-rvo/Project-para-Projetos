@@ -5,7 +5,7 @@ import ProgressBar from '../components/ProgressBar';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import {
-  Plus, Trash2, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, GripVertical,
+  Plus, Trash2, ZoomIn, ZoomOut, ChevronRight, GripVertical,
   ChevronDown, ChevronRight as ChevronRightIcon, Calendar, Milestone,
   Undo2, Redo2, ArrowDownUp, Link2, Eye, Target, AlertCircle,
 } from 'lucide-react';
@@ -68,7 +68,7 @@ const STATUS_COLORS = {
 };
 
 export default function PageGantt() {
-  const { state, addTask, updateTask, updateTasksBatch, removeTask, navigate, showToast, selectProject } = useContext(AppContext);
+  const { state, addTask, updateTask, updateTasksBatch, removeTask, showToast } = useContext(AppContext);
   const [zoomIdx, setZoomIdx] = useState(0); // start at day level
   const [splitWidth, setSplitWidth] = useState(660);
   const [editingCell, setEditingCell] = useState(null); // { taskId, field }
@@ -569,21 +569,8 @@ export default function PageGantt() {
     );
   };
 
-  /* ── no active project ───────────────────────────────────── */
-  if (!activeProject) {
-    return (
-      <div className="page-section" id="pageGantt">
-        <div className="empty-state">
-          <Calendar size={48} strokeWidth={1} />
-          <h3>Nenhum projeto selecionado</h3>
-          <p>Selecione um projeto no Painel de Projetos para visualizar o Gantt.</p>
-          <button className="btn-primary" onClick={() => navigate('pageProjects')}>
-            Ir para Projetos
-          </button>
-        </div>
-      </div>
-    );
-  }
+  /* PageGantt is always rendered inside ProjectWorkspace — no guard needed */
+  if (!activeProject) return null;
 
   const totalWidth = timelineDays * zoom.dayWidth;
   const todayIdx = daysBetween(timelineStart, today());
@@ -593,10 +580,6 @@ export default function PageGantt() {
       {/* ── Toolbar ────────────────────────────────────────── */}
       <div className="gantt-toolbar">
         <div className="toolbar-left">
-          <button className="btn-ghost" onClick={() => { selectProject(null); navigate('pageProjects'); }}>
-            <ChevronLeft size={16} /> Projetos
-          </button>
-          <div className="toolbar-divider" />
           <h2 className="gantt-project-title">{activeProject.name}</h2>
         </div>
         <div className="toolbar-right">

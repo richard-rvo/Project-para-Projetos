@@ -123,6 +123,8 @@ export default function PageSettings() {
               <span>{state.projects.length} projeto{state.projects.length !== 1 ? 's' : ''}</span>
               <span>•</span>
               <span>{state.tasks.length} tarefa{state.tasks.length !== 1 ? 's' : ''}</span>
+              <span>•</span>
+              <span>{state.anomalies?.length || 0} anomalia{(state.anomalies?.length || 0) !== 1 ? 's' : ''}</span>
             </div>
           </div>
         </div>
@@ -134,8 +136,8 @@ export default function PageSettings() {
             <h3>Sobre</h3>
           </div>
           <div className="settings-card-body">
-            <p><strong>Gantt Dinâmico</strong> v1.0.0</p>
-            <p>Sistema de gestão de projetos com gráfico Gantt interativo, Curva S, lista de tarefas e dashboard de projetos.</p>
+            <p><strong>Projeta</strong> v2.0.0</p>
+            <p>Sistema de gestão de projetos com Gantt interativo, Curva S, lista de tarefas, registro de anomalias e dashboard executivo.</p>
             <p className="text-muted">Dados armazenados localmente via IndexedDB.</p>
           </div>
         </div>

@@ -1,20 +1,29 @@
 import { openDB } from 'idb';
 
 const DB_NAME = 'gantt-dinamico-db';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let dbPromise = null;
 
 export async function initDB() {
   if (!dbPromise) {
     dbPromise = openDB(DB_NAME, DB_VERSION, {
-      upgrade(db) {
-        if (!db.objectStoreNames.contains('projects')) {
-          db.createObjectStore('projects', { keyPath: 'id', autoIncrement: true });
+      upgrade(db, oldVersion) {
+        if (oldVersion < 1) {
+          if (!db.objectStoreNames.contains('projects')) {
+            db.createObjectStore('projects', { keyPath: 'id', autoIncrement: true });
+          }
+          if (!db.objectStoreNames.contains('tasks')) {
+            const taskStore = db.createObjectStore('tasks', { keyPath: 'id', autoIncrement: true });
+            taskStore.createIndex('by-project', 'projectId');
+          }
         }
-        if (!db.objectStoreNames.contains('tasks')) {
-          const taskStore = db.createObjectStore('tasks', { keyPath: 'id', autoIncrement: true });
-          taskStore.createIndex('by-project', 'projectId');
+        if (oldVersion < 2) {
+          if (!db.objectStoreNames.contains('anomalies')) {
+            const anomalyStore = db.createObjectStore('anomalies', { keyPath: 'id', autoIncrement: true });
+            anomalyStore.createIndex('by-project', 'projectId');
+            anomalyStore.createIndex('by-status', 'status');
+          }
         }
       },
     });
@@ -42,13 +51,17 @@ export async function saveProject(project) {
 
 export async function deleteProject(id) {
   const db = await initDB();
-  // also delete all tasks for this project
-  const tx = db.transaction(['projects', 'tasks'], 'readwrite');
+  const tx = db.transaction(['projects', 'tasks', 'anomalies'], 'readwrite');
   await tx.objectStore('projects').delete(id);
   const taskStore = tx.objectStore('tasks');
   const allTasks = await taskStore.index('by-project').getAllKeys(id);
   for (const taskId of allTasks) {
     await taskStore.delete(taskId);
+  }
+  const anomalyStore = tx.objectStore('anomalies');
+  const allAnomalies = await anomalyStore.index('by-project').getAllKeys(id);
+  for (const anomalyId of allAnomalies) {
+    await anomalyStore.delete(anomalyId);
   }
   await tx.done;
 }
@@ -76,18 +89,44 @@ export async function deleteTask(id) {
   return db.delete('tasks', id);
 }
 
+/* ── Anomalies ───────────────────────────────────────────────── */
+
+export async function getAllAnomalies() {
+  const db = await initDB();
+  return db.getAll('anomalies');
+}
+
+export async function getAnomaliesByProject(projectId) {
+  const db = await initDB();
+  return db.getAllFromIndex('anomalies', 'by-project', projectId);
+}
+
+export async function saveAnomaly(anomaly) {
+  const db = await initDB();
+  const id = await db.put('anomalies', anomaly);
+  return id;
+}
+
+export async function deleteAnomaly(id) {
+  const db = await initDB();
+  return db.delete('anomalies', id);
+}
+
 /* ── Backup / Restore ────────────────────────────────────────── */
 
 export async function exportDB() {
   const db = await initDB();
   const projects = await db.getAll('projects');
   const tasks = await db.getAll('tasks');
-  const data = { projects, tasks, exportedAt: new Date().toISOString() };
+  const anomalies = await db.getAll('anomalies');
+  // Strip photo data from backup to keep file small; photos stay local only
+  const anomaliesNoPhotos = anomalies.map(({ photos: _p, ...rest }) => rest);
+  const data = { projects, tasks, anomalies: anomaliesNoPhotos, exportedAt: new Date().toISOString(), version: 2 };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `gantt_backup_${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = `projeta_backup_${new Date().toISOString().slice(0, 10)}.json`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -99,11 +138,16 @@ export async function importDB(jsonString) {
     const data = JSON.parse(jsonString);
     if (!data.projects || !data.tasks) throw new Error('Formato inválido');
     const db = await initDB();
-    const tx = db.transaction(['projects', 'tasks'], 'readwrite');
+    const stores = ['projects', 'tasks', 'anomalies'];
+    const tx = db.transaction(stores, 'readwrite');
     await tx.objectStore('projects').clear();
     await tx.objectStore('tasks').clear();
+    await tx.objectStore('anomalies').clear();
     for (const p of data.projects) await tx.objectStore('projects').put(p);
     for (const t of data.tasks) await tx.objectStore('tasks').put(t);
+    if (data.anomalies) {
+      for (const a of data.anomalies) await tx.objectStore('anomalies').put(a);
+    }
     await tx.done;
     return true;
   } catch (e) {
@@ -114,8 +158,9 @@ export async function importDB(jsonString) {
 
 export async function clearAllData() {
   const db = await initDB();
-  const tx = db.transaction(['projects', 'tasks'], 'readwrite');
+  const tx = db.transaction(['projects', 'tasks', 'anomalies'], 'readwrite');
   await tx.objectStore('projects').clear();
   await tx.objectStore('tasks').clear();
+  await tx.objectStore('anomalies').clear();
   await tx.done;
 }

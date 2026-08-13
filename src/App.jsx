@@ -3,34 +3,28 @@ import { AppContext } from './context/AppContext';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import Toast from './components/Toast';
-import PageGantt from './pages/PageGantt';
-import PageSCurve from './pages/PageSCurve';
-import PageTaskList from './pages/PageTaskList';
+import ProjectWorkspace from './components/ProjectWorkspace';
+import PageDashboard from './pages/PageDashboard';
 import PageProjects from './pages/PageProjects';
+import PageAnomalies from './pages/PageAnomalies';
+import PageReports from './pages/PageReports';
 import PageSettings from './pages/PageSettings';
-import { getAllTasks } from './utils/storage';
 
 function App() {
-  const { state, dispatch, ACTIONS } = useContext(AppContext);
-
-  /* Load all tasks on mount */
-  useEffect(() => {
-    (async () => {
-      const tasks = await getAllTasks();
-      dispatch({ type: ACTIONS.SET_TASKS, payload: tasks });
-    })();
-  }, []);
+  const { state } = useContext(AppContext);
 
   const renderPage = () => {
     switch (state.activePage) {
-      case 'pageGantt':
-        return <PageGantt />;
-      case 'pageSCurve':
-        return <PageSCurve />;
-      case 'pageTaskList':
-        return <PageTaskList />;
+      case 'pageDashboard':
+        return <PageDashboard />;
       case 'pageProjects':
         return <PageProjects />;
+      case 'pageProjectWorkspace':
+        return <ProjectWorkspace />;
+      case 'pageAnomalies':
+        return <PageAnomalies />;
+      case 'pageReports':
+        return <PageReports />;
       case 'pageSettings':
         return <PageSettings />;
       default:
