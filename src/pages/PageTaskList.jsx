@@ -142,7 +142,6 @@ export default function PageTaskList() {
     <div className="page-section" id="pageTaskList">
       {/* Toolbar */}
       <div className="page-toolbar">
-        <h2>Lista de Tarefas {state.activeProjectId && <span className="subtitle">— {getProjectName(state.activeProjectId)}</span>}</h2>
         <button className="btn-primary" onClick={() => { setEditTask(null); setForm(emptyForm); setModalOpen(true); }}>
           <Plus size={16} /> Nova Tarefa
         </button>

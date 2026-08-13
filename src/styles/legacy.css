@@ -13,6 +13,9 @@
    styles/tokens.css + utilitários Tailwind + styles/views/*.
    ═══════════════════════════════════════════════════════════════ */
 
+@layer legacy {
+
+
 :root {
   /* ── Superfícies e texto ──────────────────────────────────── */
   --color-bg: var(--surface-0);
@@ -360,8 +363,19 @@ button {
   white-space: nowrap;
 }
 
-button:hover { transform: translateY(-1px); }
-button:active { transform: translateY(0); }
+/* Escopado às classes legadas: como seletor de elemento, este hover
+   fazia TODO botão novo do shell tremer ao passar o mouse. */
+.btn-primary:hover,
+.btn-secondary:hover,
+.btn-ghost:hover,
+.btn-icon-only:hover,
+.btn-link:hover { transform: translateY(-1px); }
+
+.btn-primary:active,
+.btn-secondary:active,
+.btn-ghost:active,
+.btn-icon-only:active,
+.btn-link:active { transform: translateY(0); }
 
 .btn-primary {
   background: var(--gradient-primary);
@@ -2858,3 +2872,5 @@ button:active { transform: translateY(0); }
 }
 
 
+
+}

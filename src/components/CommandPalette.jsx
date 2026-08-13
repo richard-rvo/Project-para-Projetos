@@ -1,209 +1,196 @@
-import React, { useContext, useState, useEffect, useRef } from 'react';
+import React, { useContext, useEffect } from 'react';
 import { AppContext } from '../context/AppContext';
 import {
-  Search,
+  CommandDialog,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+} from '@/components/ui/command';
+import { PROJECT_VIEWS } from './shell/TopBar';
+import {
+  LayoutGrid,
+  AlertTriangle,
+  FileBarChart,
+  Settings,
   Folder,
   CheckSquare,
-  AlertTriangle,
-  LayoutGrid,
-  BarChart2,
-  TrendingUp,
-  FileText,
-  Settings,
-  ArrowRight,
-  Sparkles,
 } from 'lucide-react';
 
+const NAV_COMMANDS = [
+  { id: 'pagePortfolio', label: 'Portfólio', icon: LayoutGrid },
+  { id: 'pageAnomalies', label: 'Central de Anomalias', icon: AlertTriangle },
+  { id: 'pageReports', label: 'Relatórios', icon: FileBarChart },
+  { id: 'pageSettings', label: 'Configurações', icon: Settings },
+];
+
+/**
+ * Command palette (⌘K) sobre o primitivo Command do shadcn (cmdk).
+ *
+ * A versão anterior era filtro e navegação de teclado escritos à mão.
+ * O cmdk resolve pontuação de busca, navegação por setas, foco e
+ * acessibilidade — e ganhamos as ações da view ativa de brinde.
+ */
 export default function CommandPalette() {
-  const { state, toggleCommandPalette, selectProject, setProjectTab, navigate, openTaskInspector } = useContext(AppContext);
+  const {
+    state,
+    toggleCommandPalette,
+    selectProject,
+    setProjectTab,
+    navigate,
+    openTaskInspector,
+    setDensity,
+    setTheme,
+  } = useContext(AppContext);
+
   const { isCommandPaletteOpen, projects, tasks, anomalies, activeProjectId } = state;
-  const [query, setQuery] = useState('');
-  const inputRef = useRef(null);
+  const insideProject = state.activePage === 'pageProjectWorkspace' && activeProjectId;
 
-  // Focus input when opened
+  /* ⌘K / Ctrl+K global */
   useEffect(() => {
-    if (isCommandPaletteOpen) {
-      setQuery('');
-      setTimeout(() => inputRef.current?.focus(), 50);
-    }
-  }, [isCommandPaletteOpen]);
-
-  // Global hotkey handler (⌘K or Ctrl+K)
-  useEffect(() => {
-    const handleKeyDown = (e) => {
+    const onKeyDown = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         toggleCommandPalette();
       }
-      if (e.key === 'Escape' && isCommandPaletteOpen) {
-        toggleCommandPalette(false);
-      }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isCommandPaletteOpen, toggleCommandPalette]);
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [toggleCommandPalette]);
 
-  if (!isCommandPaletteOpen) return null;
-
-  const q = query.trim().toLowerCase();
-
-  // Navigation Items
-  const navItems = [
-    { label: 'Ir para Dashboard Executivo', page: 'pageDashboard', icon: LayoutGrid },
-    { label: 'Ir para Lista de Projetos', page: 'pageProjects', icon: Folder },
-    { label: 'Ir para Central de Anomalias', page: 'pageAnomalies', icon: AlertTriangle },
-    { label: 'Ir para Relatórios Executivos', page: 'pageReports', icon: FileText },
-    { label: 'Ir para Configurações do Sistema', page: 'pageSettings', icon: Settings },
-  ].filter((item) => !q || item.label.toLowerCase().includes(q));
-
-  // Projects Filtered
-  const filteredProjects = projects.filter((p) => !q || p.name.toLowerCase().includes(q));
-
-  // Tasks Filtered
-  const filteredTasks = tasks
-    .filter((t) => !q || t.name.toLowerCase().includes(q))
-    .slice(0, 5);
-
-  // Anomalies Filtered
-  const filteredAnomalies = anomalies
-    .filter((a) => !q || a.title.toLowerCase().includes(q))
-    .slice(0, 5);
-
-  const handleSelectNav = (page) => {
-    navigate(page);
+  const run = (fn) => () => {
+    fn();
     toggleCommandPalette(false);
   };
 
-  const handleSelectProject = (projId, tab = 'overview') => {
-    selectProject(projId);
-    setProjectTab(tab);
-    toggleCommandPalette(false);
-  };
-
-  const handleSelectTask = (task) => {
-    selectProject(task.projectId);
-    setProjectTab('gantt');
-    openTaskInspector(task.id);
-    toggleCommandPalette(false);
-  };
-
-  const handleSelectAnomaly = (anom) => {
-    selectProject(anom.projectId);
-    setProjectTab('anomalies');
-    toggleCommandPalette(false);
-  };
+  /* Tarefas do projeto aberto primeiro — é onde a busca costuma mirar. */
+  const rankedTasks = [...tasks]
+    .sort((a, b) => {
+      const aIn = a.projectId === activeProjectId ? 0 : 1;
+      const bIn = b.projectId === activeProjectId ? 0 : 1;
+      return aIn - bIn;
+    })
+    .slice(0, 40);
 
   return (
-    <div className="command-palette-overlay" onClick={() => toggleCommandPalette(false)}>
-      <div className="command-palette-modal" onClick={(e) => e.stopPropagation()}>
-        {/* Search input header */}
-        <div className="command-palette-search">
-          <Search size={20} className="search-icon" />
-          <input
-            ref={inputRef}
-            type="text"
-            className="command-palette-input"
-            placeholder="Pesquisar projetos, tarefas, anomalias ou comandos (⌘K)..."
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-          <kbd className="command-palette-kbd">ESC</kbd>
-        </div>
+    <CommandDialog
+      open={isCommandPaletteOpen}
+      onOpenChange={(open) => toggleCommandPalette(open)}
+      title="Comandos"
+      description="Busque projetos, tarefas, anomalias ou execute uma ação"
+    >
+      <CommandInput placeholder="Buscar projetos, tarefas, anomalias ou comandos…" />
+      <CommandList>
+        <CommandEmpty>Nenhum resultado.</CommandEmpty>
 
-        {/* Results Body */}
-        <div className="command-palette-results">
-          {/* Global Navigation */}
-          {navItems.length > 0 && (
-            <div className="command-group">
-              <div className="command-group-title">Navegação</div>
-              {navItems.map((item, idx) => {
-                const Icon = item.icon;
-                return (
-                  <div
-                    key={idx}
-                    className="command-item"
-                    onClick={() => handleSelectNav(item.page)}
-                  >
-                    <Icon size={16} className="command-item-icon" />
-                    <span>{item.label}</span>
-                    <ArrowRight size={14} className="command-arrow" />
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Projects Group */}
-          {filteredProjects.length > 0 && (
-            <div className="command-group">
-              <div className="command-group-title">Projetos</div>
-              {filteredProjects.map((p) => (
-                <div
-                  key={p.id}
-                  className="command-item"
-                  onClick={() => handleSelectProject(p.id)}
+        {insideProject && (
+          <>
+            <CommandGroup heading="Ir para">
+              {PROJECT_VIEWS.map((view) => (
+                <CommandItem
+                  key={view.id}
+                  value={`view ${view.label}`}
+                  onSelect={run(() => setProjectTab(view.id))}
                 >
-                  <Folder size={16} className="command-item-icon text-primary" />
-                  <div className="command-item-content">
-                    <span className="command-item-title">{p.name}</span>
-                    <span className="command-item-subtitle">{p.code || 'Projeto'} • {p.status || 'Em andamento'}</span>
-                  </div>
-                  <ArrowRight size={14} className="command-arrow" />
-                </div>
+                  <view.icon size={15} strokeWidth={1.8} />
+                  <span>{view.label}</span>
+                </CommandItem>
               ))}
-            </div>
-          )}
+            </CommandGroup>
+            <CommandSeparator />
+          </>
+        )}
 
-          {/* Tasks Group */}
-          {filteredTasks.length > 0 && (
-            <div className="command-group">
-              <div className="command-group-title">Tarefas</div>
-              {filteredTasks.map((t) => (
-                <div
-                  key={t.id}
-                  className="command-item"
-                  onClick={() => handleSelectTask(t)}
-                >
-                  <CheckSquare size={16} className="command-item-icon text-blue" />
-                  <div className="command-item-content">
-                    <span className="command-item-title">{t.name}</span>
-                    <span className="command-item-subtitle">Progresso: {t.progress || 0}% • Duração: {t.duration || 1}d</span>
-                  </div>
-                  <ArrowRight size={14} className="command-arrow" />
-                </div>
-              ))}
-            </div>
-          )}
+        <CommandGroup heading="Navegação">
+          {NAV_COMMANDS.map((item) => (
+            <CommandItem
+              key={item.id}
+              value={`navegar ${item.label}`}
+              onSelect={run(() => navigate(item.id))}
+            >
+              <item.icon size={15} strokeWidth={1.8} />
+              <span>{item.label}</span>
+            </CommandItem>
+          ))}
+        </CommandGroup>
 
-          {/* Anomalies Group */}
-          {filteredAnomalies.length > 0 && (
-            <div className="command-group">
-              <div className="command-group-title">Anomalias</div>
-              {filteredAnomalies.map((a) => (
-                <div
-                  key={a.id}
-                  className="command-item"
-                  onClick={() => handleSelectAnomaly(a)}
-                >
-                  <AlertTriangle size={16} className="command-item-icon text-amber" />
-                  <div className="command-item-content">
-                    <span className="command-item-title">{a.title}</span>
-                    <span className="command-item-subtitle">Severidade: {a.severity} • Status: {a.status}</span>
-                  </div>
-                  <ArrowRight size={14} className="command-arrow" />
-                </div>
-              ))}
-            </div>
-          )}
+        {projects.length > 0 && (
+          <CommandGroup heading="Projetos">
+            {projects.map((p) => (
+              <CommandItem
+                key={p.id}
+                value={`projeto ${p.name}`}
+                onSelect={run(() => selectProject(p.id))}
+              >
+                <Folder size={15} strokeWidth={1.8} />
+                <span className="truncate">{p.name}</span>
+                <span className="ml-auto text-micro text-text-3">
+                  {p.status || 'Planejado'}
+                </span>
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        )}
 
-          {navItems.length === 0 && filteredProjects.length === 0 && filteredTasks.length === 0 && filteredAnomalies.length === 0 && (
-            <div className="command-empty">
-              <Sparkles size={24} />
-              <p>Nenhum resultado encontrado para "{query}"</p>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+        {rankedTasks.length > 0 && (
+          <CommandGroup heading="Tarefas">
+            {rankedTasks.map((t) => (
+              <CommandItem
+                key={t.id}
+                value={`tarefa ${t.name}`}
+                onSelect={run(() => {
+                  selectProject(t.projectId);
+                  setProjectTab('gantt');
+                  openTaskInspector(t.id);
+                })}
+              >
+                <CheckSquare size={15} strokeWidth={1.8} />
+                <span className="truncate">{t.name}</span>
+                <span className="ml-auto text-micro tabular-nums text-text-3">
+                  {t.progress || 0}%
+                </span>
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        )}
+
+        {anomalies.length > 0 && (
+          <CommandGroup heading="Anomalias">
+            {anomalies.slice(0, 20).map((a) => (
+              <CommandItem
+                key={a.id}
+                value={`anomalia ${a.title}`}
+                onSelect={run(() => {
+                  selectProject(a.projectId);
+                  setProjectTab('anomalies');
+                })}
+              >
+                <AlertTriangle size={15} strokeWidth={1.8} />
+                <span className="truncate">{a.title}</span>
+                <span className="ml-auto text-micro text-text-3">{a.severity}</span>
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        )}
+
+        <CommandSeparator />
+        <CommandGroup heading="Preferências">
+          <CommandItem value="tema claro" onSelect={run(() => setTheme('light'))}>
+            Tema claro
+          </CommandItem>
+          <CommandItem value="tema escuro" onSelect={run(() => setTheme('dark'))}>
+            Tema escuro
+          </CommandItem>
+          <CommandItem value="densidade confortavel" onSelect={run(() => setDensity('comfortable'))}>
+            Densidade confortável
+          </CommandItem>
+          <CommandItem value="densidade compacta" onSelect={run(() => setDensity('compact'))}>
+            Densidade compacta
+          </CommandItem>
+        </CommandGroup>
+      </CommandList>
+    </CommandDialog>
   );
 }

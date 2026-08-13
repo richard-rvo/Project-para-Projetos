@@ -1,45 +1,49 @@
-import React, { useContext, useEffect } from 'react';
+import React, { useContext } from 'react';
 import { AppContext } from './context/AppContext';
-import Sidebar from './components/Sidebar';
-import Header from './components/Header';
+import AppRail from './components/shell/AppRail';
+import TopBar from './components/shell/TopBar';
 import Toast from './components/Toast';
 import TaskInspectorDrawer from './components/TaskInspectorDrawer';
 import CommandPalette from './components/CommandPalette';
 import ProjectWorkspace from './components/ProjectWorkspace';
-import PageDashboard from './pages/PageDashboard';
-import PageProjects from './pages/PageProjects';
+import PagePortfolio from './pages/PagePortfolio';
 import PageAnomalies from './pages/PageAnomalies';
 import PageReports from './pages/PageReports';
 import PageSettings from './pages/PageSettings';
+
+/**
+ * Contêiner de rolagem para views que são documentos, não superfícies.
+ * O Gantt NÃO usa isto: ele preenche a altura e rola por dentro.
+ */
+export function PageScroll({ children }) {
+  return <div className="h-full overflow-auto p-5">{children}</div>;
+}
 
 function App() {
   const { state } = useContext(AppContext);
 
   const renderPage = () => {
     switch (state.activePage) {
-      case 'pageDashboard':
-        return <PageDashboard />;
-      case 'pageProjects':
-        return <PageProjects />;
       case 'pageProjectWorkspace':
         return <ProjectWorkspace />;
       case 'pageAnomalies':
-        return <PageAnomalies />;
+        return <PageScroll><PageAnomalies /></PageScroll>;
       case 'pageReports':
-        return <PageReports />;
+        return <PageScroll><PageReports /></PageScroll>;
       case 'pageSettings':
-        return <PageSettings />;
+        return <PageScroll><PageSettings /></PageScroll>;
+      case 'pagePortfolio':
       default:
-        return <PageProjects />;
+        return <PagePortfolio />;
     }
   };
 
   return (
-    <div className={`app-shell ${state.sidebarCollapsed ? 'sidebar-collapsed' : ''}`} data-theme={state.theme}>
-      <Sidebar />
-      <div className="app-main-content">
-        <Header />
-        <main className="page-container">{renderPage()}</main>
+    <div className="flex h-full overflow-hidden bg-surface-0">
+      <AppRail />
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <TopBar />
+        <main className="min-h-0 flex-1 overflow-hidden">{renderPage()}</main>
       </div>
       <TaskInspectorDrawer />
       <CommandPalette />

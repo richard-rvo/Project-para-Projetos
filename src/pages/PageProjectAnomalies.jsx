@@ -316,10 +316,6 @@ export default function PageProjectAnomalies() {
     <div className="page-section" id="pageProjectAnomalies">
       {/* Toolbar */}
       <div className="page-toolbar">
-        <div className="toolbar-left">
-          <AlertTriangle size={20} style={{ color: 'var(--color-orange)' }} />
-          <h2>Anomalias do Projeto</h2>
-        </div>
         <div className="toolbar-right">
           {/* Filter */}
           <select className="filter-select-sm" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>

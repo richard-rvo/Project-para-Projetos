@@ -163,10 +163,6 @@ export default function PageSCurve() {
 
   return (
     <div className="page-section" id="pageSCurve">
-      <div className="page-toolbar">
-        <h2>{activeProject.name} — Curva S</h2>
-      </div>
-
       <div className="scurve-container glass-card" style={{ position: 'relative' }}>
         {/* Legend */}
         <div className="scurve-legend">

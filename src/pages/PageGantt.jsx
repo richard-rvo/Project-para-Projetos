@@ -11,6 +11,19 @@ import {
   Indent, Outdent, Download, Settings
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import ViewBar, {
+  ViewBarButton,
+  ViewBarDivider,
+  ViewBarSegments,
+} from '../components/shell/ViewBar';
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { calculateTaskPlannedProgress } from '../utils/progress';
 import {
   daysBetween,
@@ -48,6 +61,25 @@ const STATUS_COLORS = {
 const COLOR_CRITICAL = 'var(--sched-critical)';
 const COLOR_DEP_LINE = 'var(--sched-baseline)';
 
+const DURATION_UNITS = [
+  { id: 'days', label: 'Dias' },
+  { id: 'hours', label: 'Horas' },
+  { id: 'minutes', label: 'Minutos' },
+];
+
+const COLUMN_LABELS = {
+  duration: 'Duração',
+  start: 'Início',
+  end: 'Término',
+  progress: '% Concluída',
+  planned: '% Planejada',
+  baselineStart: 'Início Baseline',
+  baselineEnd: 'Término Baseline',
+  dependencies: 'Predecessoras',
+  resources: 'Recursos',
+  resourceGroup: 'Grupo de Recurso',
+};
+
 export default function PageGantt() {
   const { state, addTask, updateTask, updateTasksBatch, removeTask, showToast, openTaskInspector } = useContext(AppContext);
   const [zoomIdx, setZoomIdx] = useState(0); // start at day level
@@ -71,8 +103,6 @@ export default function PageGantt() {
     baselineStart: false, baselineEnd: false, resourceGroup: false
   });
   const [showGanttLabels, setShowGanttLabels] = useState(true);
-  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
-  const [showScheduleSettings, setShowScheduleSettings] = useState(false);
   const [scheduleSettings, setScheduleSettings] = useState(() => {
     const saved = localStorage.getItem('gantt_schedule_settings');
     return saved ? JSON.parse(saved) : { durationUnit: 'days', hoursPerDay: 8 };
@@ -100,6 +130,10 @@ export default function PageGantt() {
   const splitDragRef = useRef(null);
   const inputRef = useRef(null);
   const newTaskRef = useRef(null);
+
+  /* Precisa espelhar --gantt-row-h de tokens.css. As setas de
+     dependência são posicionadas em JS e sairiam da linha se divergisse. */
+  const rowH = state.density === 'compact' ? 30 : 40;
 
   const zoom = ZOOM_LEVELS[zoomIdx];
   const activeProject = state.projects.find((p) => p.id === state.activeProjectId);
@@ -679,98 +713,115 @@ export default function PageGantt() {
   const todayIdx = daysBetween(timelineStart, today());
 
   return (
-    <div className="page-section gantt-page" id="pageGantt">
-      {/* ── Toolbar ────────────────────────────────────────── */}
-      <div className="gantt-toolbar">
-        <div className="toolbar-left">
-          <div className="zoom-controls">
-            <button
-              className={`zoom-btn ${zoomIdx === 0 ? 'active' : ''}`}
-              onClick={() => setZoomIdx(0)}
-            >Dia</button>
-            <button
-              className={`zoom-btn ${zoomIdx === 1 ? 'active' : ''}`}
-              onClick={() => setZoomIdx(1)}
-            >Semana</button>
-            <button
-              className={`zoom-btn ${zoomIdx === 2 ? 'active' : ''}`}
-              onClick={() => setZoomIdx(2)}
-            >Mês</button>
-          </div>
-          <div className="toolbar-divider" />
-          <button
-            className={`btn-ghost btn-sm ${showCriticalPath ? 'text-danger' : ''}`}
-            onClick={() => setShowCriticalPath(!showCriticalPath)}
-            title="Destacar Caminho Crítico"
-          >
-            <AlertCircle size={14} color={showCriticalPath ? COLOR_CRITICAL : 'currentColor'} /> CPM
-          </button>
-          <button className="btn-ghost btn-sm" onClick={handleSaveBaseline} title="Salvar um retrato das datas atuais">
-            <Target size={14} /> Baseline
-          </button>
-        </div>
-        <div className="toolbar-right">
-          <button className="btn-ghost btn-sm" onClick={exportToExcel} title="Exportar para Excel">
-            <Download size={14} /> Excel
-          </button>
-          <div style={{ position: 'relative' }}>
-            <button className="btn-ghost btn-sm" onClick={() => setShowScheduleSettings(!showScheduleSettings)} title="Configurações do Cronograma">
-              <Calendar size={14} /> Calendário
-            </button>
-            {showScheduleSettings && (
-              <div className="dropdown-menu" style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius)', padding: '12px', zIndex: 100, minWidth: '220px', boxShadow: 'var(--shadow-md)' }}>
-                <div style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '12px' }}>Configurações de Cronograma</div>
-                <div className="form-group" style={{ marginBottom: '8px' }}>
-                  <label style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>Unidade de Duração</label>
-                  <select 
-                    style={{ width: '100%', padding: '4px', fontSize: '12px', borderRadius: '4px', border: '1px solid var(--color-border)' }}
-                    value={scheduleSettings.durationUnit}
-                    onChange={(e) => updateScheduleSettings({ ...scheduleSettings, durationUnit: e.target.value })}
-                  >
-                    <option value="days">Dias</option>
-                    <option value="hours">Horas</option>
-                    <option value="minutes">Minutos</option>
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>Horas de trabalho/dia</label>
-                  <input 
-                    type="number" 
-                    min="1" max="24"
-                    style={{ width: '100%', padding: '4px', fontSize: '12px', borderRadius: '4px', border: '1px solid var(--color-border)' }}
-                    value={scheduleSettings.hoursPerDay}
-                    onChange={(e) => updateScheduleSettings({ ...scheduleSettings, hoursPerDay: parseInt(e.target.value) || 8 })}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-          <div style={{ position: 'relative' }}>
-            <button className="btn-ghost btn-sm" onClick={() => setShowSettingsMenu(!showSettingsMenu)} title="Opções de Exibição">
-              <Settings size={14} /> Colunas
-            </button>
-            {showSettingsMenu && (
-              <div className="dropdown-menu" style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius)', padding: '8px', zIndex: 100, minWidth: '180px', boxShadow: 'var(--shadow-md)' }}>
-                <div style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '8px', padding: '0 8px' }}>Colunas</div>
-                {Object.keys(showCols).map(key => (
-                  <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 8px', cursor: 'pointer', fontSize: '12px' }}>
-                    <input type="checkbox" checked={showCols[key]} onChange={(e) => setShowCols({ ...showCols, [key]: e.target.checked })} />
-                    {key === 'duration' ? 'Duração' : key === 'start' ? 'Início' : key === 'end' ? 'Término' : key === 'progress' ? '% Concluída' : key === 'dependencies' ? 'Pred.' : key === 'resources' ? 'Recursos' : key === 'planned' ? '% Planejada' : key === 'baselineStart' ? 'Início Baseline' : key === 'baselineEnd' ? 'Término Baseline' : 'Grupo de Recurso'}
-                  </label>
-                ))}
-                <hr style={{ margin: '8px 0', border: 'none', borderTop: '1px solid var(--color-border)' }} />
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 8px', cursor: 'pointer', fontSize: '12px' }}>
-                  <input type="checkbox" checked={showGanttLabels} onChange={(e) => setShowGanttLabels(e.target.checked)} />
-                  Mostrar rótulos nas barras
-                </label>
-              </div>
-            )}
-          </div>
-          <button className="btn-primary btn-sm" onClick={() => newTaskRef.current?.focus()}>
-            <Plus size={14} /> Tarefa
-          </button>
-        </div>
-      </div>
+    <div className="gantt-page flex h-full flex-col" id="pageGantt">
+      {/* ── Barra da view ──────────────────────────────────── */}
+      <ViewBar>
+        <ViewBarSegments
+          options={ZOOM_LEVELS.map((z) => ({ id: z.id, label: z.label }))}
+          value={zoom.id}
+          onChange={(id) => setZoomIdx(ZOOM_LEVELS.findIndex((z) => z.id === id))}
+        />
+        <ViewBarDivider />
+        <ViewBarButton
+          icon={AlertCircle}
+          active={showCriticalPath}
+          onClick={() => setShowCriticalPath(!showCriticalPath)}
+          title="Destacar o caminho crítico"
+        >
+          Caminho crítico
+        </ViewBarButton>
+        <ViewBarButton
+          icon={Target}
+          onClick={handleSaveBaseline}
+          title="Salvar um retrato das datas atuais"
+        >
+          Baseline
+        </ViewBarButton>
+
+        <div className="ml-auto" />
+
+        <ViewBarButton icon={Download} onClick={exportToExcel} title="Exportar para Excel">
+          Excel
+        </ViewBarButton>
+
+        {/* Configurações de cronograma */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <ViewBarButton icon={Calendar}>Cronograma</ViewBarButton>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-60">
+            <DropdownMenuLabel className="text-micro uppercase tracking-wide text-text-3">
+              Unidade de duração
+            </DropdownMenuLabel>
+            {DURATION_UNITS.map((u) => (
+              <DropdownMenuCheckboxItem
+                key={u.id}
+                checked={scheduleSettings.durationUnit === u.id}
+                onCheckedChange={() =>
+                  updateScheduleSettings({ ...scheduleSettings, durationUnit: u.id })
+                }
+              >
+                {u.label}
+              </DropdownMenuCheckboxItem>
+            ))}
+            <DropdownMenuSeparator />
+            <label className="flex items-center justify-between gap-2 px-2 py-1.5 text-body">
+              <span className="text-text-2">Horas por dia</span>
+              <input
+                type="number"
+                min="1"
+                max="24"
+                value={scheduleSettings.hoursPerDay}
+                onChange={(e) =>
+                  updateScheduleSettings({
+                    ...scheduleSettings,
+                    hoursPerDay: parseInt(e.target.value, 10) || 8,
+                  })
+                }
+                className="h-7 w-16 rounded-[6px] border border-line bg-surface-0 px-2 text-body tabular-nums text-text-1"
+              />
+            </label>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* Colunas visíveis */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <ViewBarButton icon={Settings}>Colunas</ViewBarButton>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuLabel className="text-micro uppercase tracking-wide text-text-3">
+              Colunas da planilha
+            </DropdownMenuLabel>
+            {Object.keys(showCols).map((key) => (
+              <DropdownMenuCheckboxItem
+                key={key}
+                checked={showCols[key]}
+                onCheckedChange={(v) => setShowCols({ ...showCols, [key]: v })}
+                onSelect={(e) => e.preventDefault()}
+              >
+                {COLUMN_LABELS[key] || key}
+              </DropdownMenuCheckboxItem>
+            ))}
+            <DropdownMenuSeparator />
+            <DropdownMenuCheckboxItem
+              checked={showGanttLabels}
+              onCheckedChange={setShowGanttLabels}
+              onSelect={(e) => e.preventDefault()}
+            >
+              Rótulos nas barras
+            </DropdownMenuCheckboxItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <ViewBarButton
+          icon={Plus}
+          variant="primary"
+          onClick={() => newTaskRef.current?.focus()}
+        >
+          Tarefa
+        </ViewBarButton>
+      </ViewBar>
 
       {/* ── Main Gantt Area ────────────────────────────────── */}
       <div className="gantt-main">
@@ -988,7 +1039,7 @@ export default function PageGantt() {
               <div className="gantt-bar-row new-task-placeholder" />
 
               {/* DEPENDENCY LINES (Global Layer) */}
-              <svg className="gantt-dep-svg" style={{ width: totalWidth, height: projectTasks.length * 40 }}>
+              <svg className="gantt-dep-svg" style={{ width: totalWidth, height: projectTasks.length * rowH }}>
                 <defs>
                   <marker id="arrow" markerWidth="6" markerHeight="6" refX="6" refY="3" orient="auto">
                     <polygon points="0 0, 6 3, 0 6" fill={COLOR_DEP_LINE} />
@@ -1023,7 +1074,6 @@ export default function PageGantt() {
 
                     const depRow = projectTasks.indexOf(depTask);
                     const curRow = projectTasks.indexOf(task);
-                    const rowH = 40;
                     const depY = depRow * rowH + rowH / 2;
                     const curY = curRow * rowH + rowH / 2;
                     

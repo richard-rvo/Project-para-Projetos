@@ -131,11 +131,13 @@ export function formatDateLong(dateStr) {
   });
 }
 
-/** agosto de 2026 — cabeçalho de mês da timeline. */
+/** Agosto de 2026 — cabeçalho de mês da timeline. Só a inicial sobe:
+ *  text-transform capitalize produzia 'Agosto De 2026'. */
 export function getMonthLabel(dateStr) {
   const d = parseForDisplay(dateStr);
   if (!d) return '';
-  return d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  const label = d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
 const DAY_CHARS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];

@@ -51,9 +51,8 @@ export default function PageAnomalies() {
 
   return (
     <div className="page-section" id="pageAnomalies">
-      <div className="page-toolbar">
-        <h2>Central de Anomalias</h2>
-        <span className="subtitle">{filtered.length} registro{filtered.length !== 1 ? 's' : ''}</span>
+      <div className="mb-4 text-small text-text-2">
+        {filtered.length} registro{filtered.length !== 1 ? 's' : ''}
       </div>
 
       {/* Quick stats */}

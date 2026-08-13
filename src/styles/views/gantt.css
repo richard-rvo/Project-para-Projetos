@@ -7,6 +7,9 @@
    companhia). Por ora é o CSS original, intacto, apenas isolado.
    ═══════════════════════════════════════════════════════════════ */
 
+@layer legacy {
+
+
 /* ═══════════════════════════════════════════════════════════════
    GANTT – MS PROJECT STYLE
    ═══════════════════════════════════════════════════════════════ */
@@ -152,7 +155,7 @@
   display: flex;
   align-items: center;
   border-bottom: 1px solid var(--color-border);
-  height: 38px;
+  height: var(--gantt-row-h);
   transition: background 0.15s;
 }
 
@@ -342,7 +345,7 @@
   font-size: 0.72rem;
   font-weight: 600;
   color: var(--color-text-secondary);
-  text-transform: capitalize;
+  /* capitalize deixava "Agosto De 2026"; a inicial vem do JS */
   border-right: 1px solid var(--color-border);
   flex-shrink: 0;
   overflow: hidden;
@@ -475,19 +478,20 @@
 
 /* Bar rows */
 .gantt-bar-row {
-  height: 40px;
+  height: var(--gantt-row-h);
   position: relative;
 }
 
 .gantt-bar-row.new-task-placeholder {
-  height: 40px;
+  height: var(--gantt-row-h);
 }
 
 /* ── Bar ──────────────────────────────────────────────────────── */
 .gantt-bar {
   position: absolute;
-  top: 8px;
-  height: 24px;
+  top: 50%;
+  translate: 0 -50%;
+  height: calc(var(--gantt-row-h) - 16px);
   border-radius: 4px;
   cursor: grab;
   display: flex;
@@ -530,8 +534,9 @@
 /* Baseline Bar */
 .gantt-baseline-bar {
   position: absolute;
-  top: 4px;
-  height: 32px;
+  top: 50%;
+  translate: 0 -50%;
+  height: calc(var(--gantt-row-h) - 8px);
   background: transparent;
   border: 2px dashed rgba(128, 128, 128, 0.4);
   border-radius: 6px;
@@ -580,8 +585,9 @@
 /* Milestone */
 .gantt-milestone {
   position: absolute;
-  top: 4px;
-  height: 32px;
+  top: 50%;
+  translate: 0 -50%;
+  height: calc(var(--gantt-row-h) - 8px);
   display: flex;
   align-items: center;
   z-index: 2;
@@ -625,3 +631,5 @@
 }
 
 
+
+}

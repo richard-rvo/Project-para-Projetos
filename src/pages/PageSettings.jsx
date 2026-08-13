@@ -48,10 +48,6 @@ export default function PageSettings() {
 
   return (
     <div className="page-section" id="pageSettings">
-      <div className="page-toolbar">
-        <h2>Configurações & Dados</h2>
-      </div>
-
       <div className="settings-grid">
         {/* Theme */}
         <div className="settings-card glass-card">

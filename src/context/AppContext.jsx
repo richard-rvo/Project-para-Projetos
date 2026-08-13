@@ -12,10 +12,15 @@ const initialState = {
   anomalies: [],
   activeProjectId: null,
   activeProjectTab: 'overview',   // 'overview' | 'gantt' | 'kanban' | 'scurve' | 'tasklist' | 'anomalies'
-  activePage: 'pageProjects',     // global page when no project workspace is open
+  activePage: 'pagePortfolio',    // global page when no project workspace is open
   theme: localStorage.getItem('projeta_theme') || 'light',
   toast: null,
-  sidebarCollapsed: false,
+
+  /* Shell: o rail fica em 64px e sobrepõe ao passar o mouse. Fixá-lo
+     reserva a largura de verdade no layout. */
+  railPinned: localStorage.getItem('projeta_rail_pinned') === 'true',
+  /* 'comfortable' = leitura executiva · 'compact' = trabalho de plano */
+  density: localStorage.getItem('projeta_density') || 'comfortable',
   inspectorTaskId: null,
   isCommandPaletteOpen: false,
   showCriticalPath: false,
@@ -42,7 +47,8 @@ export const ACTIONS = {
   SET_ACTIVE_PROJECT_TAB: 'SET_ACTIVE_PROJECT_TAB',
   SET_THEME: 'SET_THEME',
   SET_TOAST: 'SET_TOAST',
-  TOGGLE_SIDEBAR: 'TOGGLE_SIDEBAR',
+  TOGGLE_RAIL_PINNED: 'TOGGLE_RAIL_PINNED',
+  SET_DENSITY: 'SET_DENSITY',
   SET_INSPECTOR_TASK: 'SET_INSPECTOR_TASK',
   TOGGLE_COMMAND_PALETTE: 'TOGGLE_COMMAND_PALETTE',
   TOGGLE_CRITICAL_PATH: 'TOGGLE_CRITICAL_PATH',
@@ -128,8 +134,10 @@ function reducer(state, action) {
       return { ...state, theme: action.payload };
     case ACTIONS.SET_TOAST:
       return { ...state, toast: action.payload };
-    case ACTIONS.TOGGLE_SIDEBAR:
-      return { ...state, sidebarCollapsed: !state.sidebarCollapsed };
+    case ACTIONS.TOGGLE_RAIL_PINNED:
+      return { ...state, railPinned: !state.railPinned };
+    case ACTIONS.SET_DENSITY:
+      return { ...state, density: action.payload };
     case ACTIONS.SET_INSPECTOR_TASK:
       return { ...state, inspectorTaskId: action.payload };
     case ACTIONS.TOGGLE_COMMAND_PALETTE:
@@ -167,6 +175,18 @@ export function AppProvider({ children }) {
     localStorage.setItem('projeta_theme', state.theme);
     document.documentElement.setAttribute('data-theme', state.theme);
   }, [state.theme]);
+
+  /* Persist density — os tokens de espaçamento e --gantt-row-h
+     reagem ao atributo data-density no <html>. */
+  useEffect(() => {
+    localStorage.setItem('projeta_density', state.density);
+    document.documentElement.setAttribute('data-density', state.density);
+  }, [state.density]);
+
+  /* Persist rail pin */
+  useEffect(() => {
+    localStorage.setItem('projeta_rail_pinned', String(state.railPinned));
+  }, [state.railPinned]);
 
   /* Auto-dismiss toast */
   useEffect(() => {
@@ -277,6 +297,18 @@ export function AppProvider({ children }) {
     dispatch({ type: ACTIONS.TOGGLE_BASELINE, payload: show });
   }, []);
 
+  const toggleRailPinned = useCallback(() => {
+    dispatch({ type: ACTIONS.TOGGLE_RAIL_PINNED });
+  }, []);
+
+  const setDensity = useCallback((density) => {
+    dispatch({ type: ACTIONS.SET_DENSITY, payload: density });
+  }, []);
+
+  const setTheme = useCallback((theme) => {
+    dispatch({ type: ACTIONS.SET_THEME, payload: theme });
+  }, []);
+
   const value = {
     state,
     dispatch,
@@ -300,6 +332,9 @@ export function AppProvider({ children }) {
     toggleCommandPalette,
     toggleCriticalPath,
     toggleBaseline,
+    toggleRailPinned,
+    setDensity,
+    setTheme,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
