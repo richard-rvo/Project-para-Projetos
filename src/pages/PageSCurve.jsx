@@ -2,7 +2,8 @@ import React, { useContext, useMemo, useState } from 'react';
 import { AppContext } from '../context/AppContext';
 import { TrendingUp } from 'lucide-react';
 
-import { daysBetween, addDays, durationDays, today } from '../utils/schedule';
+import { daysBetween, today } from '../utils/schedule';
+import { computeSCurve } from '../utils/scurve';
 
 export default function PageSCurve() {
   const { state } = useContext(AppContext);
@@ -12,8 +13,27 @@ export default function PageSCurve() {
     [state.tasks, state.activeProjectId]
   );
 
-  /* Tooltip state */
-  const [tooltip, setTooltip] = useState(null); // { x, y, planned, actual, date }
+  const [tooltip, setTooltip] = useState(null);
+
+  /* O cálculo vem de utils/scurve — o mesmo que a Visão Geral e os
+     Relatórios usam. Antes cada tela tinha a sua cópia, e as cópias
+     não eram idênticas: o mesmo projeto rendia curvas diferentes.
+
+     Este useMemo PRECISA ficar antes dos returns condicionais abaixo.
+     Ele estava depois deles, o que é uma violação das regras de hooks:
+     em um render sem projeto ativo o hook não era chamado, mudando a
+     ordem dos hooks entre renders. */
+  const curve = useMemo(() => computeSCurve(projectTasks, 30), [projectTasks]);
+
+  const curveData = useMemo(() => ({
+    planned: curve.points.map((p) => ({ day: p.day, date: p.date, value: p.planned })),
+    actual: curve.points
+      .filter((p) => p.actual !== null)
+      .map((p) => ({ day: p.day, date: p.date, value: p.actual })),
+    totalDays: curve.totalDays,
+    minDate: curve.minDate,
+    maxDate: curve.maxDate,
+  }), [curve]);
 
   if (!activeProject) {
     return (
@@ -27,7 +47,7 @@ export default function PageSCurve() {
     );
   }
 
-  if (projectTasks.length === 0) {
+  if (projectTasks.length === 0 || !curve.points.length) {
     return (
       <div className="page-section" id="pageSCurve">
         <div className="empty-state glass-card">
@@ -37,75 +57,6 @@ export default function PageSCurve() {
       </div>
     );
   }
-
-  /* ── compute S-Curve data ──────────────────────────────────── */
-  const curveData = useMemo(() => {
-    const starts = projectTasks.map((t) => t.startDate).filter(Boolean).sort();
-    const ends   = projectTasks.map((t) => t.endDate).filter(Boolean).sort();
-    if (!starts.length || !ends.length) return { points: [], planned: [], actual: [] };
-
-    const minDate   = starts[0];
-    const maxDate   = ends[ends.length - 1];
-    const totalDays = durationDays(minDate, maxDate);
-    const todayStr  = today();
-
-    /* ── Weighted total duration (for proportional progress) ── */
-    const totalDuration = projectTasks.reduce((sum, t) => {
-      if (!t.startDate || !t.endDate) return sum;
-      return sum + Math.max(1, durationDays(t.startDate, t.endDate));
-    }, 0) || 1;
-
-    /* ── Sample every N days to avoid crowded labels ────────── */
-    const sampleStep = Math.max(1, Math.floor(totalDays / 30));
-
-    const planned = [];
-    const actual  = [];
-
-    for (let i = 0; i <= totalDays; i++) {
-      const isSample = i % sampleStep === 0 || i === totalDays;
-      if (!isSample) continue;
-
-      const d = addDays(minDate, i);
-
-      // ── Planned: weighted average across tasks ───────────────
-      let pSum = 0;
-      projectTasks.forEach((t) => {
-        if (!t.startDate || !t.endDate) return;
-        const dur    = Math.max(1, durationDays(t.startDate, t.endDate));
-        const weight = dur / totalDuration;
-        const elapsed = durationDays(t.startDate, d);
-        const expected = Math.max(0, Math.min(100, (elapsed / dur) * 100));
-        pSum += expected * weight;
-      });
-      planned.push({ day: i, date: d, value: Math.min(100, pSum) });
-
-      // ── Actual (only up to today) ────────────────────────────
-      if (d <= todayStr) {
-        let aSum = 0;
-        projectTasks.forEach((t) => {
-          if (!t.startDate) return;
-          const cur = t.progress || 0;
-          if (cur === 0) return;
-          const dur = Math.max(1, durationDays(t.startDate, t.endDate || todayStr));
-          const weight = dur / totalDuration;
-          const endCalcDate =
-            t.status === 'Concluída' && t.endDate && t.endDate < todayStr
-              ? t.endDate
-              : todayStr;
-          const totalElapsed = Math.max(1, durationDays(t.startDate, endCalcDate));
-          const elapsedToDay = durationDays(t.startDate, d);
-          let histProgress = 0;
-          if (elapsedToDay <= 0) histProgress = 0;
-          else if (elapsedToDay >= totalElapsed) histProgress = cur;
-          else histProgress = cur * (elapsedToDay / totalElapsed);
-          aSum += histProgress * weight;
-        });
-        actual.push({ day: i, date: d, value: Math.min(100, aSum) });
-      }
-    }
-
-    return { planned, actual, totalDays, minDate, maxDate };
-  }, [projectTasks]);
 
   /* ── Deviation ─────────────────────────────────────────────── */
   const todayStr      = today();

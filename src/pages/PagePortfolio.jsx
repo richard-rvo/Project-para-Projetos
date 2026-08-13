@@ -3,6 +3,7 @@ import { AppContext } from '../context/AppContext';
 import { cn } from '@/lib/utils';
 import ViewBar, { ViewBarSegments, ViewBarButton } from '../components/shell/ViewBar';
 import ConfirmDialog from '../components/ConfirmDialog';
+import PortfolioTimeline from '../components/PortfolioTimeline';
 import {
   Dialog,
   DialogContent,
@@ -13,7 +14,8 @@ import {
 import { calculateProjectMetrics } from '../utils/progress';
 import { today, addDays, formatDateLong } from '../utils/schedule';
 import {
-  Plus, Search, LayoutGrid, Table2, Trash2, FolderOpen, CalendarRange,
+  Plus, Search, LayoutGrid, Table2, GanttChartSquare, Trash2, FolderOpen,
+  CalendarRange,
 } from 'lucide-react';
 
 function generateId() {
@@ -23,6 +25,7 @@ function generateId() {
 const MODES = [
   { id: 'cards', label: 'Cards', icon: LayoutGrid },
   { id: 'table', label: 'Tabela', icon: Table2 },
+  { id: 'timeline', label: 'Timeline', icon: GanttChartSquare },
 ];
 
 const STATUS_TONE = {
@@ -148,6 +151,8 @@ export default function PagePortfolio() {
             />
           ) : mode === 'cards' ? (
             <CardsGrid rows={visible} onOpen={selectProject} onDelete={setConfirmId} />
+          ) : mode === 'timeline' ? (
+            <PortfolioTimeline rows={visible} onOpen={selectProject} />
           ) : (
             <ProjectsTable rows={visible} onOpen={selectProject} onDelete={setConfirmId} />
           )}

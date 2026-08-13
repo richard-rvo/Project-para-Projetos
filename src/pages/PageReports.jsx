@@ -4,7 +4,8 @@ import ProgressBar from '../components/ProgressBar';
 import Badge from '../components/Badge';
 import { FileBarChart, Printer, ChevronDown, AlertTriangle, CheckSquare, TrendingUp, Calendar } from 'lucide-react';
 import { calculateProjectMetrics } from '../utils/progress';
-import { addDays as addDaysUTC, durationDays, today } from '../utils/schedule';
+import { today } from '../utils/schedule';
+import { computeSCurve } from '../utils/scurve';
 
 function formatDate(dateStr) {
   if (!dateStr) return '—';
@@ -47,58 +48,20 @@ export default function PageReports() {
     };
   }, [project, projTasks, projAnoms]);
 
-  /* ── S-Curve SVG (mini, for print) ──────────────────────────── */
-  const sCurvePoints = useMemo(() => {
-    if (!projTasks.length) return { planned: [], actual: [] };
-    const starts = projTasks.map((t) => t.startDate).filter(Boolean).sort();
-    const ends   = projTasks.map((t) => t.endDate).filter(Boolean).sort();
-    if (!starts.length || !ends.length) return { planned: [], actual: [] };
-    const minDate = starts[0];
-    const maxDate = ends[ends.length - 1];
-    const totalDays = durationDays(minDate, maxDate);
-    if (totalDays <= 0) return { planned: [], actual: [] };
+  /* Curva S vem de utils/scurve — a MESMA função que a tela usa.
+     Antes o relatório impresso tinha a própria cópia do cálculo, e
+     as duas não eram idênticas: o PDF podia discordar da tela. */
+  const curve = useMemo(() => computeSCurve(projTasks, 20), [projTasks]);
 
-    const totalDur = projTasks.reduce((s, t) => {
-      if (!t.startDate || !t.endDate) return s;
-      return s + Math.max(1, durationDays(t.startDate, t.endDate));
-    }, 0);
-
-    const step = Math.max(1, Math.floor(totalDays / 20));
-    const planned = [], actual = [];
-
-    for (let i = 0; i <= totalDays; i += step) {
-      const d = addDaysUTC(minDate, i);
-      let pSum = 0;
-      projTasks.forEach((t) => {
-        if (!t.startDate || !t.endDate) return;
-        const dur  = Math.max(1, durationDays(t.startDate, t.endDate));
-        const w    = totalDur > 0 ? dur / totalDur : 1 / projTasks.length;
-        const elap = durationDays(t.startDate, d);
-        pSum += Math.max(0, Math.min(100, (elap / dur) * 100)) * w;
-      });
-      planned.push({ day: i, date: d, value: Math.min(100, pSum) });
-      if (d <= todayStr) {
-        let aSum = 0;
-        projTasks.forEach((t) => {
-          if (!t.startDate) return;
-          const cur = t.progress || 0;
-          if (cur === 0) return;
-          const endCalc = (t.status === 'Concluída' && t.endDate && t.endDate < todayStr) ? t.endDate : todayStr;
-          const totalEl = Math.max(1, durationDays(t.startDate, endCalc));
-          const elap    = durationDays(t.startDate, d);
-          const dur     = Math.max(1, durationDays(t.startDate, t.endDate || todayStr));
-          const w       = totalDur > 0 ? dur / totalDur : 1 / projTasks.length;
-          let hist = 0;
-          if (elap <= 0) hist = 0;
-          else if (elap >= totalEl) hist = cur;
-          else hist = cur * (elap / totalEl);
-          aSum += hist * w;
-        });
-        actual.push({ day: i, date: d, value: Math.min(100, aSum) });
-      }
-    }
-    return { planned, actual, totalDays, minDate, maxDate };
-  }, [projTasks, todayStr]);
+  const sCurvePoints = useMemo(() => ({
+    planned: curve.points.map((p) => ({ day: p.day, date: p.date, value: p.planned })),
+    actual: curve.points
+      .filter((p) => p.actual !== null)
+      .map((p) => ({ day: p.day, date: p.date, value: p.actual })),
+    totalDays: curve.totalDays,
+    minDate: curve.minDate,
+    maxDate: curve.maxDate,
+  }), [curve]);
 
   /* SVG drawing */
   const W = 600, H = 200, PAD = { t: 10, r: 20, b: 30, l: 40 };
