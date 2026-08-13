@@ -7,8 +7,11 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import {
   Plus, Trash2, ZoomIn, ZoomOut, ChevronRight, GripVertical,
   ChevronDown, ChevronRight as ChevronRightIcon, Calendar, Milestone,
-  Undo2, Redo2, ArrowDownUp, Link2, Eye, Target, AlertCircle,
+  Undo2, Redo2, ArrowDownUp, Link2, Eye, Target, AlertCircle, 
+  Indent, Outdent, Download, Settings
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { calculateTaskPlannedProgress } from '../utils/progress';
 
 function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -82,6 +85,39 @@ export default function PageGantt() {
   const [modalTaskData, setModalTaskData] = useState(null);
   const [showCriticalPath, setShowCriticalPath] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null);
+  
+  // Custom View Options
+  const [showCols, setShowCols] = useState({
+    duration: true, start: true, end: true, progress: true, 
+    dependencies: true, resources: false, planned: false, 
+    baselineStart: false, baselineEnd: false, resourceGroup: false
+  });
+  const [showGanttLabels, setShowGanttLabels] = useState(true);
+  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
+  const [showScheduleSettings, setShowScheduleSettings] = useState(false);
+  const [scheduleSettings, setScheduleSettings] = useState(() => {
+    const saved = localStorage.getItem('gantt_schedule_settings');
+    return saved ? JSON.parse(saved) : { durationUnit: 'days', hoursPerDay: 8 };
+  });
+  
+  const updateScheduleSettings = (newSettings) => {
+    setScheduleSettings(newSettings);
+    localStorage.setItem('gantt_schedule_settings', JSON.stringify(newSettings));
+  };
+  
+  const formatDuration = (days) => {
+    if (scheduleSettings.durationUnit === 'hours') return `${days * scheduleSettings.hoursPerDay}h`;
+    if (scheduleSettings.durationUnit === 'minutes') return `${days * scheduleSettings.hoursPerDay * 60}m`;
+    return `${days}d`;
+  };
+
+  const parseDurationToDays = (val) => {
+    const num = parseFloat(val) || 1;
+    if (scheduleSettings.durationUnit === 'hours') return Math.max(1, Math.ceil(num / scheduleSettings.hoursPerDay));
+    if (scheduleSettings.durationUnit === 'minutes') return Math.max(1, Math.ceil(num / (scheduleSettings.hoursPerDay * 60)));
+    return Math.max(1, Math.round(num));
+  };
+
   const timelineRef = useRef(null);
   const splitDragRef = useRef(null);
   const inputRef = useRef(null);
@@ -89,13 +125,50 @@ export default function PageGantt() {
 
   const zoom = ZOOM_LEVELS[zoomIdx];
   const activeProject = state.projects.find((p) => p.id === state.activeProjectId);
-  const projectTasks = useMemo(
-    () =>
-      state.tasks
-        .filter((t) => t.projectId === state.activeProjectId)
-        .sort((a, b) => (a.order ?? 999) - (b.order ?? 999) || new Date(a.startDate) - new Date(b.startDate)),
-    [state.tasks, state.activeProjectId]
-  );
+  const projectTasks = useMemo(() => {
+    const rawTasks = state.tasks
+      .filter((t) => t.projectId === state.activeProjectId)
+      .sort((a, b) => (a.order ?? 999) - (b.order ?? 999) || new Date(a.startDate) - new Date(b.startDate));
+      
+    // Clone para podermos calcular resumos sem mutar o state original
+    const tasks = rawTasks.map(t => ({ ...t }));
+    
+    // Processamento de baixo para cima para tarefas resumo
+    for (let i = tasks.length - 1; i >= 0; i--) {
+      const t = tasks[i];
+      const currentIndent = t.indentLevel || 0;
+      
+      const children = [];
+      for (let j = i + 1; j < tasks.length; j++) {
+        const childIndent = tasks[j].indentLevel || 0;
+        if (childIndent <= currentIndent) break;
+        if (childIndent === currentIndent + 1) {
+          children.push(tasks[j]);
+        }
+      }
+      
+      if (children.length > 0) {
+        t.isSummary = true;
+        const startDates = children.map(c => c.startDate).filter(Boolean).sort();
+        const endDates = children.map(c => c.endDate).filter(Boolean).sort();
+        t.startDate = startDates.length > 0 ? startDates[0] : t.startDate;
+        t.endDate = endDates.length > 0 ? endDates[endDates.length - 1] : t.endDate;
+        
+        let totalDur = 0;
+        let earned = 0;
+        children.forEach(c => {
+          const d = durationDays(c.startDate, c.endDate) || 1;
+          totalDur += d;
+          earned += d * (c.progress || 0);
+        });
+        t.progress = totalDur > 0 ? Math.round(earned / totalDur) : 0;
+      } else {
+        t.isSummary = false;
+      }
+    }
+    
+    return tasks;
+  }, [state.tasks, state.activeProjectId]);
 
   /* ── auto-scheduling ───────────────────────────────────────── */
   const applyAutoScheduling = useCallback((changedTask, allTasks) => {
@@ -302,7 +375,7 @@ export default function PageGantt() {
       value = Math.max(0, Math.min(100, parseInt(value) || 0));
     }
     if (editingCell.field === 'duration') {
-      const days = parseInt(value) || 1;
+      const days = parseDurationToDays(value);
       if (task.startDate) {
         const newEnd = addDays(task.startDate, days - 1);
         const modifiedTask = { ...task, endDate: newEnd };
@@ -501,6 +574,42 @@ export default function PageGantt() {
     });
   };
 
+  const exportToExcel = () => {
+    const wsData = [
+      ["ID", "Nome da Tarefa", "Duração (dias)", "Início", "Término", "% Concluída", "% Planejada", "Início Baseline", "Término Baseline", "Recursos", "Grupo de Recurso", "Predecessoras"]
+    ];
+    
+    projectTasks.forEach((t, i) => {
+      const planned = calculateTaskPlannedProgress(t.baselineStart, t.baselineEnd);
+      wsData.push([
+        i + 1,
+        t.name,
+        durationDays(t.startDate, t.endDate) || 0,
+        t.startDate || '',
+        t.endDate || '',
+        t.progress || 0,
+        planned,
+        t.baselineStart || '',
+        t.baselineEnd || '',
+        t.resources || '',
+        t.resourceGroup || '',
+        t.dependsOn || ''
+      ]);
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Gantt");
+    XLSX.writeFile(wb, `${activeProject.name || 'Projeto'}_Gantt.xlsx`);
+  };
+
+  const handleIndent = async (taskId, delta) => {
+    const task = projectTasks.find(t => t.id === taskId);
+    if (!task) return;
+    const newIndent = Math.max(0, (task.indentLevel || 0) + delta);
+    await updateTask({ ...task, indentLevel: newIndent });
+  };
+
   /* ── split pane drag ─────────────────────────────────────── */
   const handleSplitDrag = useCallback((e) => {
     e.preventDefault();
@@ -561,10 +670,26 @@ export default function PageGantt() {
       <div
         className="gantt-cell"
         style={{ width, justifyContent: align === 'center' ? 'center' : 'flex-start' }}
-        onDoubleClick={() => startEdit(task.id, field, task[field])}
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          // Block editing of calculated fields for summary tasks
+          if (task.isSummary && ['startDate', 'endDate', 'progress', 'duration'].includes(field)) {
+            showToast('Campos calculados automaticamente para tarefas resumo.', 'info');
+            return;
+          }
+          startEdit(task.id, field, task[field]);
+        }}
         title="Duplo-clique para editar"
       >
-        <span className={`gantt-cell-text ${field === 'name' ? 'cell-name' : ''}`}>{displayValue}</span>
+        <span className={`gantt-cell-text ${field === 'name' ? 'cell-name' : ''}`} style={{ fontWeight: task.isSummary ? 600 : 400 }}>
+          {field === 'name' && (
+            <span style={{ 
+              display: 'inline-block', 
+              width: `${(task.indentLevel || 0) * 16}px` 
+            }} />
+          )}
+          {displayValue}
+        </span>
       </div>
     );
   };
@@ -580,9 +705,6 @@ export default function PageGantt() {
       {/* ── Toolbar ────────────────────────────────────────── */}
       <div className="gantt-toolbar">
         <div className="toolbar-left">
-          <h2 className="gantt-project-title">{activeProject.name}</h2>
-        </div>
-        <div className="toolbar-right">
           <div className="zoom-controls">
             <button
               className={`zoom-btn ${zoomIdx === 0 ? 'active' : ''}`}
@@ -608,6 +730,64 @@ export default function PageGantt() {
           <button className="btn-ghost btn-sm" onClick={handleSaveBaseline} title="Salvar um retrato das datas atuais">
             <Target size={14} /> Baseline
           </button>
+        </div>
+        <div className="toolbar-right">
+          <button className="btn-ghost btn-sm" onClick={exportToExcel} title="Exportar para Excel">
+            <Download size={14} /> Excel
+          </button>
+          <div style={{ position: 'relative' }}>
+            <button className="btn-ghost btn-sm" onClick={() => setShowScheduleSettings(!showScheduleSettings)} title="Configurações do Cronograma">
+              <Calendar size={14} /> Calendário
+            </button>
+            {showScheduleSettings && (
+              <div className="dropdown-menu" style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius)', padding: '12px', zIndex: 100, minWidth: '220px', boxShadow: 'var(--shadow-md)' }}>
+                <div style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '12px' }}>Configurações de Cronograma</div>
+                <div className="form-group" style={{ marginBottom: '8px' }}>
+                  <label style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>Unidade de Duração</label>
+                  <select 
+                    style={{ width: '100%', padding: '4px', fontSize: '12px', borderRadius: '4px', border: '1px solid var(--color-border)' }}
+                    value={scheduleSettings.durationUnit}
+                    onChange={(e) => updateScheduleSettings({ ...scheduleSettings, durationUnit: e.target.value })}
+                  >
+                    <option value="days">Dias</option>
+                    <option value="hours">Horas</option>
+                    <option value="minutes">Minutos</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>Horas de trabalho/dia</label>
+                  <input 
+                    type="number" 
+                    min="1" max="24"
+                    style={{ width: '100%', padding: '4px', fontSize: '12px', borderRadius: '4px', border: '1px solid var(--color-border)' }}
+                    value={scheduleSettings.hoursPerDay}
+                    onChange={(e) => updateScheduleSettings({ ...scheduleSettings, hoursPerDay: parseInt(e.target.value) || 8 })}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+          <div style={{ position: 'relative' }}>
+            <button className="btn-ghost btn-sm" onClick={() => setShowSettingsMenu(!showSettingsMenu)} title="Opções de Exibição">
+              <Settings size={14} /> Colunas
+            </button>
+            {showSettingsMenu && (
+              <div className="dropdown-menu" style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius)', padding: '8px', zIndex: 100, minWidth: '180px', boxShadow: 'var(--shadow-md)' }}>
+                <div style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '8px', padding: '0 8px' }}>Colunas</div>
+                {Object.keys(showCols).map(key => (
+                  <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 8px', cursor: 'pointer', fontSize: '12px' }}>
+                    <input type="checkbox" checked={showCols[key]} onChange={(e) => setShowCols({ ...showCols, [key]: e.target.checked })} />
+                    {key === 'duration' ? 'Duração' : key === 'start' ? 'Início' : key === 'end' ? 'Término' : key === 'progress' ? '% Concluída' : key === 'dependencies' ? 'Pred.' : key === 'resources' ? 'Recursos' : key === 'planned' ? '% Planejada' : key === 'baselineStart' ? 'Início Baseline' : key === 'baselineEnd' ? 'Término Baseline' : 'Grupo de Recurso'}
+                  </label>
+                ))}
+                <hr style={{ margin: '8px 0', border: 'none', borderTop: '1px solid var(--color-border)' }} />
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 8px', cursor: 'pointer', fontSize: '12px' }}>
+                  <input type="checkbox" checked={showGanttLabels} onChange={(e) => setShowGanttLabels(e.target.checked)} />
+                  Mostrar rótulos nas barras
+                </label>
+              </div>
+            )}
+          </div>
           <button className="btn-primary btn-sm" onClick={() => newTaskRef.current?.focus()}>
             <Plus size={14} /> Tarefa
           </button>
@@ -622,12 +802,16 @@ export default function PageGantt() {
           <div className="gantt-sheet-header">
             <div className="gantt-cell cell-id" style={{ width: 36 }}>#</div>
             <div className="gantt-cell cell-name-header" style={{ flex: 1 }}>Nome da Tarefa</div>
-            <div className="gantt-cell" style={{ width: 60, justifyContent: 'center' }}>Duração</div>
-            <div className="gantt-cell" style={{ width: 85, justifyContent: 'center' }}>Início</div>
-            <div className="gantt-cell" style={{ width: 85, justifyContent: 'center' }}>Término</div>
-            <div className="gantt-cell" style={{ width: 45, justifyContent: 'center' }}>%</div>
-            <div className="gantt-cell" style={{ width: 60, justifyContent: 'center' }}>Pred.</div>
-            <div className="gantt-cell" style={{ width: 80, justifyContent: 'center' }}>Recursos</div>
+            {showCols.duration && <div className="gantt-cell" style={{ width: 60, justifyContent: 'center' }}>Duração</div>}
+            {showCols.start && <div className="gantt-cell" style={{ width: 85, justifyContent: 'center' }}>Início</div>}
+            {showCols.end && <div className="gantt-cell" style={{ width: 85, justifyContent: 'center' }}>Término</div>}
+            {showCols.progress && <div className="gantt-cell" style={{ width: 45, justifyContent: 'center' }}>%</div>}
+            {showCols.planned && <div className="gantt-cell" style={{ width: 50, justifyContent: 'center' }} title="% Planejada">% Plan.</div>}
+            {showCols.baselineStart && <div className="gantt-cell" style={{ width: 85, justifyContent: 'center' }}>Início Base</div>}
+            {showCols.baselineEnd && <div className="gantt-cell" style={{ width: 85, justifyContent: 'center' }}>Fim Base</div>}
+            {showCols.dependencies && <div className="gantt-cell" style={{ width: 60, justifyContent: 'center' }}>Pred.</div>}
+            {showCols.resources && <div className="gantt-cell" style={{ width: 80, justifyContent: 'center' }}>Recursos</div>}
+            {showCols.resourceGroup && <div className="gantt-cell" style={{ width: 80, justifyContent: 'center' }}>Grupo</div>}
           </div>
 
           {/* Task rows */}
@@ -641,18 +825,24 @@ export default function PageGantt() {
                 onDragOver={(e) => handleRowDragOver(e, idx)}
                 onDrop={(e) => handleRowDrop(e, idx)}
                 onDragEnd={handleRowDragEnd}
+                onDoubleClick={() => openTaskModal(task)}
+                title="Duplo-clique na linha para abrir as configurações da tarefa"
               >
                 <div className="gantt-cell cell-id" style={{ width: 36, cursor: 'grab' }} title="Arraste para reordenar">
                   <GripVertical size={10} className="grip-icon" style={{ opacity: 0.4, marginRight: 2 }} />
                   <span className="row-number">{idx + 1}</span>
                 </div>
                 {renderCell(task, 'name', task.name, undefined, 'left', 'text')}
-                {renderCell(task, 'duration', `${durationDays(task.startDate, task.endDate)}d`, 60, 'center', 'number')}
-                {renderCell(task, 'startDate', formatDateShort(task.startDate), 85, 'center', 'date')}
-                {renderCell(task, 'endDate', formatDateShort(task.endDate), 85, 'center', 'date')}
-                {renderCell(task, 'progress', `${task.progress || 0}`, 45, 'center', 'number')}
-                {renderCell(task, 'dependsOn', getPredecessorDisplay(task.dependsOn), 60, 'center', 'text')}
-                {renderCell(task, 'resources', task.resources || '', 80, 'left', 'text')}
+                {showCols.duration && renderCell(task, 'duration', formatDuration(durationDays(task.startDate, task.endDate)), 60, 'center', 'number')}
+                {showCols.start && renderCell(task, 'startDate', formatDateShort(task.startDate), 85, 'center', 'date')}
+                {showCols.end && renderCell(task, 'endDate', formatDateShort(task.endDate), 85, 'center', 'date')}
+                {showCols.progress && renderCell(task, 'progress', `${task.progress || 0}`, 45, 'center', 'number')}
+                {showCols.planned && renderCell(task, 'plannedProgress', `${calculateTaskPlannedProgress(task.baselineStart, task.baselineEnd)}`, 50, 'center', 'text')}
+                {showCols.baselineStart && renderCell(task, 'baselineStart', formatDateShort(task.baselineStart), 85, 'center', 'date')}
+                {showCols.baselineEnd && renderCell(task, 'baselineEnd', formatDateShort(task.baselineEnd), 85, 'center', 'date')}
+                {showCols.dependencies && renderCell(task, 'dependsOn', getPredecessorDisplay(task.dependsOn), 60, 'center', 'text')}
+                {showCols.resources && renderCell(task, 'resources', task.resources || '', 80, 'left', 'text')}
+                {showCols.resourceGroup && renderCell(task, 'resourceGroup', task.resourceGroup || '', 80, 'left', 'text')}
               </div>
             ))}
 
@@ -672,12 +862,6 @@ export default function PageGantt() {
                   onKeyDown={handleAddInline}
                 />
               </div>
-              <div className="gantt-cell" style={{ width: 60 }} />
-              <div className="gantt-cell" style={{ width: 85 }} />
-              <div className="gantt-cell" style={{ width: 85 }} />
-              <div className="gantt-cell" style={{ width: 45 }} />
-              <div className="gantt-cell" style={{ width: 60 }} />
-              <div className="gantt-cell" style={{ width: 80 }} />
             </div>
           </div>
         </div>
@@ -791,25 +975,23 @@ export default function PageGantt() {
                         className={`gantt-milestone ${isDragging ? 'dragging' : ''} ${showCriticalPath && !criticalTasks.has(task.id) ? 'dimmed' : ''}`}
                         style={{ left: left + zoom.dayWidth / 2 - 9, '--bar-color': showCriticalPath && criticalTasks.has(task.id) ? '#ef4444' : barColor }}
                         onMouseDown={(e) => handleBarMouseDown(e, task)}
-                        onDoubleClick={() => openTaskModal(task)}
                         title={`Marco: ${task.name}\nData: ${formatDateShort(task.startDate)}`}
                       >
                         <div className="gantt-milestone-diamond" style={{ background: showCriticalPath && criticalTasks.has(task.id) ? '#ef4444' : undefined }} />
-                        <span className="gantt-milestone-label">{task.name}</span>
+                        {showGanttLabels && <span className="gantt-milestone-label">{task.name}</span>}
                       </div>
                     ) : (
                       <div
                         className={`gantt-bar ${isDragging ? 'dragging' : ''} ${task.isBlocked ? 'is-blocked' : ''} ${showCriticalPath && criticalTasks.has(task.id) ? 'is-critical' : ''} ${showCriticalPath && !criticalTasks.has(task.id) ? 'dimmed' : ''}`}
                         style={{ left, width, '--bar-color': showCriticalPath && criticalTasks.has(task.id) ? '#ef4444' : barColor }}
                         onMouseDown={(e) => handleBarMouseDown(e, task)}
-                        onDoubleClick={() => openTaskModal(task)}
                         title={`${task.name}\n${formatDateShort(task.startDate)} → ${formatDateShort(task.endDate)}\nProgresso: ${task.progress || 0}%\n${task.isBlocked ? '⚠️ BLOQUEADO: ' + (task.blockReason || '') : ''}`}
                       >
                         {/* Progress fill */}
                         <div className="gantt-bar-progress" style={{ width: `${task.progress || 0}%` }} />
 
                         {/* Label */}
-                        {width > 50 && <span className="gantt-bar-label">{task.name}</span>}
+                        {showGanttLabels && width > 50 && <span className="gantt-bar-label">{task.name}</span>}
 
                         {/* Resize handle */}
                         <div
@@ -983,24 +1165,26 @@ export default function PageGantt() {
               />
             </div>
             
+            <div className="form-group">
+              <label>Grupo de Recurso</label>
+              <input
+                type="text"
+                placeholder="Ex: Terceirizados, Engenharia"
+                value={modalTaskData.resourceGroup || ''}
+                onChange={(e) => setModalTaskData({ ...modalTaskData, resourceGroup: e.target.value })}
+              />
+            </div>
+            
             <div className="form-group" style={{ marginTop: '12px' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={!!modalTaskData.isBlocked}
-                  onChange={(e) => setModalTaskData({ ...modalTaskData, isBlocked: e.target.checked })}
-                />
-                <span style={{ color: 'var(--color-danger)', fontWeight: 600 }}>Sinalizar Impedimento</span>
-              </label>
-              {modalTaskData.isBlocked && (
-                <input
-                  type="text"
-                  placeholder="Motivo do impedimento..."
-                  value={modalTaskData.blockReason || ''}
-                  onChange={(e) => setModalTaskData({ ...modalTaskData, blockReason: e.target.value })}
-                  style={{ marginTop: '8px', borderLeft: '3px solid var(--color-danger)' }}
-                />
-              )}
+              <label>Hierarquia (Nível atual: {modalTaskData.indentLevel || 0})</label>
+              <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                <button type="button" className="btn-secondary btn-sm" onClick={() => setModalTaskData({ ...modalTaskData, indentLevel: Math.max(0, (modalTaskData.indentLevel || 0) - 1) })}>
+                  <Outdent size={14} /> Recuar
+                </button>
+                <button type="button" className="btn-secondary btn-sm" onClick={() => setModalTaskData({ ...modalTaskData, indentLevel: (modalTaskData.indentLevel || 0) + 1 })}>
+                  <Indent size={14} /> Avançar
+                </button>
+              </div>
             </div>
 
             <div className="modal-actions" style={{ display: 'flex', justifyContent: 'space-between', marginTop: '24px' }}>

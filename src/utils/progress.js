@@ -7,6 +7,23 @@ export function daysBetweenUTC(a, b) {
   return Math.round((db - da) / 86400000);
 }
 
+export function calculateTaskPlannedProgress(baselineStart, baselineEnd) {
+  if (!baselineStart || !baselineEnd) return 0;
+  
+  const todayStr = new Date().toISOString().slice(0, 10);
+  
+  if (todayStr < baselineStart) return 0;
+  if (todayStr > baselineEnd) return 100;
+  
+  const totalDays = daysBetweenUTC(baselineStart, baselineEnd) + 1; // Inclusive
+  if (totalDays <= 0) return 0;
+  
+  const elapsed = daysBetweenUTC(baselineStart, todayStr) + 1;
+  const plannedProgress = Math.round((elapsed / totalDays) * 100);
+  
+  return Math.min(100, Math.max(0, plannedProgress));
+}
+
 export function calculateProjectMetrics(projectTasks) {
   if (!projectTasks || projectTasks.length === 0) {
     return { progress: 0, planned: 0, deviation: 0, health: 'N/A' };
