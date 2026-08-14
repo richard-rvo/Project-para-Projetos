@@ -46,6 +46,8 @@ export default function GanttRow({ task, index, ctx }) {
     onContextMenu,
     activeCell,
     linkTargetId,
+    analysis,
+    showSlack,
     dragOverIndex,
     editValue,
     editInputRef,
@@ -62,6 +64,7 @@ export default function GanttRow({ task, index, ctx }) {
   const endDate = preview?.endDate ?? viewEnd(task);
 
   const milestone = isMilestone({ ...task, startDate, endDate });
+  const slackDays = analysis?.byId?.get(task.id)?.totalSlack ?? 0;
   const hasDates = Boolean(startDate && endDate);
 
   const rowClass = [
@@ -176,6 +179,20 @@ export default function GanttRow({ task, index, ctx }) {
         style={{ width: layout.totalWidth }}
         data-task-id={task.id}
       >
+        {/* Folga: quanto a tarefa pode escorregar sem empurrar o
+            projeto. Fantasma logo após o término, para o atraso
+            aceitável ser visível sem precisar abrir nada. */}
+        {showSlack && !task.isSummary && slackDays > 0 && hasDates && (
+          <div
+            className="gantt-slack"
+            style={{
+              left: layout.xOf(endDate) + layout.dayWidth,
+              width: slackDays * layout.dayWidth,
+            }}
+            title={'Folga total: ' + slackDays + ' dia(s) úteis'}
+          />
+        )}
+
         {task.baselineStart && task.baselineEnd && (
           <div
             className="gantt-baseline"

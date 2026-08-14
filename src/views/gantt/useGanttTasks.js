@@ -1,5 +1,11 @@
 import { useMemo, useCallback } from 'react';
-import { addDays, daysBetween, durationDays, today } from '../../utils/schedule';
+import { addDays, durationDays } from '../../utils/schedule';
+import { dependencyIds, readDependencies } from '../../utils/dependencies';
+import {
+  DEFAULT_CALENDAR, calendarOf, nextWorkingDay, workingDuration,
+  endFromWorkingDuration, shiftWorkingDays,
+} from '../../utils/calendar';
+import { analyseSchedule } from '../../utils/cpm';
 
 /* ═══════════════════════════════════════════════════════════════
    Regras de cronograma do Gantt: hierarquia, auto-agendamento e
@@ -26,14 +32,8 @@ export function stripComputed(task) {
   return stored;
 }
 
-/** Lista de predecessoras a partir do campo (hoje CSV de ids). */
-export function parseDependencies(dependsOn) {
-  if (!dependsOn) return [];
-  return String(dependsOn)
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
+/** @deprecated Use dependencyIds de utils/dependencies. */
+export const parseDependencies = dependencyIds;
 
 /**
  * Tarefas do projeto, ordenadas, com resumo calculado de baixo para
@@ -115,7 +115,7 @@ export function useProjectTasks(allTasks, projectId, collapsedIds) {
 function buildSuccessorMap(tasks) {
   const map = new Map();
   tasks.forEach((t) => {
-    parseDependencies(t.dependsOn).forEach((depId) => {
+    dependencyIds(t.dependsOn).forEach((depId) => {
       if (!map.has(depId)) map.set(depId, []);
       map.get(depId).push(t.id);
     });
@@ -124,122 +124,106 @@ function buildSuccessorMap(tasks) {
 }
 
 /**
- * Forward pass: mover uma tarefa empurra as sucessoras que passariam
- * a começar antes do término da predecessora.
+ * Auto-agendamento (forward pass) respeitando tipo de dependência,
+ * defasagem e calendário de trabalho.
  *
- * Só empurra para frente — nunca puxa de volta. Puxar exigiria saber
- * se a folga é intencional, o que só a Onda C (com constraints)
- * conseguirá responder.
+ * Antes somava dias corridos e só entendia FS: mover uma tarefa que
+ * terminava na sexta jogava a sucessora para o sábado.
  */
-export function useAutoScheduling() {
-  return useCallback(applyForwardPass, []);
+export function applyForwardPass(changedTask, allTasks, project) {
+  const calendar = calendarOf(project);
+  const updates = new Map([[changedTask.id, changedTask]]);
+  const successors = buildSuccessorMap(allTasks);
+  const queue = [changedTask];
+  const visited = new Set();
+
+  const current = (id) => updates.get(id) || allTasks.find((t) => t.id === id);
+
+  while (queue.length) {
+    const task = queue.shift();
+    if (visited.has(task.id)) continue;
+    visited.add(task.id);
+
+    for (const succId of successors.get(task.id) || []) {
+      const base = current(succId);
+      if (!base || !base.startDate || !base.endDate) continue;
+      /* Resumo é derivado dos filhos: empurrá-lo gravaria um valor
+         calculado como se fosse do usuário. */
+      if (base.hasChildren) continue;
+
+      const link = readDependencies(base.dependsOn).find((d) => d.id === task.id);
+      if (!link) continue;
+
+      const pred = current(task.id);
+      const duration = workingDuration(base.startDate, base.endDate, calendar);
+      const lag = link.lag || 0;
+
+      let start = null;
+      let finish = null;
+
+      switch (link.type) {
+        case 'SS':
+          start = shiftWorkingDays(nextWorkingDay(pred.startDate, calendar), lag, calendar);
+          break;
+        case 'FF':
+          finish = shiftWorkingDays(pred.endDate, lag, calendar);
+          break;
+        case 'SF':
+          finish = shiftWorkingDays(pred.startDate, lag, calendar);
+          break;
+        case 'FS':
+        default:
+          /* +1 porque o término é inclusivo: terminar na sexta libera
+             a sucessora na segunda, não na própria sexta. */
+          start = shiftWorkingDays(
+            nextWorkingDay(addDays(pred.endDate, 1), calendar),
+            lag,
+            calendar
+          );
+          break;
+      }
+
+      if (finish && !start) {
+        start = shiftWorkingDays(finish, -(duration - 1), calendar);
+      }
+      if (!start) continue;
+
+      start = nextWorkingDay(start, calendar);
+      if (base.constraintStart && start < base.constraintStart) {
+        start = nextWorkingDay(base.constraintStart, calendar);
+      }
+
+      /* Só empurra para frente. Puxar de volta exigiria saber se a
+         folga é intencional — é o que as restrições resolvem. */
+      if (start <= base.startDate) continue;
+
+      const moved = {
+        ...base,
+        startDate: start,
+        endDate: endFromWorkingDuration(start, duration, calendar),
+      };
+      updates.set(moved.id, moved);
+      queue.push(moved);
+    }
+  }
+
+  return Array.from(updates.values());
 }
 
-/** A mesma regra fora de hook, para o Inspector poder reaproveitá-la. */
-export function applyForwardPass(changedTask, allTasks) {
-  {
-    const updates = new Map([[changedTask.id, changedTask]]);
-    const successors = buildSuccessorMap(allTasks);
-    const queue = [changedTask];
-    const visited = new Set();
-
-    while (queue.length) {
-      const current = queue.shift();
-      if (visited.has(current.id)) continue;
-      visited.add(current.id);
-      const currentEnd = viewEnd(current);
-      if (!currentEnd) continue;
-
-      for (const succId of successors.get(current.id) || []) {
-        const base = allTasks.find((t) => t.id === succId);
-        if (!base) continue;
-
-        const succ = updates.get(succId) || { ...base };
-        if (!succ.startDate) continue;
-
-        /* Resumo tem datas derivadas dos filhos: empurrá-lo seria
-           gravar valor calculado como se fosse do usuário. */
-        if (succ.hasChildren) continue;
-
-        const earliestStart = addDays(currentEnd, 1);
-        if (succ.startDate >= earliestStart) continue;
-
-        const dur = durationDays(succ.startDate, succ.endDate);
-        succ.startDate = earliestStart;
-        succ.endDate = addDays(earliestStart, Math.max(1, dur) - 1);
-
-        updates.set(succ.id, succ);
-        queue.push(succ);
-      }
-    }
-
-    return Array.from(updates.values());
-  }
+export function useAutoScheduling(project) {
+  return useCallback(
+    (changedTask, allTasks) => applyForwardPass(changedTask, allTasks, project),
+    [project]
+  );
 }
 
 /**
- * Caminho crítico.
- *
- * Backward pass de late-finish: uma tarefa é crítica quando seu
- * término mais tarde possível coincide com o término planejado, ou
- * seja, folga zero.
- *
- * Nota: ainda é meio CPM. O forward pass real com folga total e livre
- * chega na Onda C, junto com o calendário de trabalho.
+ * Análise CPM completa: folga total, folga livre e caminho crítico.
+ * A implementação vive em utils/cpm.js — aqui só memorizamos.
  */
-export function useCriticalPath(tasks, enabled) {
-  return useMemo(() => {
-    if (!enabled || !tasks.length) return new Set();
-
-    const successors = buildSuccessorMap(tasks);
-    const byId = new Map(tasks.map((t) => [t.id, t]));
-
-    const finishes = tasks
-      .map((t) => viewEnd(t))
-      .filter(Boolean)
-      .sort();
-    const projectEnd = finishes[finishes.length - 1] || today();
-
-    const lateFinish = new Map();
-    const visiting = new Set();
-
-    const getLateFinish = (taskId) => {
-      if (lateFinish.has(taskId)) return lateFinish.get(taskId);
-      /* Dependência circular: corta no fim do projeto em vez de estourar */
-      if (visiting.has(taskId)) return projectEnd;
-
-      visiting.add(taskId);
-      const succs = successors.get(taskId) || [];
-
-      let result = projectEnd;
-      if (succs.length) {
-        let earliest = null;
-        for (const succId of succs) {
-          const succ = byId.get(succId);
-          if (!succ) continue;
-          const succLF = getLateFinish(succId);
-          const dur = Math.max(1, durationDays(viewStart(succ), viewEnd(succ)));
-          /* Late start da sucessora = LF − duração + 1; o predecessor
-             precisa terminar um dia antes disso. */
-          const succLateStart = addDays(succLF, -(dur - 1));
-          const mustFinishBy = addDays(succLateStart, -1);
-          if (earliest === null || mustFinishBy < earliest) earliest = mustFinishBy;
-        }
-        if (earliest !== null) result = earliest;
-      }
-
-      visiting.delete(taskId);
-      lateFinish.set(taskId, result);
-      return result;
-    };
-
-    const critical = new Set();
-    tasks.forEach((t) => {
-      const end = viewEnd(t);
-      if (!end) return;
-      const slack = daysBetween(end, getLateFinish(t.id));
-      if (slack <= 0) critical.add(t.id);
-    });
-    return critical;
-  }, [tasks, enabled]);
+export function useScheduleAnalysis(tasks, project) {
+  return useMemo(
+    () => analyseSchedule(tasks, calendarOf(project)),
+    [tasks, project]
+  );
 }

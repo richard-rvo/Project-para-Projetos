@@ -11,6 +11,9 @@ import {
 } from '../utils/schedule';
 import { calculateTaskPlannedProgress } from '../utils/progress';
 import { applyForwardPass, stripComputed } from '../views/gantt/useGanttTasks';
+import {
+  readDependencies, DEPENDENCY_TYPES, wouldCreateCycle,
+} from '../utils/dependencies';
 
 /* ═══════════════════════════════════════════════════════════════
    INSPECTOR — o único caminho de edição de detalhe de tarefa.
@@ -52,6 +55,7 @@ export default function TaskInspectorDrawer() {
   const { inspectorTaskId, tasks, projects, anomalies } = state;
   const task = tasks.find((t) => t.id === inspectorTaskId);
 
+  const project = projects.find((p) => p.id === task?.projectId);
   const [draft, setDraft] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -73,34 +77,24 @@ export default function TaskInspectorDrawer() {
       .sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
   }, [tasks, task]);
 
-  const predecessorLabel = useCallback((dependsOn) => {
-    if (!dependsOn) return '';
-    return String(dependsOn).split(',')
-      .map((id) => siblings.findIndex((t) => t.id === id.trim()))
-      .filter((i) => i >= 0).map((i) => i + 1).join(', ');
-  }, [siblings]);
+  const links = readDependencies(task?.dependsOn);
 
-  const predecessorFromLabel = useCallback((label) => {
-    if (!label?.trim()) return '';
-    return String(label).split(',')
-      .map((n) => parseInt(n.trim(), 10))
-      .filter((n) => !Number.isNaN(n))
-      .map((n) => siblings[n - 1]?.id)
-      .filter((id) => id && id !== task?.id)
-      .join(',');
-  }, [siblings, task]);
+  const setLinks = useCallback(
+    (next) => commit({ dependsOn: next }, 'Alterar predecessoras'),
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+    [task, siblings]
+  );
 
   const commit = useCallback(async (patch, label) => {
     if (!task) return;
     const next = { ...task, ...patch };
     const reschedules = 'startDate' in patch || 'endDate' in patch || 'dependsOn' in patch;
-    const list = reschedules ? applyForwardPass(next, siblings) : [next];
+    const list = reschedules ? applyForwardPass(next, siblings, project) : [next];
     await updateTasksBatch(list.map(stripComputed), label);
-  }, [task, siblings, updateTasksBatch]);
+  }, [task, siblings, project, updateTasksBatch]);
 
   if (!inspectorTaskId || !draft || !task) return null;
 
-  const project = projects.find((p) => p.id === task.projectId);
   const linked = anomalies.filter((a) => a.taskId === task.id);
   const duration = durationDays(task.startDate, task.endDate);
   const milestone = isMilestone(task);
@@ -265,17 +259,55 @@ export default function TaskInspectorDrawer() {
           </Section>
 
           <Section label="Predecessoras" icon={Link2}>
-            <input
-              value={draft.__predLabel ?? predecessorLabel(task.dependsOn)}
-              onChange={(e) => setDraft({ ...draft, __predLabel: e.target.value })}
-              onBlur={(e) => {
-                const next = predecessorFromLabel(e.target.value);
-                setDraft((d) => ({ ...d, __predLabel: undefined }));
-                if (next !== (task.dependsOn || '')) commit({ dependsOn: next }, 'Alterar predecessoras');
-              }}
-              placeholder="Números de linha — ex: 1, 3"
-              className={inputCls}
-            />
+            {links.length === 0 ? (
+              <p className="text-small text-text-3">
+                Nenhuma. Arraste do ponto na ponta da barra no Gantt para criar.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-1.5">
+                {links.map((dep, i) => {
+                  const row = siblings.findIndex((t) => t.id === dep.id);
+                  const pred = siblings[row];
+                  return (
+                    <li key={dep.id} className="flex items-center gap-1.5">
+                      <span className="w-6 shrink-0 text-right text-micro tabular-nums text-text-3">
+                        {row >= 0 ? row + 1 : "?"}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-small text-text-1">
+                        {pred?.name || "(fora deste projeto)"}
+                      </span>
+                      <select
+                        value={dep.type}
+                        onChange={(e) => setLinks(links.map((d, j) =>
+                          j === i ? { ...d, type: e.target.value } : d))}
+                        title={DEPENDENCY_TYPES.find((t) => t.id === dep.type)?.hint}
+                        className="h-7 shrink-0 rounded-[5px] border border-line bg-surface-0 px-1 text-micro text-text-1"
+                      >
+                        {DEPENDENCY_TYPES.map((t) => (
+                          <option key={t.id} value={t.id}>{t.id}</option>
+                        ))}
+                      </select>
+                      <input
+                        type="number"
+                        value={dep.lag}
+                        onChange={(e) => setLinks(links.map((d, j) =>
+                          j === i ? { ...d, lag: parseInt(e.target.value, 10) || 0 } : d))}
+                        title="Defasagem em dias úteis"
+                        className="h-7 w-14 shrink-0 rounded-[5px] border border-line bg-surface-0 px-1.5 text-micro tabular-nums text-text-1"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setLinks(links.filter((_, j) => j !== i))}
+                        title="Remover"
+                        className="grid size-6 shrink-0 place-items-center rounded-[5px] text-text-3 transition-colors hover:bg-sched-late-soft hover:text-sched-late"
+                      >
+                        <X size={12} />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </Section>
 
           <Section label="Recursos" icon={Users}>

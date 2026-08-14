@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { readDependencies } from '../../utils/dependencies';
 import {
   Indent, Outdent, Copy, ClipboardPaste, CopyPlus, Trash2, Link2Off, PenLine,
 } from 'lucide-react';
@@ -52,7 +53,7 @@ export default function GanttContextMenu({ data, onClose, actions, selectionCoun
       icon: Link2Off,
       label: 'Remover predecessoras',
       onSelect: run(() => actions.clearDependencies(data.task)),
-      disabled: !data.task.dependsOn,
+      disabled: !readDependencies(data.task.dependsOn).length,
       hidden: plural,
     },
     {

@@ -12,22 +12,28 @@ import {
 import ConfirmDialog from '../../components/ConfirmDialog';
 import * as XLSX from 'xlsx';
 import {
-  AlertCircle, Calendar, Download, Plus, Settings, Target, Undo2, Redo2,
+  AlertCircle, Download, Plus, Settings, Target, Undo2, Redo2, Hourglass,
 } from 'lucide-react';
 
 import {
   addDays, daysBetween, durationDays, today, formatDateShort, clampProgress,
 } from '../../utils/schedule';
+import {
+  calendarOf, workingDuration, endFromWorkingDuration,
+} from '../../utils/calendar';
 import { calculateTaskPlannedProgress } from '../../utils/progress';
 import {
-  ZOOM_LEVELS, COLUMNS, DURATION_UNITS,
+  ZOOM_LEVELS, COLUMNS,
   DEFAULT_GRID_W, MIN_GRID_W, MAX_GRID_W,
   rowHeightFor, loadVisibleColumns, saveVisibleColumns,
 } from './ganttConfig';
 import {
-  useProjectTasks, useAutoScheduling, useCriticalPath,
+  useProjectTasks, useAutoScheduling, useScheduleAnalysis,
   viewStart, viewEnd, viewProgress, stripComputed,
 } from './useGanttTasks';
+import {
+  readDependencies, parseDependencyInput, formatDependency, wouldCreateCycle,
+} from '../../utils/dependencies';
 import { useGanttLayout } from './useGanttLayout';
 import { useGanttKeyboard } from './useGanttKeyboard';
 import { useGanttLinking, linkTasks } from './useGanttLinking';
@@ -36,6 +42,9 @@ import GanttRow from './GanttRow';
 import GanttDependencies from './GanttDependencies';
 import GanttTooltip from './GanttTooltip';
 import GanttContextMenu from './GanttContextMenu';
+import GanttCalendarMenu from './GanttCalendarMenu';
+
+const EMPTY_SET = new Set();
 
 function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -43,7 +52,7 @@ function generateId() {
 
 export default function GanttView() {
   const {
-    state, addTask, addTasks, updateTasksBatch, removeTasks, showToast,
+    state, addTask, addTasks, updateTasksBatch, removeTasks, showToast, updateProject,
     undo, redo, canUndo, canRedo, openTaskInspector,
   } = useContext(AppContext);
 
@@ -55,6 +64,7 @@ export default function GanttView() {
   const [visibleCols, setVisibleCols] = useState(loadVisibleColumns);
   const [showBarLabels, setShowBarLabels] = useState(true);
   const [showCriticalPath, setShowCriticalPath] = useState(false);
+  const [showSlack, setShowSlack] = useState(false);
 
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [collapsedIds, setCollapsedIds] = useState(() => new Set());
@@ -89,8 +99,12 @@ export default function GanttView() {
   const activeProject = state.projects.find((p) => p.id === state.activeProjectId);
 
   const tasks = useProjectTasks(state.tasks, state.activeProjectId, collapsedIds);
-  const applyAutoScheduling = useAutoScheduling();
-  const criticalIds = useCriticalPath(tasks, showCriticalPath);
+  const applyAutoScheduling = useAutoScheduling(activeProject);
+
+  /* Análise CPM completa: sempre calculada, porque a folga alimenta a
+     barra fantasma mesmo com o caminho crítico desligado. */
+  const analysis = useScheduleAnalysis(tasks, activeProject);
+  const criticalIds = showCriticalPath ? analysis.criticalIds : EMPTY_SET;
   const layout = useGanttLayout(tasks, zoom.dayWidth, zoom.tick);
 
   /* Barreira única de escrita: nada derivado (rollup, hasChildren,
@@ -106,6 +120,13 @@ export default function GanttView() {
   );
 
   /* ── Ajuda de formatação ────────────────────────────────────── */
+  /* Duração em DIAS ÚTEIS: um intervalo de segunda a sexta dura 5,
+     e não 5 corridos que atravessariam o fim de semana. */
+  const workingDurationOf = useCallback(
+    (task) => workingDuration(viewStart(task), viewEnd(task), calendarOf(activeProject)),
+    [activeProject]
+  );
+
   const formatDuration = useCallback((days) => {
     const { durationUnit, hoursPerDay } = scheduleSettings;
     if (durationUnit === 'hours') return `${days * hoursPerDay}h`;
@@ -122,26 +143,22 @@ export default function GanttView() {
   }, [scheduleSettings]);
 
   /* Predecessoras são exibidas como número de linha, não como id. */
+  /* "2FS+3" — número da linha, tipo e defasagem, como no MS Project. */
   const predecessorLabel = useCallback((dependsOn) => {
-    if (!dependsOn) return '';
-    return String(dependsOn)
-      .split(',')
-      .map((id) => tasks.findIndex((t) => t.id === id.trim()))
-      .filter((i) => i >= 0)
-      .map((i) => i + 1)
+    return readDependencies(dependsOn)
+      .map((dep) => {
+        const index = tasks.findIndex((t) => t.id === dep.id);
+        return index >= 0 ? formatDependency(dep, index + 1) : null;
+      })
+      .filter(Boolean)
       .join(', ');
   }, [tasks]);
 
-  const predecessorFromLabel = useCallback((label) => {
-    if (!label?.trim()) return '';
-    return String(label)
-      .split(',')
-      .map((n) => parseInt(n.trim(), 10))
-      .filter((n) => !Number.isNaN(n))
-      .map((n) => tasks[n - 1]?.id)
-      .filter(Boolean)
-      .join(',');
-  }, [tasks]);
+  const predecessorFromLabel = useCallback(
+    (label, selfId) => parseDependencyInput(label, tasks, selfId)
+      .filter((dep) => !wouldCreateCycle(dep.id, selfId, tasks)),
+    [tasks]
+  );
 
   /* ── Scroll inicial até hoje ──────────────────────────────────
      Só depois que as tarefas chegam. As tarefas vêm do IndexedDB de
@@ -216,9 +233,12 @@ export default function GanttView() {
     let modified;
     if (editingCell.colId === 'duration') {
       const days = parseDurationToDays(editValue);
-      modified = { ...task, endDate: addDays(task.startDate, days - 1) };
+      modified = {
+        ...task,
+        endDate: endFromWorkingDuration(task.startDate, days, calendarOf(activeProject)),
+      };
     } else if (editingCell.colId === 'dependencies') {
-      modified = { ...task, dependsOn: predecessorFromLabel(editValue) };
+      modified = { ...task, dependsOn: predecessorFromLabel(editValue, task.id) };
     } else if (editingCell.colId === 'progress') {
       modified = { ...task, progress: clampProgress(editValue) };
     } else {
@@ -352,7 +372,7 @@ export default function GanttView() {
       endDate: addDays(start, 4),
       status: 'Não Iniciada',
       progress: 0,
-      dependsOn: '',
+      dependsOn: [],
       indentLevel: 0,
       order: tasks.length,
     });
@@ -427,7 +447,7 @@ export default function GanttView() {
       ...t,
       id: generateId(),
       name: `${t.name} (cópia)`,
-      dependsOn: '',
+      dependsOn: [],
       order: tasks.length + i,
     }));
     await addTasks(clones);
@@ -525,7 +545,9 @@ export default function GanttView() {
   const ctx = {
     columns, gridWidth, layout, selectedIds, editingCell, collapsedIds,
     criticalIds, showCriticalPath, showBarLabels, dragPreview, dragOverIndex,
-    editValue, editInputRef, formatDuration, predecessorLabel,
+    editValue, editInputRef, formatDuration, workingDurationOf, predecessorLabel,
+    analysis,
+    showSlack,
     activeCell,
     linkTargetId: linkDrag?.targetId || null,
     onBeginLink: beginLink,
@@ -571,6 +593,14 @@ export default function GanttView() {
         >
           Caminho crítico
         </ViewBarButton>
+        <ViewBarButton
+          icon={Hourglass}
+          active={showSlack}
+          onClick={() => setShowSlack((v) => !v)}
+          title="Mostrar folga total de cada tarefa"
+        >
+          Folga
+        </ViewBarButton>
         <ViewBarButton icon={Target} onClick={handleSaveBaseline} title="Gravar as datas atuais">
           Baseline
         </ViewBarButton>
@@ -582,29 +612,10 @@ export default function GanttView() {
 
         <ViewBarButton icon={Download} onClick={exportToExcel}>Excel</ViewBarButton>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <ViewBarButton icon={Calendar}>Cronograma</ViewBarButton>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-60">
-            <DropdownMenuLabel className="text-micro uppercase tracking-wide text-text-3">
-              Unidade de duração
-            </DropdownMenuLabel>
-            {DURATION_UNITS.map((u) => (
-              <DropdownMenuCheckboxItem
-                key={u.id}
-                checked={scheduleSettings.durationUnit === u.id}
-                onCheckedChange={() => {
-                  const next = { ...scheduleSettings, durationUnit: u.id };
-                  setScheduleSettings(next);
-                  localStorage.setItem('gantt_schedule_settings', JSON.stringify(next));
-                }}
-              >
-                {u.label}
-              </DropdownMenuCheckboxItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <GanttCalendarMenu
+          project={activeProject}
+          onChange={(calendar) => updateProject({ ...activeProject, calendar })}
+        />
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -754,7 +765,7 @@ export default function GanttView() {
           duplicate: handleDuplicate,
           remove: handleDeleteSelected,
           clearDependencies: (task) =>
-            saveTasks([{ ...task, dependsOn: '' }], 'Remover predecessoras'),
+            saveTasks([{ ...task, dependsOn: [] }], 'Remover predecessoras'),
         }}
       />
 

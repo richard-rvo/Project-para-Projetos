@@ -898,4 +898,23 @@
     background: var(--line-hairline);
   }
 
+
+  /* ── Folga ───────────────────────────────────────────────────
+     Fantasma logo após o término: mostra quanto a tarefa pode
+     escorregar sem empurrar o fim do projeto. */
+  .gantt-slack {
+    position: absolute;
+    top: 50%;
+    translate: 0 -50%;
+    height: 7px;
+    z-index: 3;
+    border-radius: 3px;
+    background: repeating-linear-gradient(
+      90deg,
+      var(--sched-slack) 0 4px,
+      transparent 4px 8px
+    );
+    opacity: 0.75;
+    pointer-events: none;
+  }
 }

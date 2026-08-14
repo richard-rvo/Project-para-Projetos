@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
-import { parseDependencies } from './useGanttTasks';
+import { readDependencies, wouldCreateCycle } from '../../utils/dependencies';
 
 /* ═══════════════════════════════════════════════════════════════
    Ligar tarefas arrastando.
@@ -87,28 +87,22 @@ export function linkTasks(predecessor, successor, allTasks) {
     return { ok: false, reason: 'Uma tarefa não pode depender de si mesma.' };
   }
 
-  const existing = parseDependencies(successor.dependsOn);
-  if (existing.includes(predecessor.id)) {
+  const existing = readDependencies(successor.dependsOn);
+  if (existing.some((d) => d.id === predecessor.id)) {
     return { ok: false, reason: 'Essa dependência já existe.' };
   }
 
-  /* Detecção de ciclo: o predecessor já depende do sucessor? */
-  const byId = new Map(allTasks.map((t) => [t.id, t]));
-  const seen = new Set();
-  const stack = [predecessor.id];
-  while (stack.length) {
-    const id = stack.pop();
-    if (id === successor.id) {
-      return { ok: false, reason: 'Isso criaria uma dependência circular.' };
-    }
-    if (seen.has(id)) continue;
-    seen.add(id);
-    const task = byId.get(id);
-    if (task) stack.push(...parseDependencies(task.dependsOn));
+  if (wouldCreateCycle(predecessor.id, successor.id, allTasks)) {
+    return { ok: false, reason: 'Isso criaria uma dependência circular.' };
   }
 
   return {
     ok: true,
-    task: { ...successor, dependsOn: [...existing, predecessor.id].join(',') },
+    /* Ligação por arrasto cria sempre FS sem defasagem — tipo e lag
+       se ajustam depois, na célula ou no Inspector. */
+    task: {
+      ...successor,
+      dependsOn: [...existing, { id: predecessor.id, type: 'FS', lag: 0 }],
+    },
   };
 }

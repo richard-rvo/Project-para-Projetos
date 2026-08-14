@@ -98,7 +98,7 @@ export const COLUMNS = [
     editable: true,
     type: 'number',
     summaryLocked: true,
-    render: (t, ctx) => ctx.formatDuration(durationDays(viewStart(t), viewEnd(t))),
+    render: (t, ctx) => ctx.formatDuration(ctx.workingDurationOf(t)),
   },
   {
     id: 'start',
