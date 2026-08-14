@@ -51,7 +51,7 @@ O app funcionava, mas a organização visual estava ruim por razões **estrutura
 | 5 | Portfólio e Visão Geral | ✅ Concluída |
 | 6 | Gantt · Onda C — rigor de cronograma | ✅ Concluída |
 | 7 | Gantt · Onda D — escala | ✅ Concluída |
-| 8 | Views restantes | ⬜ Pendente |
+| 8 | Views restantes | ✅ Concluída |
 | 9 | Documentação | ⬜ Pendente |
 
 ---
@@ -142,16 +142,22 @@ Conferido contra rede calculada à mão: ES/EF/LS/LF exatos, caminho crítico co
 - *Ordenação por coluna* — em um Gantt a ordem das linhas **é** o plano, definida por arrasto e por hierarquia. Ordenar por outra chave briga com as duas, e resolver esse conflito é uma decisão de produto, não de implementação.
 - *Presets de view* — depende de definir o que um preset guarda (colunas? filtros? zoom? densidade?), e essa escolha ainda não foi feita.
 
-## ⬜ Fase 8 — Views restantes
+## ✅ Fase 8 — Views restantes
 
-| View | Mudança |
+As seis telas que ainda usavam o CSS legado foram reescritas. **O `legacy.css` foi deletado**: das 315 classes que ele definia, 295 já estavam mortas e as 20 restantes pertenciam a cinco componentes pequenos, migrados aqui. O monolito de 3.492 linhas com que este redesign começou não existe mais.
+
+| View | O que mudou |
 |---|---|
-| Tabela | Mesma engine de colunas do Gantt; agrupamento, filtro salvo, edição inline |
-| Quadro | Colunas com contador, cards compactos, WIP visual |
-| Curva S | Eixos limpos, área tingida por desvio, tooltip ancorado, seletor de período |
-| Anomalias | Split view: lista densa + detalhe; bottom sheet no mobile |
-| Relatórios | Preview A4 real; também acessível de dentro do projeto |
-| Configurações | Duas colunas estilo Ajustes do macOS |
+| Curva S | ~240 linhas de SVG à mão viraram `<CurveChart>` — o mesmo componente da Visão Geral e do relatório. Ganhou seletor de período e export CSV. |
+| Tabela | Consome as MESMAS colunas do Gantt (`ganttConfig.COLUMNS`). Antes cada tela tinha a sua lista: uma mostrava "Responsável", a outra "Recursos", e nenhuma mostrava o que a outra mostrava. Ordenação, filtros e ações em massa. |
+| Quadro | Colunas com contador, arrastar entre status, cards compactos com prazo e atraso. Mover para "Concluída" marca 100% — um card concluído com 40% é uma contradição. |
+| Anomalias | Split view (lista densa + detalhe) num `AnomalyBoard` compartilhado pela central global e pela tela do projeto — eram duas telas com código quase igual. Formulário de 4 passos extraído para componente próprio. |
+| Relatórios | Pré-visualização A4 real: folha branca com sombra sobre mesa recuada. O que está na tela é o que sai na impressora. |
+| Configurações | Duas colunas estilo Ajustes do macOS, com "Apagar tudo" isolado numa zona de risco em vez de lado a lado com "Tema". |
+
+**Bug corrigido:** o `@media print` nomeava `.app-sidebar`, `.app-header` e `.page-container` — todos removidos na Fase 1. A regra deixara de casar com qualquer coisa, e **imprimir saía com o trilho e a barra superior na folha**. O novo `styles/print.css` esconde tudo e revela apenas a folha, sem citar o shell, então nenhuma mudança futura de layout pode quebrá-lo de novo.
+
+Também: `ConfirmDialog` e `Toast` reescritos sobre Radix e tokens; `Modal`, `Badge` e `ProgressBar` deletados por falta de uso.
 
 ## ⬜ Fase 9 — Documentação
 

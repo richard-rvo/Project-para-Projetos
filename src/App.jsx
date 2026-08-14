@@ -29,7 +29,7 @@ function App() {
       case 'pageProjectWorkspace':
         return <ProjectWorkspace />;
       case 'pageAnomalies':
-        return <PageScroll><PageAnomalies /></PageScroll>;
+        return <PageAnomalies />;
       case 'pageReports':
         return <PageScroll><PageReports /></PageScroll>;
       case 'pageSettings':

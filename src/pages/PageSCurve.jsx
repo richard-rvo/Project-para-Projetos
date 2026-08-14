@@ -1,241 +1,136 @@
 import React, { useContext, useMemo, useState } from 'react';
 import { AppContext } from '../context/AppContext';
-import { TrendingUp } from 'lucide-react';
-
-import { daysBetween, today } from '../utils/schedule';
+import { cn } from '@/lib/utils';
+import ViewBar, { ViewBarSegments, ViewBarButton } from '../components/shell/ViewBar';
+import CurveChart from '../components/CurveChart';
 import { computeSCurve } from '../utils/scurve';
+import { today, addDays, formatDateLong } from '../utils/schedule';
+import { TrendingUp, Download } from 'lucide-react';
+
+/* ═══════════════════════════════════════════════════════════════
+   CURVA S — planejado vs realizado
+
+   A página inteira era ~240 linhas de SVG escrito à mão. O cálculo
+   virou utils/scurve.js na Fase 5 e o desenho virou <CurveChart>, o
+   mesmo componente que a Visão Geral usa — então tela, visão geral e
+   relatório impresso não têm como divergir.
+
+   O que sobrou aqui é o que é próprio desta página: a janela de
+   tempo e a leitura numérica do desvio.
+   ═══════════════════════════════════════════════════════════════ */
+
+const RANGES = [
+  { id: 'all', label: 'Tudo' },
+  { id: '90', label: '90 dias' },
+  { id: '30', label: '30 dias' },
+];
 
 export default function PageSCurve() {
   const { state } = useContext(AppContext);
-  const activeProject = state.projects.find((p) => p.id === state.activeProjectId);
-  const projectTasks = useMemo(
+  const [range, setRange] = useState('all');
+
+  const project = state.projects.find((p) => p.id === state.activeProjectId);
+  const tasks = useMemo(
     () => state.tasks.filter((t) => t.projectId === state.activeProjectId),
     [state.tasks, state.activeProjectId]
   );
 
-  const [tooltip, setTooltip] = useState(null);
+  /* A janela recorta as TAREFAS, não os pontos: recortar a curva
+     pronta daria percentuais que não somam o projeto inteiro. */
+  const windowed = useMemo(() => {
+    if (range === 'all') return tasks;
+    const from = addDays(today(), -Number(range));
+    return tasks.filter((t) => !t.endDate || t.endDate >= from);
+  }, [tasks, range]);
 
-  /* O cálculo vem de utils/scurve — o mesmo que a Visão Geral e os
-     Relatórios usam. Antes cada tela tinha a sua cópia, e as cópias
-     não eram idênticas: o mesmo projeto rendia curvas diferentes.
+  const curve = useMemo(() => computeSCurve(windowed, 60), [windowed]);
 
-     Este useMemo PRECISA ficar antes dos returns condicionais abaixo.
-     Ele estava depois deles, o que é uma violação das regras de hooks:
-     em um render sem projeto ativo o hook não era chamado, mudando a
-     ordem dos hooks entre renders. */
-  const curve = useMemo(() => computeSCurve(projectTasks, 30), [projectTasks]);
+  if (!project) return null;
 
-  const curveData = useMemo(() => ({
-    planned: curve.points.map((p) => ({ day: p.day, date: p.date, value: p.planned })),
-    actual: curve.points
-      .filter((p) => p.actual !== null)
-      .map((p) => ({ day: p.day, date: p.date, value: p.actual })),
-    totalDays: curve.totalDays,
-    minDate: curve.minDate,
-    maxDate: curve.maxDate,
-  }), [curve]);
+  const behind = curve.deviation < 0;
 
-  if (!activeProject) {
-    return (
-      <div className="page-section" id="pageSCurve">
-        <div className="empty-state">
-          <TrendingUp size={48} strokeWidth={1} />
-          <h3>Nenhum projeto selecionado</h3>
-          <p>Selecione um projeto para visualizar a Curva S.</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (projectTasks.length === 0 || !curve.points.length) {
-    return (
-      <div className="page-section" id="pageSCurve">
-        <div className="empty-state glass-card">
-          <h3>Sem dados para gerar a curva</h3>
-          <p>Adicione tarefas com datas para visualizar a Curva S.</p>
-        </div>
-      </div>
-    );
-  }
-
-  /* ── Deviation ─────────────────────────────────────────────── */
-  const todayStr      = today();
-  const lastActual    = curveData.actual.length > 0 ? curveData.actual[curveData.actual.length - 1].value : 0;
-  const plannedTodayObj = curveData.planned.find((p) => p.date === todayStr)
-    || curveData.planned[curveData.planned.length - 1];
-  const plannedToday  = plannedTodayObj ? plannedTodayObj.value : 0;
-  const deviation     = lastActual - plannedToday;
-  const isAhead       = deviation >= 0;
-
-  /* ── SVG chart ─────────────────────────────────────────────── */
-  const svgWidth  = 1200;
-  const svgHeight = 400;
-  const padding   = { top: 30, right: 30, bottom: 50, left: 60 };
-  const chartW    = svgWidth - padding.left - padding.right;
-  const chartH    = svgHeight - padding.top - padding.bottom;
-
-  const scaleX = (i) => padding.left + (i / Math.max(curveData.totalDays || 1, 1)) * chartW;
-  const scaleY = (v) => padding.top + chartH - (v / 100) * chartH;
-
-  const toPath = (points) => {
-    if (!points.length) return '';
-    return points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${scaleX(p.day)} ${scaleY(p.value)}`).join(' ');
-  };
-
-  /* Today line X position */
-  const todayDayIdx = daysBetween(curveData.minDate || todayStr, todayStr);
-  const todayX = curveData.minDate ? scaleX(Math.max(0, Math.min(curveData.totalDays || 0, todayDayIdx))) : null;
-
-  /* Label frequency for X axis */
-  const yLabels = [0, 25, 50, 75, 100];
-
-  /* ── Hover handlers ────────────────────────────────────────── */
-  const handleSvgMouseMove = (e) => {
-    const svg = e.currentTarget;
-    const rect = svg.getBoundingClientRect();
-    const svgX = ((e.clientX - rect.left) / rect.width) * svgWidth;
-    const dayRatio = (svgX - padding.left) / chartW;
-    const dayIdx = Math.round(dayRatio * (curveData.totalDays || 0));
-    if (dayIdx < 0 || dayIdx > (curveData.totalDays || 0)) { setTooltip(null); return; }
-
-    const pPt = curveData.planned.reduce((best, p) => !best || Math.abs(p.day - dayIdx) < Math.abs(best.day - dayIdx) ? p : best, null);
-    const aPt = curveData.actual.reduce((best, p) => !best || Math.abs(p.day - dayIdx) < Math.abs(best.day - dayIdx) ? p : best, null);
-
-    if (pPt) {
-      setTooltip({
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top,
-        date: pPt.date,
-        planned: Math.round(pPt.value),
-        actual: aPt ? Math.round(aPt.value) : null,
-      });
-    }
+  const exportCsv = () => {
+    const rows = [['Data', 'Planejado (%)', 'Realizado (%)']];
+    curve.points.forEach((p) => rows.push([
+      p.date,
+      p.planned.toFixed(1),
+      p.actual === null ? '' : p.actual.toFixed(1),
+    ]));
+    const blob = new Blob([rows.map((r) => r.join(';')).join('\n')], {
+      type: 'text/csv;charset=utf-8',
+    });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${project.name}_CurvaS.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
   };
 
   return (
-    <div className="page-section" id="pageSCurve">
-      <div className="scurve-container glass-card" style={{ position: 'relative' }}>
-        {/* Legend */}
-        <div className="scurve-legend">
-          <div className="legend-item">
-            <span className="legend-dot" style={{ background: 'var(--color-blue)' }} />
-            <span>Planejado</span>
+    <div className="flex h-full flex-col">
+      <ViewBar>
+        <ViewBarSegments options={RANGES} value={range} onChange={setRange} />
+        <div className="ml-auto" />
+        <ViewBarButton icon={Download} onClick={exportCsv} disabled={!curve.points.length}>
+          CSV
+        </ViewBarButton>
+      </ViewBar>
+
+      <div className="min-h-0 flex-1 overflow-auto p-5">
+        {!curve.points.length ? (
+          <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
+            <TrendingUp size={40} strokeWidth={1.2} className="text-text-3" />
+            <div>
+              <h3 className="text-read font-semibold text-text-1">Sem dados para a curva</h3>
+              <p className="mt-1 text-small text-text-2">
+                Adicione tarefas com data de início e término.
+              </p>
+            </div>
           </div>
-          <div className="legend-item">
-            <span className="legend-dot" style={{ background: 'var(--color-emerald)' }} />
-            <span>Realizado</span>
-          </div>
-          <div className="legend-item">
-            <span className="legend-dash" style={{ background: '#888', width: 18, height: 2, display: 'inline-block', verticalAlign: 'middle' }} />
-            <span style={{ marginLeft: 6 }}>Hoje</span>
-          </div>
-        </div>
+        ) : (
+          <div className="flex flex-col gap-4">
+            <section className="flex flex-wrap items-stretch gap-px overflow-hidden rounded-[10px] border border-line bg-line">
+              <Metric label="Planejado hoje" value={`${Math.round(curve.plannedToday)}%`} />
+              <Metric label="Realizado" value={`${Math.round(curve.actualToday)}%`} />
+              <Metric
+                label={behind ? 'Atrasado' : 'Adiantado'}
+                value={`${curve.deviation > 0 ? '+' : ''}${Math.round(curve.deviation)}%`}
+                tone={behind ? 'late' : 'done'}
+              />
+              <Metric label="Início" value={formatDateLong(curve.minDate)} small />
+              <Metric label="Término" value={formatDateLong(curve.maxDate)} small />
+            </section>
 
-        {/* SVG */}
-        <svg
-          viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-          className="scurve-svg"
-          onMouseMove={handleSvgMouseMove}
-          onMouseLeave={() => setTooltip(null)}
-          style={{ cursor: 'crosshair' }}
-        >
-          {/* Grid lines */}
-          {yLabels.map((v) => (
-            <g key={v}>
-              <line x1={padding.left} y1={scaleY(v)} x2={svgWidth - padding.right} y2={scaleY(v)} stroke="rgba(128,128,128,0.15)" strokeDasharray="4 2" />
-              <text x={padding.left - 10} y={scaleY(v) + 4} textAnchor="end" fill="var(--color-text)" fontSize="12">{v}%</text>
-            </g>
-          ))}
+            <section className="rounded-[10px] border border-line bg-surface-1 p-5">
+              <CurveChart curve={curve} height={380} />
+            </section>
 
-          {/* X axis */}
-          <line x1={padding.left} y1={padding.top + chartH} x2={svgWidth - padding.right} y2={padding.top + chartH} stroke="rgba(128,128,128,0.3)" />
-
-          {/* X axis labels (sampled) */}
-          {curveData.planned.filter((_, i) => i % Math.max(1, Math.floor(curveData.planned.length / 10)) === 0).map((p) => (
-            <text key={p.day} x={scaleX(p.day)} y={padding.top + chartH + 20} textAnchor="middle" fill="var(--color-text)" fontSize="10">
-              {new Date(p.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
-            </text>
-          ))}
-
-          {/* Today vertical line */}
-          {todayX !== null && (
-            <g>
-              <line x1={todayX} y1={padding.top} x2={todayX} y2={padding.top + chartH} stroke="#888" strokeDasharray="6 3" strokeWidth={1.5} />
-              <text x={todayX + 6} y={padding.top + 16} fill="#888" fontSize="11" fontWeight="600">Hoje</text>
-            </g>
-          )}
-
-          {/* Area under actual */}
-          {curveData.actual.length > 0 && (
-            <path
-              d={`${toPath(curveData.actual)} L ${scaleX(curveData.actual[curveData.actual.length - 1].day)} ${scaleY(0)} L ${scaleX(0)} ${scaleY(0)} Z`}
-              fill="url(#actualGradient)"
-              opacity={0.15}
-            />
-          )}
-
-          {/* Planned curve */}
-          <path d={toPath(curveData.planned)} fill="none" stroke="var(--color-blue)" strokeWidth={2.5} strokeLinecap="round" />
-
-          {/* Planned points (sampled, no labels to avoid clutter) */}
-          {curveData.planned.filter((_, i) => i % Math.max(1, Math.floor(curveData.planned.length / 12)) === 0).map((p, i) => (
-            <circle key={`p-${i}`} cx={scaleX(p.day)} cy={scaleY(p.value)} r={3} fill="var(--color-blue)" />
-          ))}
-
-          {/* Actual curve */}
-          <path d={toPath(curveData.actual)} fill="none" stroke="var(--color-emerald)" strokeWidth={2.5} strokeLinecap="round" strokeDasharray="6 3" />
-
-          {/* Actual points (sampled) */}
-          {curveData.actual.filter((_, i) => i % Math.max(1, Math.floor(curveData.actual.length / 12)) === 0).map((p, i) => (
-            <circle key={`a-${i}`} cx={scaleX(p.day)} cy={scaleY(p.value)} r={4} fill="var(--color-emerald)" />
-          ))}
-
-          <defs>
-            <linearGradient id="actualGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="var(--color-emerald)" />
-              <stop offset="100%" stopColor="transparent" />
-            </linearGradient>
-          </defs>
-        </svg>
-
-        {/* Tooltip */}
-        {tooltip && (
-          <div
-            className="scurve-tooltip"
-            style={{ left: Math.min(tooltip.x + 12, 800), top: Math.max(tooltip.y - 60, 10) }}
-          >
-            <div className="tooltip-date">{new Date(tooltip.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
-            <div className="tooltip-row" style={{ color: 'var(--color-blue)' }}>Planejado: <strong>{tooltip.planned}%</strong></div>
-            {tooltip.actual !== null && (
-              <div className="tooltip-row" style={{ color: 'var(--color-emerald)' }}>Realizado: <strong>{tooltip.actual}%</strong></div>
-            )}
+            <p className="text-small leading-relaxed text-text-2">
+              A área entre as curvas é o desvio acumulado.{' '}
+              {behind
+                ? 'A execução está abaixo do planejado — a faixa vermelha mostra o quanto.'
+                : 'A execução está acima do planejado — a faixa verde mostra a margem.'}
+            </p>
           </div>
         )}
-
-        {/* Summary stats */}
-        <div className="scurve-stats">
-          <div className="stat-item">
-            <span className="stat-value">{Math.round(plannedToday)}%</span>
-            <span className="stat-label">Planejado (Hoje)</span>
-          </div>
-          <div className="stat-item">
-            <span className="stat-value" style={{ color: 'var(--color-emerald)' }}>
-              {Math.round(lastActual)}%
-            </span>
-            <span className="stat-label">Realizado Atual</span>
-          </div>
-          <div className="stat-item">
-            <span className="stat-value" style={{ color: isAhead ? 'var(--color-emerald)' : 'var(--color-coral)' }}>
-              {deviation > 0 ? '+' : ''}{Math.round(deviation)}%
-            </span>
-            <span className="stat-label">Desvio ({isAhead ? 'Adiantado' : 'Atrasado'})</span>
-          </div>
-          <div className="stat-item">
-            <span className="stat-value">{projectTasks.filter((t) => t.status === 'Concluída').length} / {projectTasks.length}</span>
-            <span className="stat-label">Tarefas Concluídas</span>
-          </div>
-        </div>
       </div>
+    </div>
+  );
+}
+
+function Metric({ label, value, tone, small }) {
+  return (
+    <div className="flex min-w-36 flex-1 flex-col gap-0.5 bg-surface-1 px-4 py-3">
+      <span className="text-micro font-medium uppercase tracking-wide text-text-3">{label}</span>
+      <span
+        className={cn(
+          'font-semibold leading-none tracking-tight tabular-nums',
+          small ? 'text-read' : 'text-[24px]',
+          tone === 'late' ? 'text-sched-late' : tone === 'done' ? 'text-sched-done' : 'text-text-1'
+        )}
+      >
+        {value}
+      </span>
     </div>
   );
 }

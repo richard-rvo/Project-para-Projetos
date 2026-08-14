@@ -27,13 +27,15 @@ export default function ProjectWorkspace() {
     case 'gantt':
       return <GanttView />;
     case 'kanban':
-      return <PageScroll><PageKanban /></PageScroll>;
+      return <PageKanban />;
+    /* Views com ViewBar própria renderizam sem contêiner de rolagem:
+       elas administram o próprio scroll abaixo da barra. */
     case 'scurve':
-      return <PageScroll><PageSCurve /></PageScroll>;
+      return <PageSCurve />;
     case 'tasklist':
-      return <PageScroll><PageTaskList /></PageScroll>;
+      return <PageTaskList />;
     case 'anomalies':
-      return <PageScroll><PageProjectAnomalies /></PageScroll>;
+      return <PageProjectAnomalies />;
     case 'overview':
     default:
       return <PageScroll><PageProjectOverview /></PageScroll>;

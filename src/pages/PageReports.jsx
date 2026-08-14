@@ -1,315 +1,255 @@
-import React, { useContext, useState, useMemo, useRef } from 'react';
+import React, { useContext, useMemo, useState } from 'react';
 import { AppContext } from '../context/AppContext';
-import ProgressBar from '../components/ProgressBar';
-import Badge from '../components/Badge';
-import { FileBarChart, Printer, ChevronDown, AlertTriangle, CheckSquare, TrendingUp, Calendar } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import ViewBar, { ViewBarSegments, ViewBarButton } from '../components/shell/ViewBar';
+import CurveChart from '../components/CurveChart';
 import { calculateProjectMetrics } from '../utils/progress';
-import { today } from '../utils/schedule';
 import { computeSCurve } from '../utils/scurve';
+import { today, formatDateLong, formatDateShort, durationDays } from '../utils/schedule';
+import { formatDatetime } from '../components/anomalies/anomalyConfig';
+import { Printer, FileBarChart } from 'lucide-react';
 
-function formatDate(dateStr) {
-  if (!dateStr) return '—';
-  return new Date(dateStr + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-}
+/* ═══════════════════════════════════════════════════════════════
+   RELATÓRIOS — pré-visualização A4 real
 
-const STATUS_COLORS = { 'Não Iniciada': 'gray', 'Em Andamento': 'blue', 'Concluída': 'green', 'Atrasada': 'red' };
-const SEVERITY_COLOR = { baixa: 'blue', média: 'orange', alta: 'red', crítica: 'red' };
+   A folha aparece como folha: fundo branco, largura de A4, sombra
+   sobre uma mesa recuada. O que está na tela é o que sai na
+   impressora, então gerar o PDF não reserva surpresas.
+
+   A Curva S usa o mesmo <CurveChart> da tela. Antes o relatório
+   tinha SVG próprio e cálculo próprio, e podia discordar do que o
+   usuário acabara de ver na Curva S.
+   ═══════════════════════════════════════════════════════════════ */
+
+const TYPES = [
+  { id: 'status', label: 'Status executivo' },
+  { id: 'anomalies', label: 'Anomalias' },
+];
 
 export default function PageReports() {
   const { state } = useContext(AppContext);
   const { projects, tasks, anomalies } = state;
-  const [selectedProjectId, setSelectedProjectId] = useState(projects[0]?.id || '');
-  const [reportType, setReportType] = useState('status');
-  const printRef = useRef(null);
 
-  const project   = projects.find((p) => p.id === selectedProjectId);
-  const projTasks = useMemo(() => tasks.filter((t) => t.projectId === selectedProjectId), [tasks, selectedProjectId]);
-  const projAnoms = useMemo(() => anomalies.filter((a) => a.projectId === selectedProjectId), [anomalies, selectedProjectId]);
+  const [projectId, setProjectId] = useState(projects[0]?.id || '');
+  const [type, setType] = useState('status');
 
-  const todayStr = today();
+  const project = projects.find((p) => p.id === projectId) || projects[0];
 
-  /* ── KPIs ─────────────────────────────────────────────────────── */
-  const kpis = useMemo(() => {
-    if (!project) return {};
-    const metrics = calculateProjectMetrics(projTasks);
-    
-    const done    = projTasks.filter((t) => t.status === 'Concluída').length;
-    const delayed = projTasks.filter((t) => t.status === 'Atrasada').length;
-    const openAnoms = projAnoms.filter((a) => a.status === 'aberta').length;
+  const projTasks = useMemo(
+    () => tasks.filter((t) => t.projectId === project?.id),
+    [tasks, project]
+  );
+  const projAnomalies = useMemo(
+    () => anomalies.filter((a) => a.projectId === project?.id),
+    [anomalies, project]
+  );
+  const curve = useMemo(() => computeSCurve(projTasks, 30), [projTasks]);
 
-    return { 
-      progress: metrics.progress, 
-      planned: metrics.planned, 
-      deviation: metrics.deviation, 
-      done, 
-      total: projTasks.length, 
-      delayed, 
-      openAnoms 
-    };
-  }, [project, projTasks, projAnoms]);
-
-  /* Curva S vem de utils/scurve — a MESMA função que a tela usa.
-     Antes o relatório impresso tinha a própria cópia do cálculo, e
-     as duas não eram idênticas: o PDF podia discordar da tela. */
-  const curve = useMemo(() => computeSCurve(projTasks, 20), [projTasks]);
-
-  const sCurvePoints = useMemo(() => ({
-    planned: curve.points.map((p) => ({ day: p.day, date: p.date, value: p.planned })),
-    actual: curve.points
-      .filter((p) => p.actual !== null)
-      .map((p) => ({ day: p.day, date: p.date, value: p.actual })),
-    totalDays: curve.totalDays,
-    minDate: curve.minDate,
-    maxDate: curve.maxDate,
-  }), [curve]);
-
-  /* SVG drawing */
-  const W = 600, H = 200, PAD = { t: 10, r: 20, b: 30, l: 40 };
-  const cW = W - PAD.l - PAD.r, cH = H - PAD.t - PAD.b;
-  const sx = (i) => PAD.l + (i / Math.max(sCurvePoints.totalDays || 1, 1)) * cW;
-  const sy = (v) => PAD.t + cH - (v / 100) * cH;
-  const toPath = (pts) => pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${sx(p.day)} ${sy(p.value)}`).join(' ');
-
-  /* ── print ────────────────────────────────────────────────────── */
-  const handlePrint = () => window.print();
-
-  if (!project) {
+  if (!projects.length) {
     return (
-      <div className="page-section" id="pageReports">
-        <div className="page-toolbar"><h2>Relatórios</h2></div>
-        <div className="empty-state">
-          <FileBarChart size={64} strokeWidth={1} />
-          <h3>Nenhum projeto disponível</h3>
-          <p>Crie um projeto primeiro para gerar relatórios.</p>
+      <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
+        <FileBarChart size={40} strokeWidth={1.2} className="text-text-3" />
+        <div>
+          <h3 className="text-read font-semibold text-text-1">Nenhum projeto disponível</h3>
+          <p className="mt-1 text-small text-text-2">Crie um projeto para gerar relatórios.</p>
         </div>
       </div>
     );
   }
 
+  const metrics = calculateProjectMetrics(projTasks);
+  const done = projTasks.filter((t) => t.status === 'Concluída').length;
+  const late = projTasks.filter((t) => t.status === 'Atrasada').length;
+  const openAnomalies = projAnomalies.filter((a) => a.status === 'aberta').length;
+
   return (
-    <div className="page-section" id="pageReports">
-      {/* Controls (hidden on print) */}
-      <div className="no-print">
+    <div className="flex h-full flex-col">
+      <ViewBar className="no-print">
+        <select
+          value={project?.id || ''}
+          onChange={(e) => setProjectId(e.target.value)}
+          className="h-7.5 max-w-64 rounded-[6px] border border-line bg-surface-0 px-2 text-small text-text-1 focus:border-line-strong"
+        >
+          {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <ViewBarSegments options={TYPES} value={type} onChange={setType} />
+        <div className="ml-auto" />
+        <ViewBarButton icon={Printer} variant="primary" onClick={() => window.print()}>
+          Imprimir / PDF
+        </ViewBarButton>
+      </ViewBar>
 
-
-        <div className="reports-controls">
-          <div className="reports-filters">
-            <div className="form-group">
-              <label>Projeto</label>
-              <div className="select-wrapper">
-                <select value={selectedProjectId} onChange={(e) => setSelectedProjectId(e.target.value)}>
-                  {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
-                <ChevronDown size={14} className="select-chevron" />
+      {/* Mesa de trabalho: a folha flutua sobre um fundo recuado. */}
+      <div className="min-h-0 flex-1 overflow-auto bg-surface-inset p-6">
+        <article className="print-report mx-auto w-[210mm] max-w-full bg-white p-[14mm] text-[#111] shadow-elev-3">
+          <header className="mb-6 flex items-start gap-4 border-b-2 border-[#111] pb-4">
+            <img src="/logo.png" alt="" className="h-11 w-11 object-contain" />
+            <div className="flex-1">
+              <div className="text-[15px] font-bold tracking-tight">PROJETA</div>
+              <div className="text-[10px] uppercase tracking-wide text-[#666]">
+                Sistema de gestão de projetos
               </div>
             </div>
-            <div className="form-group">
-              <label>Tipo de Relatório</label>
-              <div className="select-wrapper">
-                <select value={reportType} onChange={(e) => setReportType(e.target.value)}>
-                  <option value="status">Status Executivo</option>
-                  <option value="anomalies">Relatório de Anomalias</option>
-                </select>
-                <ChevronDown size={14} className="select-chevron" />
-              </div>
+            <div className="text-right text-[10px] leading-relaxed text-[#666]">
+              <div>Emitido em {formatDateLong(today())}</div>
+              {project.startDate && <div>Início {formatDateLong(project.startDate)}</div>}
+              {project.endDate && <div>Término {formatDateLong(project.endDate)}</div>}
             </div>
-          </div>
-          <button className="btn-primary" onClick={handlePrint} style={{ height: 48, padding: '0 24px' }}>
-            <Printer size={16} /> Imprimir / Salvar PDF
-          </button>
-        </div>
-      </div>
+          </header>
 
-      {/* ═══════════════════════════════════════════════════════════ */}
-      {/* PRINTABLE REPORT */}
-      {/* ═══════════════════════════════════════════════════════════ */}
-      <div ref={printRef} className="print-report">
-        {/* Report header */}
-        <div className="report-header">
-          <div className="report-logo">
-            <img src="/logo.png" alt="Logo" style={{ height: 48, objectFit: 'contain' }} />
-            <div>
-              <div className="report-software-name">PROJETA</div>
-              <div className="report-software-sub">Sistema de Gestão de Projetos</div>
-            </div>
-          </div>
-          <div className="report-title-block">
-            <h1 className="report-title">
-              {reportType === 'status' ? 'Relatório de Status Executivo' : 'Relatório de Anomalias'}
-            </h1>
-            <div className="report-subtitle">{project.name}</div>
-          </div>
-          <div className="report-meta">
-            <span>Emitido em: {formatDate(todayStr)}</span>
-            {project.startDate && <span>Início: {formatDate(project.startDate)}</span>}
-            {project.endDate && <span>Término Previsto: {formatDate(project.endDate)}</span>}
-          </div>
-        </div>
+          <h1 className="text-[19px] font-bold leading-tight">
+            {type === 'status' ? 'Relatório de status executivo' : 'Relatório de anomalias'}
+          </h1>
+          <p className="mb-6 text-[13px] text-[#555]">{project.name}</p>
 
-        <hr className="report-divider" />
-
-        {reportType === 'status' && (
-          <>
-            {/* Executive summary */}
-            <section className="report-section">
-              <h2 className="report-section-title">Resumo Executivo</h2>
-              <div className="report-kpi-row">
-                <div className="report-kpi" style={{ borderLeftColor: 'var(--color-blue)' }}>
-                  <span className="report-kpi-value">{kpis.progress}%</span>
-                  <span className="report-kpi-label">Progresso Real</span>
+          {type === 'status' ? (
+            <>
+              <Section title="Resumo executivo">
+                <div className="grid grid-cols-5 gap-px bg-[#ddd]">
+                  <Kpi label="Progresso real" value={`${metrics.progress}%`} />
+                  <Kpi label="Planejado" value={`${metrics.planned}%`} />
+                  <Kpi
+                    label="Desvio"
+                    value={`${metrics.deviation > 0 ? '+' : ''}${Math.round(metrics.deviation)}%`}
+                    tone={metrics.deviation < 0 ? '#b4331f' : '#1d7a4c'}
+                  />
+                  <Kpi label="Tarefas" value={`${done}/${projTasks.length}`} />
+                  <Kpi label="Atrasadas" value={late} tone={late ? '#b4331f' : undefined} />
                 </div>
-                <div className="report-kpi" style={{ borderLeftColor: 'var(--color-gray-400)' }}>
-                  <span className="report-kpi-value">{kpis.planned}%</span>
-                  <span className="report-kpi-label">Planejado (Hoje)</span>
-                </div>
-                <div className="report-kpi" style={{ borderLeftColor: kpis.deviation >= 0 ? 'var(--color-green)' : 'var(--color-coral)' }}>
-                  <span className="report-kpi-value" style={{ color: kpis.deviation >= 0 ? 'var(--color-green)' : 'var(--color-coral)' }}>
-                    {kpis.deviation > 0 ? '+' : ''}{Math.round(kpis.deviation)}%
-                  </span>
-                  <span className="report-kpi-label">Desvio ({kpis.deviation >= 0 ? 'Adiantado' : 'Atrasado'})</span>
-                </div>
-                <div className="report-kpi" style={{ borderLeftColor: 'var(--color-primary)' }}>
-                  <span className="report-kpi-value">{kpis.done}/{kpis.total}</span>
-                  <span className="report-kpi-label">Tarefas Concluídas</span>
-                </div>
-                <div className="report-kpi" style={{ borderLeftColor: kpis.delayed > 0 ? 'var(--color-coral)' : 'var(--color-green)' }}>
-                  <span className="report-kpi-value" style={{ color: kpis.delayed > 0 ? 'var(--color-coral)' : 'var(--color-text-primary)' }}>{kpis.delayed}</span>
-                  <span className="report-kpi-label">Tarefas Atrasadas</span>
-                </div>
-                <div className="report-kpi" style={{ borderLeftColor: kpis.openAnoms > 0 ? 'var(--color-orange)' : 'var(--color-green)' }}>
-                  <span className="report-kpi-value" style={{ color: kpis.openAnoms > 0 ? 'var(--color-orange)' : 'var(--color-text-primary)' }}>{kpis.openAnoms}</span>
-                  <span className="report-kpi-label">Anomalias Abertas</span>
-                </div>
-              </div>
-              {project.description && <p className="report-desc">{project.description}</p>}
-            </section>
+                <p className="mt-3 text-[11px] leading-relaxed text-[#444]">
+                  Saúde do projeto: <strong>{metrics.health}</strong>.{' '}
+                  {metrics.deviation < 0
+                    ? `A execução está ${Math.abs(Math.round(metrics.deviation))} pontos abaixo do planejado.`
+                    : 'A execução está no ritmo planejado ou acima dele.'}
+                  {openAnomalies > 0 && ` ${openAnomalies} anomalia(s) em aberto.`}
+                </p>
+              </Section>
 
-            <hr className="report-divider" />
-
-            {/* S-Curve */}
-            {sCurvePoints.planned?.length > 0 && (
-              <section className="report-section">
-                <h2 className="report-section-title">Curva S — Planejado vs Realizado</h2>
-                <div className="report-chart-legend">
-                  <span style={{ color: '#3b82f6' }}>━━ Planejado</span>
-                  <span style={{ color: '#10b981', marginLeft: 20 }}>- - Realizado</span>
-                </div>
-                <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', maxHeight: 220, display: 'block', border: '1px solid #e5e7eb', borderRadius: 8 }}>
-                  {[0, 25, 50, 75, 100].map((v) => (
-                    <g key={v}>
-                      <line x1={PAD.l} y1={sy(v)} x2={W - PAD.r} y2={sy(v)} stroke="#e5e7eb" strokeDasharray="3 2" />
-                      <text x={PAD.l - 6} y={sy(v) + 4} textAnchor="end" fontSize={9} fill="#6b7280">{v}%</text>
-                    </g>
-                  ))}
-                  <line x1={PAD.l} y1={PAD.t + cH} x2={W - PAD.r} y2={PAD.t + cH} stroke="#d1d5db" />
-                  {sCurvePoints.planned?.filter((_, i) => i % Math.max(1, Math.floor((sCurvePoints.planned.length - 1) / 6)) === 0).map((p) => (
-                    <text key={p.day} x={sx(p.day)} y={H - 5} textAnchor="middle" fontSize={8} fill="#6b7280">
-                      {new Date(p.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
-                    </text>
-                  ))}
-                  {sCurvePoints.planned?.length > 0 && <path d={toPath(sCurvePoints.planned)} fill="none" stroke="#3b82f6" strokeWidth={1.5} />}
-                  {sCurvePoints.actual?.length > 0 && <path d={toPath(sCurvePoints.actual)} fill="none" stroke="#10b981" strokeWidth={1.5} strokeDasharray="4 3" />}
-                </svg>
-              </section>
-            )}
-
-            <hr className="report-divider" />
-
-            {/* Task list */}
-            <section className="report-section">
-              <h2 className="report-section-title">Cronograma de Tarefas</h2>
-              <table className="report-table">
-                <thead>
-                  <tr>
-                    <th>#</th><th>Tarefa</th><th>Responsável</th><th>Início</th><th>Fim</th><th>Status</th><th>%</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {projTasks.map((t, i) => (
-                    <tr key={t.id} className={t.status === 'Atrasada' ? 'row-delayed' : ''}>
-                      <td>{i + 1}</td>
-                      <td>{t.name}</td>
-                      <td>{t.assignee || '—'}</td>
-                      <td>{formatDate(t.startDate)}</td>
-                      <td>{formatDate(t.endDate)}</td>
-                      <td>{t.status}</td>
-                      <td>{t.progress || 0}%</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </section>
-
-            {/* Anomalies summary if any */}
-            {projAnoms.length > 0 && (
-              <>
-                <hr className="report-divider" />
-                <section className="report-section">
-                  <h2 className="report-section-title">Anomalias do Projeto ({projAnoms.length})</h2>
-                  <table className="report-table">
-                    <thead>
-                      <tr><th>#</th><th>Título</th><th>Severidade</th><th>Tipo</th><th>Status</th><th>Responsável</th><th>Data</th></tr>
-                    </thead>
-                    <tbody>
-                      {projAnoms.map((a, i) => (
-                        <tr key={a.id}>
-                          <td>{i + 1}</td><td>{a.title}</td><td>{a.severity}</td><td>{a.type}</td>
-                          <td>{a.status}</td><td>{a.reportedBy}</td><td>{formatDate(a.reportedAt?.slice(0,10))}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </section>
-              </>
-            )}
-          </>
-        )}
-
-        {reportType === 'anomalies' && (
-          <>
-            <section className="report-section">
-              <h2 className="report-section-title">Registro de Anomalias — {project.name}</h2>
-              {projAnoms.length === 0 ? (
-                <p>Nenhuma anomalia registrada neste projeto.</p>
-              ) : (
-                projAnoms.map((a, i) => (
-                  <div key={a.id} className="report-anomaly-block">
-                    <div className="report-anomaly-header">
-                      <span className="report-anomaly-num">#{i + 1}</span>
-                      <span className="report-anomaly-title">{a.title}</span>
-                      <span className="report-anomaly-severity" data-sev={a.severity}>{a.severity?.toUpperCase()}</span>
-                      <span className="report-anomaly-status">{a.status}</span>
-                    </div>
-                    <div className="report-anomaly-detail">
-                      {a.description && <p><strong>Descrição:</strong> {a.description}</p>}
-                      {a.osNumber && <p><strong>OS:</strong> {a.osNumber}</p>}
-                      {a.equipment && <p><strong>Equipamento:</strong> {a.equipment}</p>}
-                      {a.location && <p><strong>Localização:</strong> {a.location}</p>}
-                      {a.discipline && <p><strong>Disciplina:</strong> {a.discipline}</p>}
-                      {a.rootCause && <p><strong>Causa Raiz:</strong> {a.rootCause}</p>}
-                      {a.correctiveAction && <p><strong>Ação Corretiva:</strong> {a.correctiveAction}</p>}
-                      <p><strong>Registrado por:</strong> {a.reportedBy} em {formatDate(a.reportedAt?.slice(0,10))}</p>
-                    </div>
-                    {a.photos?.length > 0 && (
-                      <div className="report-anomaly-photos">
-                        {a.photos.map((src, pi) => (
-                          <img key={pi} src={src} alt={`Foto ${pi + 1}`} className="report-photo" />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))
+              {curve.points.length > 1 && (
+                <Section title="Curva S — planejado vs realizado">
+                  <CurveChart curve={curve} height={190} />
+                </Section>
               )}
-            </section>
-          </>
-        )}
 
-        {/* Footer */}
-        <div className="report-footer">
-          <span>PROJETA — Gestão de Projetos</span>
-          <span>Emitido em {new Date().toLocaleString('pt-BR')}</span>
-        </div>
+              <Section title={`Cronograma (${projTasks.length} tarefas)`}>
+                <table className="w-full border-collapse text-[10px]">
+                  <thead>
+                    <tr className="border-b border-[#111]">
+                      {['#', 'Tarefa', 'Início', 'Término', 'Dur.', '%', 'Status'].map((h) => (
+                        <th key={h} className="px-1.5 py-1 text-left font-semibold uppercase tracking-wide">
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {projTasks.map((t, i) => (
+                      <tr key={t.id} className="border-b border-[#eee]">
+                        <td className="px-1.5 py-1 tabular-nums text-[#888]">{i + 1}</td>
+                        <td className="px-1.5 py-1">{t.name}</td>
+                        <td className="px-1.5 py-1 tabular-nums">{formatDateShort(t.startDate)}</td>
+                        <td className="px-1.5 py-1 tabular-nums">{formatDateShort(t.endDate)}</td>
+                        <td className="px-1.5 py-1 tabular-nums">{durationDays(t.startDate, t.endDate)}d</td>
+                        <td className="px-1.5 py-1 tabular-nums">{t.progress || 0}%</td>
+                        <td className={cn('px-1.5 py-1', t.status === 'Atrasada' && 'font-semibold text-[#b4331f]')}>
+                          {t.status}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </Section>
+
+              {projAnomalies.length > 0 && (
+                <Section title={`Anomalias (${projAnomalies.length})`}>
+                  <ul className="flex flex-col gap-1 text-[10px]">
+                    {projAnomalies.map((a) => (
+                      <li key={a.id} className="flex gap-2 border-b border-[#eee] pb-1">
+                        <span className="w-16 shrink-0 font-semibold uppercase">{a.severity}</span>
+                        <span className="flex-1">{a.title}</span>
+                        <span className="shrink-0 text-[#666]">{a.status}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </Section>
+              )}
+            </>
+          ) : (
+            <Section title={`Registro de anomalias (${projAnomalies.length})`}>
+              {projAnomalies.length === 0 ? (
+                <p className="text-[11px] text-[#666]">Nenhuma anomalia registrada neste projeto.</p>
+              ) : (
+                <div className="flex flex-col gap-4">
+                  {projAnomalies.map((a) => (
+                    <article key={a.id} className="break-inside-avoid border-b border-[#ddd] pb-3">
+                      <div className="flex items-baseline gap-2">
+                        <h3 className="flex-1 text-[12px] font-semibold">{a.title}</h3>
+                        <span className="text-[9px] uppercase tracking-wide text-[#666]">
+                          {a.severity} · {a.status}
+                        </span>
+                      </div>
+                      {a.description && (
+                        <p className="mt-1 text-[10px] leading-relaxed text-[#333]">{a.description}</p>
+                      )}
+                      <dl className="mt-1.5 grid grid-cols-4 gap-x-3 gap-y-0.5 text-[9px] text-[#555]">
+                        <Pair label="Registrado por" value={a.reportedBy} />
+                        <Pair label="Em" value={formatDatetime(a.reportedAt)} />
+                        {a.equipment && <Pair label="Equipamento" value={a.equipment} />}
+                        {a.location && <Pair label="Local" value={a.location} />}
+                        {a.osNumber && <Pair label="OS" value={a.osNumber} />}
+                        {a.rootCause && <Pair label="Causa raiz" value={a.rootCause} />}
+                        {a.correctiveAction && <Pair label="Ação" value={a.correctiveAction} />}
+                      </dl>
+                      {a.photos?.length > 0 && (
+                        <div className="mt-2 flex gap-1.5">
+                          {a.photos.map((src, i) => (
+                            <img key={i} src={src} alt="" className="h-20 w-20 rounded object-cover" />
+                          ))}
+                        </div>
+                      )}
+                    </article>
+                  ))}
+                </div>
+              )}
+            </Section>
+          )}
+
+          <footer className="mt-8 border-t border-[#ddd] pt-2 text-[9px] text-[#888]">
+            Projeta · {project.name} · gerado em {formatDateLong(today())}
+          </footer>
+        </article>
       </div>
+    </div>
+  );
+}
+
+function Section({ title, children }) {
+  return (
+    <section className="mb-6 break-inside-avoid">
+      <h2 className="mb-2 border-b border-[#ddd] pb-1 text-[11px] font-bold uppercase tracking-wide">
+        {title}
+      </h2>
+      {children}
+    </section>
+  );
+}
+
+function Kpi({ label, value, tone }) {
+  return (
+    <div className="bg-white px-2 py-2 text-center">
+      <div className="text-[8px] uppercase tracking-wide text-[#777]">{label}</div>
+      <div className="text-[16px] font-bold tabular-nums" style={tone ? { color: tone } : undefined}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function Pair({ label, value }) {
+  return (
+    <div>
+      <span className="text-[#999]">{label}: </span>
+      <span>{value}</span>
     </div>
   );
 }

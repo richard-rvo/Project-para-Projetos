@@ -1,315 +1,331 @@
-import React, { useContext, useState, useMemo } from 'react';
+import React, { useContext, useMemo, useState } from 'react';
 import { AppContext } from '../context/AppContext';
-import Modal from '../components/Modal';
+import { cn } from '@/lib/utils';
+import ViewBar, { ViewBarButton, ViewBarDivider } from '../components/shell/ViewBar';
 import ConfirmDialog from '../components/ConfirmDialog';
-import Badge from '../components/Badge';
-import ProgressBar from '../components/ProgressBar';
 import {
-  Plus,
-  Trash2,
-  Edit3,
-  Search,
-  ChevronUp,
-  ChevronDown,
-  Filter,
-  CheckSquare,
-  CheckCircle2,
-  X,
-  Eye,
-  Sparkles,
+  DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent,
+  DropdownMenuLabel, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Plus, Search, SlidersHorizontal, Trash2, CheckCheck, ArrowUpDown, ListChecks, X,
 } from 'lucide-react';
+import { COLUMNS, STATUS_OPTIONS } from '../views/gantt/ganttConfig';
+import { viewStart, viewEnd, viewProgress } from '../views/gantt/useGanttTasks';
+import { today, addDays, durationDays } from '../utils/schedule';
+
+/* ═══════════════════════════════════════════════════════════════
+   TABELA DE TAREFAS
+
+   Consome a MESMA definição de colunas do Gantt
+   (ganttConfig.COLUMNS). Antes as duas telas mantinham listas
+   próprias e divergiam — a lista mostrava "Responsável", o Gantt
+   mostrava "Recursos", e nenhuma mostrava o que a outra mostrava.
+
+   Aqui a ordenação faz sentido, diferente do Gantt: numa lista plana
+   a ordem é uma pergunta ("o que vence primeiro?"), enquanto no Gantt
+   a ordem das linhas É o plano.
+   ═══════════════════════════════════════════════════════════════ */
+
+const STATUS_TONE = {
+  'Não Iniciada': 'bg-sched-not-started-soft text-sched-not-started',
+  'Em Andamento': 'bg-sched-on-track-soft text-sched-on-track',
+  'Concluída': 'bg-sched-done-soft text-sched-done',
+  'Atrasada': 'bg-sched-late-soft text-sched-late',
+};
+
+const SORTABLE = {
+  name: (t) => String(t.name || '').toLowerCase(),
+  start: (t) => viewStart(t) || '',
+  end: (t) => viewEnd(t) || '',
+  progress: (t) => viewProgress(t),
+  duration: (t) => durationDays(viewStart(t), viewEnd(t)),
+  status: (t) => String(t.status || ''),
+  resources: (t) => String(t.resources || '').toLowerCase(),
+};
+
+/* As colunas do Gantt recebem um contexto; nesta tela só a duração o usa. */
+const CELL_CTX = {
+  formatDuration: (d) => `${d}d`,
+  workingDurationOf: (t) => durationDays(viewStart(t), viewEnd(t)),
+  predecessorLabel: () => '',
+};
 
 function generateId() {
-  return Date.now() + Math.random().toString(36).slice(2, 9);
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
-const STATUS_OPTIONS = ['Não Iniciada', 'Em Andamento', 'Concluída', 'Atrasada'];
-const STATUS_COLORS = { 'Não Iniciada': 'gray', 'Em Andamento': 'blue', 'Concluída': 'green', 'Atrasada': 'red' };
-
 export default function PageTaskList() {
-  const { state, addTask, updateTask, updateTasksBatch, removeTask, openTaskInspector, showToast } = useContext(AppContext);
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('Todos');
-  const [sortCol, setSortCol] = useState('name');
-  const [sortDir, setSortDir] = useState('asc');
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editTask, setEditTask] = useState(null);
-  const [confirmId, setConfirmId] = useState(null);
-  const [selectedTaskIds, setSelectedTaskIds] = useState([]);
-  const [showBulkConfirmDelete, setShowBulkConfirmDelete] = useState(false);
-  const [page, setPage] = useState(0);
-  const PAGE_SIZE = 12;
+  const { state, addTask, updateTasksBatch, removeTasks, openTaskInspector, showToast } =
+    useContext(AppContext);
 
-  const emptyForm = { name: '', startDate: '', endDate: '', status: 'Não Iniciada', progress: 0, assignee: '', projectId: state.activeProjectId || '' };
-  const [form, setForm] = useState(emptyForm);
+  const [query, setQuery] = useState('');
+  const [statuses, setStatuses] = useState([]);
+  const [sort, setSort] = useState({ key: 'start', dir: 'asc' });
+  const [selected, setSelected] = useState(() => new Set());
+  const [confirmBulk, setConfirmBulk] = useState(false);
 
-  /* Filter, sort, paginate */
-  const filtered = useMemo(() => {
-    let list = [...state.tasks];
-    if (state.activeProjectId) list = list.filter((t) => t.projectId === state.activeProjectId);
-    if (search) list = list.filter((t) => t.name.toLowerCase().includes(search.toLowerCase()) || (t.assignee || '').toLowerCase().includes(search.toLowerCase()));
-    if (statusFilter !== 'Todos') list = list.filter((t) => t.status === statusFilter);
-    list.sort((a, b) => {
-      let va = a[sortCol] || '';
-      let vb = b[sortCol] || '';
-      if (sortCol === 'progress') { va = Number(va); vb = Number(vb); }
-      if (va < vb) return sortDir === 'asc' ? -1 : 1;
-      if (va > vb) return sortDir === 'asc' ? 1 : -1;
-      return 0;
+  const projectId = state.activeProjectId;
+  const project = state.projects.find((p) => p.id === projectId);
+
+  const columns = useMemo(
+    () => COLUMNS.filter((c) =>
+      ['name', 'duration', 'start', 'end', 'progress', 'resources'].includes(c.id)),
+    []
+  );
+
+  const total = useMemo(
+    () => state.tasks.filter((t) => t.projectId === projectId).length,
+    [state.tasks, projectId]
+  );
+
+  const rows = useMemo(() => {
+    const term = query.trim().toLowerCase();
+    const list = state.tasks.filter((t) => {
+      if (t.projectId !== projectId) return false;
+      if (term && !String(t.name || '').toLowerCase().includes(term)) return false;
+      if (statuses.length && !statuses.includes(t.status)) return false;
+      return true;
     });
-    return list;
-  }, [state.tasks, state.activeProjectId, search, statusFilter, sortCol, sortDir]);
 
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
-  const paginated = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+    const read = SORTABLE[sort.key] || SORTABLE.start;
+    const factor = sort.dir === 'asc' ? 1 : -1;
+    return [...list].sort((a, b) => {
+      const av = read(a);
+      const bv = read(b);
+      if (av === bv) return (a.order ?? 0) - (b.order ?? 0);
+      return (av > bv ? 1 : -1) * factor;
+    });
+  }, [state.tasks, projectId, query, statuses, sort]);
 
-  const toggleSort = (col) => {
-    if (sortCol === col) setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
-    else { setSortCol(col); setSortDir('asc'); }
+  const toggleSort = (key) => setSort((prev) =>
+    prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }
+  );
+
+  const toggleRow = (id) => setSelected((prev) => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+
+  const allSelected = rows.length > 0 && rows.every((t) => selected.has(t.id));
+
+  const addQuick = async () => {
+    const start = today();
+    const task = {
+      id: generateId(), projectId, name: 'Nova tarefa',
+      startDate: start, endDate: addDays(start, 4),
+      status: 'Não Iniciada', progress: 0, dependsOn: [],
+      indentLevel: 0, order: total,
+    };
+    await addTask(task);
+    openTaskInspector(task.id);
   };
 
-  const SortIcon = ({ col }) => {
-    if (sortCol !== col) return null;
-    return sortDir === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />;
+  const completeSelected = async () => {
+    const list = state.tasks
+      .filter((t) => selected.has(t.id))
+      .map((t) => ({ ...t, status: 'Concluída', progress: 100 }));
+    if (!list.length) return;
+    await updateTasksBatch(list, 'Concluir tarefas');
+    showToast(`${list.length} tarefa(s) concluída(s)`, 'success');
+    setSelected(new Set());
   };
 
-  // Selection Logic
-  const handleSelectAll = (e) => {
-    if (e.target.checked) {
-      setSelectedTaskIds(filtered.map((t) => t.id));
-    } else {
-      setSelectedTaskIds([]);
-    }
-  };
-
-  const handleSelectOne = (e, taskId) => {
-    e.stopPropagation();
-    if (e.target.checked) {
-      setSelectedTaskIds((prev) => [...prev, taskId]);
-    } else {
-      setSelectedTaskIds((prev) => prev.filter((id) => id !== taskId));
-    }
-  };
-
-  // Bulk Actions
-  const handleBulkComplete = async () => {
-    const toUpdate = state.tasks
-      .filter((t) => selectedTaskIds.includes(t.id))
-      .map((t) => ({ ...t, progress: 100, status: 'Concluída' }));
-    await updateTasksBatch(toUpdate);
-    showToast(`${toUpdate.length} tarefas concluídas!`, 'success');
-    setSelectedTaskIds([]);
-  };
-
-  const handleBulkDelete = async () => {
-    for (const id of selectedTaskIds) {
-      await removeTask(id);
-    }
-    showToast(`${selectedTaskIds.length} tarefas excluídas.`, 'info');
-    setSelectedTaskIds([]);
-    setShowBulkConfirmDelete(false);
-  };
-
-  const handleSave = async () => {
-    if (!form.name.trim()) { showToast('Nome é obrigatório', 'error'); return; }
-    if (!form.startDate || !form.endDate) { showToast('Datas são obrigatórias', 'error'); return; }
-    if (editTask) {
-      await updateTask({ ...editTask, ...form, progress: Number(form.progress) });
-      showToast('Tarefa atualizada!', 'success');
-    } else {
-      await addTask({ id: generateId(), ...form, progress: Number(form.progress) });
-      showToast('Tarefa criada!', 'success');
-    }
-    setForm(emptyForm);
-    setEditTask(null);
-    setModalOpen(false);
-  };
-
-  const getProjectName = (projectId) => {
-    const p = state.projects.find((pr) => pr.id === projectId);
-    return p ? p.name : '—';
-  };
-
-  const allSelected = filtered.length > 0 && selectedTaskIds.length === filtered.length;
+  if (!project) return null;
 
   return (
-    <div className="page-section" id="pageTaskList">
-      {/* Toolbar */}
-      <div className="page-toolbar">
-        <button className="btn-primary" onClick={() => { setEditTask(null); setForm(emptyForm); setModalOpen(true); }}>
-          <Plus size={16} /> Nova Tarefa
-        </button>
-      </div>
+    <div className="flex h-full flex-col">
+      <ViewBar>
+        <label className="relative flex items-center">
+          <Search size={14} strokeWidth={1.8} className="absolute left-2.5 text-text-3" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Filtrar tarefas"
+            className="h-7.5 w-56 rounded-[6px] border border-line bg-surface-0 pl-8 pr-2.5 text-small text-text-1 placeholder:text-text-3 focus:border-line-strong"
+          />
+        </label>
 
-      {/* Filters */}
-      <div className="filter-bar glass-card">
-        <div className="filter-search">
-          <Search size={16} />
-          <input type="text" placeholder="Buscar tarefa ou responsável..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} />
-        </div>
-        <div className="filter-status">
-          <Filter size={16} />
-          <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}>
-            <option>Todos</option>
-            {STATUS_OPTIONS.map((s) => <option key={s}>{s}</option>)}
-          </select>
-        </div>
-        <span className="filter-count">{filtered.length} tarefa{filtered.length !== 1 ? 's' : ''}</span>
-      </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <ViewBarButton icon={SlidersHorizontal} active={statuses.length > 0}>
+              Status{statuses.length ? ` (${statuses.length})` : ''}
+            </ViewBarButton>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-48">
+            <DropdownMenuLabel className="text-micro uppercase tracking-wide text-text-3">
+              Mostrar apenas
+            </DropdownMenuLabel>
+            {STATUS_OPTIONS.map((s) => (
+              <DropdownMenuCheckboxItem
+                key={s}
+                checked={statuses.includes(s)}
+                onCheckedChange={() => setStatuses((prev) =>
+                  prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s])}
+                onSelect={(e) => e.preventDefault()}
+              >
+                {s}
+              </DropdownMenuCheckboxItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
 
-      {/* Table */}
-      {filtered.length === 0 ? (
-        <div className="empty-state">
-          <h3>Nenhuma tarefa encontrada</h3>
-          <p>Ajuste os filtros ou crie uma nova tarefa.</p>
-        </div>
-      ) : (
-        <>
-          <div className="task-table-wrapper glass-card">
-            <table className="task-table">
-              <thead>
-                <tr>
-                  <th style={{ width: '40px', textAlign: 'center' }}>
+        <span className="ml-1 text-micro tabular-nums text-text-3">
+          {rows.length} de {total}
+        </span>
+
+        <div className="ml-auto" />
+        <ViewBarButton icon={Plus} variant="primary" onClick={addQuick}>Tarefa</ViewBarButton>
+      </ViewBar>
+
+      <div className="min-h-0 flex-1 overflow-auto">
+        {rows.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
+            <ListChecks size={40} strokeWidth={1.2} className="text-text-3" />
+            <div>
+              <h3 className="text-read font-semibold text-text-1">Nenhuma tarefa encontrada</h3>
+              <p className="mt-1 text-small text-text-2">Ajuste os filtros ou crie uma tarefa.</p>
+            </div>
+          </div>
+        ) : (
+          <table className="w-full border-collapse">
+            <thead className="sticky top-0 z-10">
+              <tr className="border-b border-line bg-surface-3">
+                <th className="w-10 px-3 py-2">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={() =>
+                      setSelected(allSelected ? new Set() : new Set(rows.map((t) => t.id)))}
+                    aria-label="Selecionar todas"
+                  />
+                </th>
+                {columns.map((col) => (
+                  <SortHeader
+                    key={col.id}
+                    label={col.label}
+                    active={sort.key === col.id}
+                    dir={sort.dir}
+                    align={col.align}
+                    onClick={() => toggleSort(col.id)}
+                  />
+                ))}
+                <SortHeader
+                  label="Status"
+                  active={sort.key === 'status'}
+                  dir={sort.dir}
+                  onClick={() => toggleSort('status')}
+                />
+                <th className="w-14 px-3 py-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((task) => (
+                <tr
+                  key={task.id}
+                  className={cn(
+                    'group border-b border-line transition-colors last:border-0',
+                    selected.has(task.id) ? 'bg-brand-soft' : 'hover:bg-surface-2'
+                  )}
+                >
+                  <td className="px-3 py-2">
                     <input
                       type="checkbox"
-                      checked={allSelected}
-                      onChange={handleSelectAll}
+                      checked={selected.has(task.id)}
+                      onChange={() => toggleRow(task.id)}
+                      aria-label={`Selecionar ${task.name}`}
                     />
-                  </th>
-                  <th onClick={() => toggleSort('name')} className="sortable">Tarefa <SortIcon col="name" /></th>
-                  <th onClick={() => toggleSort('assignee')} className="sortable">Responsável <SortIcon col="assignee" /></th>
-                  <th onClick={() => toggleSort('startDate')} className="sortable">Início <SortIcon col="startDate" /></th>
-                  <th onClick={() => toggleSort('endDate')} className="sortable">Fim <SortIcon col="endDate" /></th>
-                  <th onClick={() => toggleSort('status')} className="sortable">Status <SortIcon col="status" /></th>
-                  <th onClick={() => toggleSort('progress')} className="sortable">Progresso <SortIcon col="progress" /></th>
-                  <th style={{ textAlign: 'right' }}>Ações</th>
+                  </td>
+
+                  {columns.map((col) => (
+                    <td
+                      key={col.id}
+                      onClick={() => openTaskInspector(task.id)}
+                      className={cn(
+                        'cursor-pointer px-3 py-2 text-body text-text-1',
+                        col.align === 'center' && 'text-center tabular-nums',
+                        col.id === 'name' && 'max-w-0 truncate font-medium'
+                      )}
+                    >
+                      {col.id === 'name' ? task.name : col.render(task, CELL_CTX)}
+                    </td>
+                  ))}
+
+                  <td className="px-3 py-2">
+                    <span className={cn(
+                      'rounded-full px-2 py-0.5 text-micro font-medium',
+                      STATUS_TONE[task.status] || 'bg-surface-3 text-text-2'
+                    )}>
+                      {task.status || '—'}
+                    </span>
+                  </td>
+
+                  <td className="px-3 py-2">
+                    <button
+                      type="button"
+                      onClick={() => removeTasks([task.id])}
+                      title="Excluir"
+                      className="grid size-7 place-items-center rounded-[6px] text-text-3 opacity-0 transition-all group-hover:opacity-100 hover:bg-sched-late-soft hover:text-sched-late"
+                    >
+                      <Trash2 size={14} strokeWidth={1.8} />
+                    </button>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {paginated.map((task) => {
-                  const isSelected = selectedTaskIds.includes(task.id);
-                  return (
-                    <tr key={task.id} className={isSelected ? 'selected-row' : ''}>
-                      <td style={{ textAlign: 'center' }}>
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={(e) => handleSelectOne(e, task.id)}
-                        />
-                      </td>
-                      <td className="task-name-cell" onClick={() => openTaskInspector(task.id)} style={{ cursor: 'pointer' }}>
-                        <span className="task-name-text">{task.name}</span>
-                      </td>
-                      <td>{task.assignee || '—'}</td>
-                      <td>{task.startDate || '—'}</td>
-                      <td>{task.endDate || '—'}</td>
-                      <td><Badge label={task.status} color={STATUS_COLORS[task.status] || 'gray'} /></td>
-                      <td><ProgressBar value={task.progress || 0} showLabel height={6} /></td>
-                      <td className="actions-cell">
-                        <button className="btn-icon-only" onClick={() => openTaskInspector(task.id)} title="Inspecionar (Painel Lateral)">
-                          <Eye size={15} />
-                        </button>
-                        <button className="btn-icon-only btn-danger-ghost" onClick={() => setConfirmId(task.id)} title="Excluir">
-                          <Trash2 size={15} />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="pagination">
-              {Array.from({ length: totalPages }).map((_, i) => (
-                <button key={i} className={`btn-page ${page === i ? 'active' : ''}`} onClick={() => setPage(i)}>
-                  {i + 1}
-                </button>
               ))}
-            </div>
-          )}
-        </>
-      )}
+            </tbody>
+          </table>
+        )}
+      </div>
 
-      {/* Floating Bulk Actions Dock (ClickUp style) */}
-      {selectedTaskIds.length > 0 && (
-        <div className="bulk-actions-dock">
-          <div className="bulk-dock-info">
-            <span className="bulk-count-badge">{selectedTaskIds.length}</span>
-            <span>tarefa(s) selecionada(s)</span>
-          </div>
-          <div className="bulk-dock-buttons">
-            <button className="btn btn-sm btn-success" onClick={handleBulkComplete}>
-              <CheckCircle2 size={14} /> Concluir Todas
-            </button>
-            <button className="btn btn-sm btn-danger" onClick={() => setShowBulkConfirmDelete(true)}>
-              <Trash2 size={14} /> Excluir em Lote
-            </button>
-            <button className="btn-icon-sm" onClick={() => setSelectedTaskIds([])} title="Limpar seleção">
-              <X size={16} />
-            </button>
-          </div>
+      {/* Ações em massa: a barra só existe quando há seleção. */}
+      {selected.size > 0 && (
+        <div className="flex shrink-0 items-center gap-2 border-t border-line bg-surface-1 px-4 py-2.5">
+          <span className="text-small font-medium tabular-nums text-text-1">
+            {selected.size} selecionada{selected.size !== 1 ? 's' : ''}
+          </span>
+          <ViewBarDivider />
+          <ViewBarButton icon={CheckCheck} onClick={completeSelected}>Concluir</ViewBarButton>
+          <ViewBarButton icon={Trash2} onClick={() => setConfirmBulk(true)}>Excluir</ViewBarButton>
+          <div className="ml-auto" />
+          <ViewBarButton icon={X} onClick={() => setSelected(new Set())}>Limpar</ViewBarButton>
         </div>
       )}
-
-      {/* Task Modal */}
-      <Modal isOpen={modalOpen} onClose={() => { setModalOpen(false); setEditTask(null); }} title={editTask ? 'Editar Tarefa' : 'Nova Tarefa'}>
-        <div className="form-group">
-          <label>Nome *</label>
-          <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Nome da tarefa" />
-        </div>
-        <div className="form-row">
-          <div className="form-group">
-            <label>Data Início *</label>
-            <input type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} />
-          </div>
-          <div className="form-group">
-            <label>Data Fim *</label>
-            <input type="date" value={form.endDate} onChange={(e) => setForm({ ...form, endDate: e.target.value })} />
-          </div>
-        </div>
-        <div className="form-row">
-          <div className="form-group">
-            <label>Status</label>
-            <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
-              {STATUS_OPTIONS.map((s) => <option key={s}>{s}</option>)}
-            </select>
-          </div>
-          <div className="form-group">
-            <label>Progresso ({form.progress}%)</label>
-            <input type="range" min={0} max={100} value={form.progress} onChange={(e) => setForm({ ...form, progress: e.target.value })} />
-          </div>
-        </div>
-        <div className="form-group">
-          <label>Responsável</label>
-          <input type="text" value={form.assignee} onChange={(e) => setForm({ ...form, assignee: e.target.value })} placeholder="Nome do responsável" />
-        </div>
-        <div className="modal-actions">
-          <button className="btn-secondary" onClick={() => { setModalOpen(false); setEditTask(null); }}>Cancelar</button>
-          <button className="btn-primary" onClick={handleSave}>{editTask ? 'Salvar' : 'Criar'}</button>
-        </div>
-      </Modal>
 
       <ConfirmDialog
-        isOpen={!!confirmId}
-        onClose={() => setConfirmId(null)}
-        onConfirm={() => removeTask(confirmId)}
-        title="Excluir Tarefa"
-        message="Tem certeza que deseja excluir esta tarefa?"
+        isOpen={confirmBulk}
+        onClose={() => setConfirmBulk(false)}
+        onConfirm={async () => {
+          await removeTasks([...selected]);
+          setSelected(new Set());
+          setConfirmBulk(false);
+        }}
+        title="Excluir tarefas"
+        message={`Excluir ${selected.size} tarefa(s)? Use ⌘Z para desfazer.`}
       />
-
-      {showBulkConfirmDelete && (
-        <ConfirmDialog
-          isOpen={showBulkConfirmDelete}
-          onClose={() => setShowBulkConfirmDelete(false)}
-          onConfirm={handleBulkDelete}
-          title="Excluir em Lote"
-          message={`Tem certeza que deseja excluir as ${selectedTaskIds.length} tarefas selecionadas?`}
-          confirmVariant="danger"
-        />
-      )}
     </div>
+  );
+}
+
+function SortHeader({ label, active, dir, onClick, align }) {
+  return (
+    <th
+      onClick={onClick}
+      className={cn(
+        'cursor-pointer select-none px-3 py-2 text-micro font-semibold uppercase tracking-wide',
+        'transition-colors hover:text-text-1',
+        active ? 'text-text-1' : 'text-text-3',
+        align === 'center' ? 'text-center' : 'text-left'
+      )}
+    >
+      <span className="inline-flex items-center gap-1">
+        {label}
+        <ArrowUpDown
+          size={11}
+          className={active ? 'opacity-100' : 'opacity-0'}
+          style={active && dir === 'desc' ? { transform: 'scaleY(-1)' } : undefined}
+        />
+      </span>
+    </th>
   );
 }

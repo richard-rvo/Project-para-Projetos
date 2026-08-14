@@ -2,27 +2,27 @@
    PROJETA — ponto de entrada de estilos
    ═══════════════════════════════════════════════════════════════
 
-   A ordem das CAMADAS é o que importa aqui, não a ordem dos imports.
+   O `legacy.css` que existia aqui — o monolito de 3.492 linhas com
+   que este redesign começou — foi dissolvido por completo. Nenhuma
+   regra dele sobreviveu.
 
-   O CSS legado precisa ficar ABAIXO dos utilitários Tailwind. Ele tem
-   seletores de elemento — `button { background: transparent }` entre
-   eles — e CSS sem camada vence qualquer regra em camada. Sem esta
-   declaração, todo componente novo perde silenciosamente suas classes
-   de cor, tamanho e espaçamento para o monolito antigo.
+   A ordem das CAMADAS é o que importa, não a ordem dos imports:
 
-     theme  → tokens do Tailwind
-     base   → preflight + nossos padrões de elemento
-     legacy → o monolito em dissolução
-     utilities → sempre por último, sempre vence
+     theme      → tokens do Tailwind
+     base       → preflight + nossos padrões de elemento
+     components → CSS semântico das views (o miolo do Gantt)
+     utilities  → sempre por último, sempre vence
 
-   Custom properties e :root continuam fora de camada em tokens.css:
-   variável não participa de cascata por camada da mesma forma, e o
+   Custom properties e :root ficam FORA de camada em tokens.css:
+   variável não participa da cascata por camada da mesma forma, e o
    tema precisa valer em todo lugar.
    ═══════════════════════════════════════════════════════════════ */
 
-@layer theme, base, components, legacy, utilities;
+@layer theme, base, components, utilities;
 
 @import './styles/tokens.css';
 @import './styles/base.css';
-@import './styles/legacy.css';
 @import './styles/views/gantt.css';
+
+/* Por último: a impressão precisa vencer tudo. */
+@import './styles/print.css';

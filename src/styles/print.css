@@ -1,0 +1,84 @@
+/* ═══════════════════════════════════════════════════════════════
+   IMPRESSÃO
+   ═══════════════════════════════════════════════════════════════
+
+   O CSS antigo escondia a impressão nomeando cada elemento do shell:
+   `.app-sidebar`, `.app-header`, `.page-container`. A Fase 1
+   substituiu todos eles, então a regra deixou de casar com qualquer
+   coisa — e imprimir passou a sair com o trilho e a barra superior
+   na folha, sem ninguém perceber.
+
+   A regra aqui não cita o shell. Ela esconde TUDO e revela apenas a
+   folha, então nenhuma mudança futura de layout pode quebrá-la de
+   novo.
+   ═══════════════════════════════════════════════════════════════ */
+
+@media print {
+  @page {
+    size: A4 portrait;
+    /* Margem de segurança contra corte de impressora e encadernação */
+    margin: 12mm;
+  }
+
+  /* Impressão é sempre no claro, independentemente do tema da tela. */
+  :root,
+  [data-theme='dark'] {
+    --surface-0: #fff;
+    --surface-1: #fff;
+    --surface-2: #fff;
+    --surface-3: #f2f2f2;
+    --surface-inset: #fff;
+    --text-1: #111;
+    --text-2: #444;
+    --text-3: #777;
+    --line-hairline: #ddd;
+    --line-strong: #bbb;
+  }
+
+  html,
+  body {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  /* Esconde tudo, revela só a folha e o que está dentro dela. */
+  body * {
+    visibility: hidden;
+  }
+
+  .print-report,
+  .print-report * {
+    visibility: visible;
+  }
+
+  .print-report {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  /* Não parte KPIs, tabelas e blocos de anomalia entre páginas. */
+  section,
+  article,
+  tr,
+  img {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Cores de fundo precisam ser explicitamente permitidas. */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
