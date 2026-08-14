@@ -216,56 +216,41 @@ export const COLUMNS = [
   },
 ];
 
-export const DEFAULT_VISIBLE_COLUMNS = {
-  name: true,
-  duration: true,
-  start: true,
-  end: true,
-  progress: true,
-  dependencies: true,
-  planned: false,
-  resources: false,
-  resourceGroup: false,
-  baselineStart: false,
-  baselineEnd: false,
-};
+/* ── Layout de colunas, por projeto ───────────────────────────────
+   Uma ÚNICA lista define quais colunas aparecem E em que ordem.
+   Antes havia um mapa de visibilidade separado da ordem, o que
+   tornava "inserir aqui" impossível de representar.
 
-const STORAGE_KEY = 'projeta_gantt_columns';
+   `name` é sempre a primeira e não pode ser removida: sem ela a
+   planilha vira uma tabela de números sem assunto.               */
 
-export function loadVisibleColumns() {
+export const DEFAULT_COLUMN_ORDER = ['name', 'duration', 'start', 'end', 'progress', 'dependencies'];
+
+const LAYOUT_KEY = (projectId) => `projeta_gantt_cols_${projectId}`;
+
+export function loadColumnLayout(projectId) {
+  const fallback = { order: [...DEFAULT_COLUMN_ORDER], widths: {} };
+  if (!projectId) return fallback;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULT_VISIBLE_COLUMNS;
-    return { ...DEFAULT_VISIBLE_COLUMNS, ...JSON.parse(raw) };
+    const saved = JSON.parse(localStorage.getItem(LAYOUT_KEY(projectId)));
+    if (!saved?.order?.length) return fallback;
+    /* Descarta ids que não existem mais e garante `name` na frente. */
+    const known = new Set(COLUMNS.map((col) => col.id));
+    const order = saved.order.filter((id) => known.has(id));
+    if (!order.includes('name')) order.unshift('name');
+    return { order, widths: saved.widths || {} };
   } catch {
-    return DEFAULT_VISIBLE_COLUMNS;
+    return fallback;
   }
 }
 
-export function saveVisibleColumns(visible) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(visible));
-  } catch {
-    /* modo privado do navegador — seguir sem persistir */
-  }
-}
-
-/* ── Larguras de coluna, por projeto ──────────────────────────────
-   Cada cronograma tem nomes de tarefa de comprimento diferente; uma
-   largura global obrigaria a reajustar a cada troca de projeto.   */
-
-const WIDTH_KEY = (projectId) => `projeta_gantt_widths_${projectId}`;
-
-export function loadColumnWidths(projectId) {
-  if (!projectId) return {};
-  try { return JSON.parse(localStorage.getItem(WIDTH_KEY(projectId))) || {}; }
-  catch { return {}; }
-}
-
-export function saveColumnWidths(projectId, widths) {
+export function saveColumnLayout(projectId, layout) {
   if (!projectId) return;
-  try { localStorage.setItem(WIDTH_KEY(projectId), JSON.stringify(widths)); }
-  catch { /* modo privado — seguir sem persistir */ }
+  try {
+    localStorage.setItem(LAYOUT_KEY(projectId), JSON.stringify(layout));
+  } catch {
+    /* modo privado — seguir sem persistir */
+  }
 }
 
 export const MIN_COL_W = 44;

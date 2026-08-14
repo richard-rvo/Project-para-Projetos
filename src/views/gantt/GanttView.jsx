@@ -12,7 +12,7 @@ import {
 import ConfirmDialog from '../../components/ConfirmDialog';
 import * as XLSX from 'xlsx';
 import {
-  AlertCircle, Download, Plus, Settings, Target, Undo2, Redo2, Hourglass, Maximize2,
+  AlertCircle, Download, Plus, Target, Undo2, Redo2, Hourglass, Maximize2, Tag,
 } from 'lucide-react';
 
 import {
@@ -25,9 +25,9 @@ import { calculateTaskPlannedProgress } from '../../utils/progress';
 import {
   ZOOM_LEVELS, COLUMNS,
   DEFAULT_GRID_W, MIN_GRID_W, MAX_GRID_W,
-  rowHeightFor, loadVisibleColumns, saveVisibleColumns, HEADER_H,
+  rowHeightFor, HEADER_H,
   MIN_DAY_W, MAX_DAY_W, tickForDayWidth, nearestZoomId,
-  loadColumnWidths, saveColumnWidths, MIN_COL_W, MAX_COL_W,
+  loadColumnLayout, saveColumnLayout, MIN_COL_W, MAX_COL_W,
 } from './ganttConfig';
 import {
   useProjectTasks, useAutoScheduling, useScheduleAnalysis,
@@ -49,6 +49,7 @@ import GanttTooltip from './GanttTooltip';
 import GanttContextMenu from './GanttContextMenu';
 import GanttCalendarMenu from './GanttCalendarMenu';
 import GanttFilterMenu from './GanttFilterMenu';
+import GanttColumnMenu from './GanttColumnMenu';
 import GanttGroupRow from './GanttGroupRow';
 import GanttMinimap from './GanttMinimap';
 import { useGanttRows, EMPTY_FILTERS } from './useGanttFilters';
@@ -70,12 +71,12 @@ export default function GanttView() {
   /* ── Estado da view ─────────────────────────────────────────── */
   const [dayWidth, setDayWidth] = useState(32);
   const [gridWidth, setGridWidth] = useState(DEFAULT_GRID_W);
-  const [visibleCols, setVisibleCols] = useState(loadVisibleColumns);
+  const [layoutCols, setLayoutCols] = useState(() => loadColumnLayout(null));
+  const [columnMenu, setColumnMenu] = useState(null);
   const [showBarLabels, setShowBarLabels] = useState(true);
   const [showCriticalPath, setShowCriticalPath] = useState(false);
   const [showSlack, setShowSlack] = useState(false);
   const [filters, setFilters] = useState(EMPTY_FILTERS);
-  const [colWidths, setColWidths] = useState({});
 
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [collapsedIds, setCollapsedIds] = useState(() => new Set());
@@ -147,16 +148,29 @@ export default function GanttView() {
     [updateTasksBatch]
   );
 
-  const columns = useMemo(
-    () => COLUMNS.filter((c) => c.alwaysOn || visibleCols[c.id])
-      .map((c) => (colWidths[c.id] ? { ...c, width: colWidths[c.id] } : c)),
-    [visibleCols, colWidths]
+  /* A ordem é a fonte de verdade: quem está nela aparece, na posição
+     em que está. Visibilidade e ordem deixam de ser dois estados que
+     podem discordar. */
+  const columns = useMemo(() => layoutCols.order
+    .map((id) => COLUMNS.find((c) => c.id === id))
+    .filter(Boolean)
+    .map((c) => (layoutCols.widths[c.id] ? { ...c, width: layoutCols.widths[c.id] } : c)),
+  [layoutCols]);
+
+  const hiddenColumns = useMemo(
+    () => COLUMNS.filter((c) => !layoutCols.order.includes(c.id)),
+    [layoutCols]
   );
 
-  /* Larguras são por projeto: cada cronograma tem nomes de tamanho
-     diferente. */
+  /* Layout é por projeto: cada cronograma tem nomes de tamanho e
+     colunas de interesse diferentes. */
   useEffect(() => {
-    setColWidths(loadColumnWidths(state.activeProjectId));
+    setLayoutCols(loadColumnLayout(state.activeProjectId));
+  }, [state.activeProjectId]);
+
+  const commitLayout = useCallback((next) => {
+    setLayoutCols(next);
+    saveColumnLayout(state.activeProjectId, next);
   }, [state.activeProjectId]);
 
   const handleResizeColumn = useCallback((e, col) => {
@@ -167,13 +181,13 @@ export default function GanttView() {
 
     const onMove = (ev) => {
       const next = Math.max(MIN_COL_W, Math.min(MAX_COL_W, startW + ev.clientX - startX));
-      setColWidths((prev) => ({ ...prev, [col.id]: next }));
+      setLayoutCols((prev) => ({ ...prev, widths: { ...prev.widths, [col.id]: next } }));
     };
     const onUp = () => {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
       document.body.classList.remove('is-col-resizing');
-      setColWidths((prev) => { saveColumnWidths(state.activeProjectId, prev); return prev; });
+      setLayoutCols((prev) => { saveColumnLayout(state.activeProjectId, prev); return prev; });
     };
     document.body.classList.add('is-col-resizing');
     document.addEventListener('mousemove', onMove);
@@ -238,8 +252,6 @@ export default function GanttView() {
   useEffect(() => {
     didInitialScroll.current = false;
   }, [state.activeProjectId]);
-
-  useEffect(() => { saveVisibleColumns(visibleCols); }, [visibleCols]);
 
   /* Ajusta a largura do dia para o projeto inteiro caber na tela. */
   const fitToProject = useCallback(() => {
@@ -499,6 +511,53 @@ export default function GanttView() {
     XLSX.writeFile(wb, `${activeProject?.name || 'Projeto'}_Gantt.xlsx`);
   };
 
+  /* ── Colunas (modelo MS Project) ─────────────────────────────
+     Gerenciadas no próprio cabeçalho: botão direito na coluna,
+     "+" no fim da planilha. Acrescentar uma coluna ALARGA a
+     planilha em vez de roubar espaço do nome da tarefa — era o que
+     fazia o antigo dropdown parecer quebrado. */
+  const columnActions = useMemo(() => ({
+    hide: (id) => {
+      const col = COLUMNS.find((c) => c.id === id);
+      if (!col || col.alwaysOn) return;
+      commitLayout({ ...layoutCols, order: layoutCols.order.filter((x) => x !== id) });
+      setGridWidth((w) => Math.max(MIN_GRID_W, w - (layoutCols.widths[id] || col.width)));
+    },
+    append: (id) => {
+      const col = COLUMNS.find((c) => c.id === id);
+      if (!col || layoutCols.order.includes(id)) return;
+      commitLayout({ ...layoutCols, order: [...layoutCols.order, id] });
+      setGridWidth((w) => Math.min(MAX_GRID_W, w + col.width));
+    },
+    insert: (id, anchorId, side) => {
+      const col = COLUMNS.find((c) => c.id === id);
+      if (!col || layoutCols.order.includes(id)) return;
+      const next = [...layoutCols.order];
+      const at = next.indexOf(anchorId);
+      next.splice(side === 'before' ? Math.max(1, at) : at + 1, 0, id);
+      commitLayout({ ...layoutCols, order: next });
+      setGridWidth((w) => Math.min(MAX_GRID_W, w + col.width));
+    },
+    autoFit: (id) => {
+      /* Mede o conteúdo real das células desta coluna. */
+      const cells = document.querySelectorAll(`[data-col="${id}"] .gantt-cell-text`);
+      let widest = 0;
+      cells.forEach((el) => { widest = Math.max(widest, el.scrollWidth); });
+      const next = Math.max(MIN_COL_W, Math.min(MAX_COL_W, widest + 24));
+      commitLayout({ ...layoutCols, widths: { ...layoutCols.widths, [id]: next } });
+    },
+  }), [layoutCols, commitLayout]);
+
+  const openColumnMenu = useCallback((e, col) => {
+    e.preventDefault();
+    setColumnMenu({ x: e.clientX, y: e.clientY, column: col, available: hiddenColumns });
+  }, [hiddenColumns]);
+
+  const openAddColumn = useCallback((e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    setColumnMenu({ x: r.left, y: r.bottom + 4, mode: 'add', available: hiddenColumns });
+  }, [hiddenColumns]);
+
   /* ── Hierarquia ─────────────────────────────────────────────── */
   const targetTasks = useCallback(() => {
     if (selectedIds.size) return tasks.filter((t) => selectedIds.has(t.id));
@@ -713,34 +772,14 @@ export default function GanttView() {
           onChange={(calendar) => updateProject({ ...activeProject, calendar })}
         />
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <ViewBarButton icon={Settings}>Colunas</ViewBarButton>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel className="text-micro uppercase tracking-wide text-text-3">
-              Colunas da planilha
-            </DropdownMenuLabel>
-            {COLUMNS.filter((c) => !c.alwaysOn).map((col) => (
-              <DropdownMenuCheckboxItem
-                key={col.id}
-                checked={!!visibleCols[col.id]}
-                onCheckedChange={(v) => setVisibleCols((p) => ({ ...p, [col.id]: v }))}
-                onSelect={(e) => e.preventDefault()}
-              >
-                {col.label}
-              </DropdownMenuCheckboxItem>
-            ))}
-            <DropdownMenuSeparator />
-            <DropdownMenuCheckboxItem
-              checked={showBarLabels}
-              onCheckedChange={setShowBarLabels}
-              onSelect={(e) => e.preventDefault()}
-            >
-              Rótulos nas barras
-            </DropdownMenuCheckboxItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <ViewBarButton
+          icon={Tag}
+          active={showBarLabels}
+          onClick={() => setShowBarLabels((v) => !v)}
+          title="Mostrar o nome da tarefa nas barras"
+        >
+          Rótulos
+        </ViewBarButton>
 
         <ViewBarButton icon={Plus} variant="primary" onClick={() => newTaskRef.current?.focus()}>
           Tarefa
@@ -767,6 +806,9 @@ export default function GanttView() {
               zoom={zoom}
               visibleDays={vDays}
               onResizeColumn={handleResizeColumn}
+              onColumnMenu={openColumnMenu}
+              onAddColumn={openAddColumn}
+              canAddColumn={hiddenColumns.length > 0}
             />
 
             <div className="gantt-rows">
@@ -879,6 +921,12 @@ export default function GanttView() {
         viewport={viewport}
         gridWidth={gridWidth}
         scrollerRef={scrollerRef}
+      />
+
+      <GanttColumnMenu
+        data={columnMenu}
+        onClose={() => setColumnMenu(null)}
+        actions={columnActions}
       />
 
       <GanttContextMenu
