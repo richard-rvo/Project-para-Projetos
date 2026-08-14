@@ -52,7 +52,7 @@ O app funcionava, mas a organização visual estava ruim por razões **estrutura
 | 6 | Gantt · Onda C — rigor de cronograma | ✅ Concluída |
 | 7 | Gantt · Onda D — escala | ✅ Concluída |
 | 8 | Views restantes | ✅ Concluída |
-| 9 | Documentação | ⬜ Pendente |
+| 9 | Documentação | ✅ Concluída |
 
 ---
 
@@ -159,12 +159,45 @@ As seis telas que ainda usavam o CSS legado foram reescritas. **O `legacy.css` f
 
 Também: `ConfirmDialog` e `Toast` reescritos sobre Radix e tokens; `Modal`, `Badge` e `ProgressBar` deletados por falta de uso.
 
-## ⬜ Fase 9 — Documentação
+## ✅ Fase 9 — Documentação
 
-Atualizar `PRD.md` e `DESIGN.md`: novo stack (o PRD ainda exige "CSS vanilla puro"), nova arquitetura de navegação, tokens novos, remover do DESIGN o que descreve funcionalidade inexistente, registrar o Kanban.
+`PRD.md` e `DESIGN.md` reescritos. Os dois descreviam o app anterior ao redesign e já contradiziam o código:
+
+- O PRD exigia **"CSS vanilla puro, nenhum framework externo"** — falso desde a Fase 0.
+- O PRD descrevia a navegação em sidebar de dois níveis que a Fase 1 substituiu, e não registrava o Quadro (Kanban), que existia no código.
+- O DESIGN descrevia o **drag-to-connect com linha elástica como se existisse** — o comportamento só passou a existir na Fase 3.
+- Ambos listavam tokens, raios e cores que não são mais os do produto.
+
+O `DESIGN.md` agora termina com **regras para código novo**, para que a próxima pessoa não reintroduza o que este redesign removeu: nada de cor literal, marca só nos quatro lugares permitidos, overlays sempre sobre Radix, uma instância de tooltip e não uma por linha.
 
 ---
 
+## Resultado
+
+| Medida | Antes | Depois |
+|---|---|---|
+| Chrome acima do conteúdo | ~330px em 5 barras | **96px em 2** |
+| CSS monolítico | 3.492 linhas | **0** (deletado) |
+| Caminhos de edição de tarefa | 4 | **1** |
+| Scrollers do Gantt | 2, dessincronizados | **1** |
+| Desvio planilha × barras | 2px por linha, acumulando | **0** |
+| 1.000 tarefas | ~30.000 nós | **1.424 nós, 60 FPS** |
+| CPM | meio (só late finish) | **forward + backward, com folga** |
+| Cópias do cálculo da Curva S | 2 divergentes | **1** |
+| Cópias dos helpers de data | 4 divergentes | **1** |
+
+### Bugs de dados encontrados no caminho
+
+Nenhum destes foi procurado — todos apareceram ao reescrever ou ao verificar:
+
+1. **Corrupção silenciosa em tarefas-resumo** — tornar uma tarefa "pai" apagava as datas guardadas dela, e desindentá-la não as trazia de volta.
+2. **Duração divergente** entre Gantt e Curva S: a mesma tarefa tinha durações diferentes conforme a tela.
+3. **"Hoje" errado por 3 horas todo dia** em GMT-3, contaminando os filtros de "próximas" e "atrasadas".
+4. **Desalinhamento acumulativo** de 2px por linha: na linha 20, a barra pertencia visualmente à tarefa errada.
+5. **Impressão quebrada** desde a Fase 1: o `@media print` nomeava elementos do shell que deixaram de existir.
+6. **Drawer que gravaria lixo** — escrevia em cinco campos que não existem no modelo.
+
+---
 ## Verificação
 
 Cada fase é verificada rodando o app de verdade com Puppeteer e dados semeados — não só `npm run build`. O padrão:

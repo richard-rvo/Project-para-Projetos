@@ -1,79 +1,156 @@
-# 🎨 Diretrizes e Sistema de Design (DESIGN.md)
+# Design System — "Precision Calm"
 
-Este documento especifica a arquitetura visual, tokens de design, princípios de UX (User Experience) e decisões estéticas utilizadas na construção do **Gantt Dinâmico**.
+> **Versão**: 3.0 · agosto de 2026
+> Histórico do redesign: [`docs/REDESIGN.md`](docs/REDESIGN.md)
 
----
-
-## 💎 Princípios Fundamentais de Design
-
-1. **Aparência Executiva Premium**: Cores saturadas com moderação, contrastes nítidos e bordas suavizadas (`border-radius: 18px` e `9999px`), transmitindo sofisticação executiva.
-2. **Ergonomia e Redução de Cliques**: Atalhos por botões em formato de pílulas (*Bubbles*) para valores frequentes de data (`Hoje`, `Amanhã`, `+7d`) e progresso (`0%`, `25%`, `50%`, `75%`, `100%`).
-3. **Sincronização Visual Dinâmica**: Resposta em tempo real para arrasto de tarefas, redimensionamento de coluna e conexões de dependência por linha elástica SVG.
+**Apple** (calma, hierarquia, material) × **MS Project** (densidade, rigor de cronograma) × **ClickUp** (velocidade, comando, views).
 
 ---
 
-## 🎨 Paleta de Cores e Tokens CSS
+## Princípios
 
-### 1. Cores de Superfície e Estrutura
-| Token | Modo Claro (Light) | Modo Escuro (Dark) | Aplicação |
-| :--- | :--- | :--- | :--- |
-| `--bg-app` | `#f4f6f9` | `#0f1117` | Fundo principal da aplicação |
-| `--bg-surface` | `#ffffff` | `#1a1d27` | Cards de projetos, modais e barra superior |
-| `--border-color` | `rgba(0,0,0,0.08)` | `rgba(255,255,255,0.08)` | Linhas divisórias e bordas |
-| `--text-primary` | `#1a1d23` | `#e8eaed` | Títulos e texto principal |
-| `--text-secondary` | `#6b7280` | `#9ca3af` | Subtítulos e rótulos de colunas |
-| `--color-primary` | `#B90973` | `#B90973` | Roxo Principal da Identidade |
-| `--gradient-primary` | `linear-gradient(135deg, #FE8345 0%, #FA5E42 20%, #F73A40 40%, #E82048 60%, #D0145D 80%, #B90973 100%)` | `Idem` | Gradiente executivo para botões e destaques |
+**1. Um chrome só.** Uma barra de contexto por nível, nunca três empilhadas. Do topo da janela até a primeira linha do Gantt existem no máximo duas barras (52px + 44px).
 
-### 2. Temas Visuais (Branding e Logo)
-A aplicação utiliza o logotipo oficial "R", suportado por uma identidade focada no Clean White com destaques vibrantes. A cor primária do projeto e das ações principais agora segue um degradê vibrante que transita suavemente entre o **Laranja Destaque** (`#FE8345`) até o **Roxo Principal** (`#B90973`).
+**2. Cor é informação.** Superfícies neutras; cor reservada para estado de cronograma. Quando tudo é colorido, nada é destaque.
+
+**3. Densidade adaptativa.** Confortável para leitura executiva, compacta para trabalho de plano. Um token controla as duas.
+
+**4. O Gantt manda.** Todo o resto cede altura para ele.
+
+**5. Teclado primeiro.** Toda ação do Gantt é alcançável sem mouse.
 
 ---
 
-## 🔤 Tipografia e Hierarquia
+## Arquivos
 
-**Fonte Principal**: `Inter` (Google Fonts)
+| Arquivo | Papel |
+|---|---|
+| `src/styles/tokens.css` | Todos os tokens + `@theme` do Tailwind |
+| `src/styles/base.css` | Padrões de elemento sobre o preflight |
+| `src/styles/views/gantt.css` | CSS semântico do Gantt (camada `components`) |
+| `src/styles/print.css` | Impressão |
 
-- **Títulos de Cabeçalho**: `1.35rem` | Weight: `800` | Letter-spacing: `-0.02em`
-- **Títulos de Projetos**: `0.95rem` | Weight: `800` | Text-transform: `uppercase`
-- **Nomes de Atividades**: `0.875rem` | Weight: `600` | White-space: `nowrap` (sem quebra)
-- **Datas e Badges**: `0.78rem` | Weight: `700`
+Ordem das camadas: `theme → base → components → utilities`. Utilitário sempre vence.
 
----
-
-## 🧩 Componentes Chave de Interface
-
-### 1. Coluna de Tarefas e Splitter Handle (`#sidebarResizer`)
-- Elemento divisor vertical de `8px` com efeito hover destacado (`rgba(185, 9, 115, 0.15)`).
-- Cursor inteligente `col-resize`.
-- Evita quebra de texto na coluna através das propriedades `white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;`.
-
-### 2. Ponto Conector de Dependências (`.link-connector-dot`)
-- Ponto circular de `14px` branco com borda de `3px` na cor de acento primária (`#B90973`).
-- Surge dinamicamente no evento de `hover` sobre a extremidade direita de qualquer atividade ou Marco.
-- Ao clicar, ativa o **Modo de Conexão** exibindo a linha guia SVG e o banner superior notificador.
-
-### 3. Diamantes de Marco (Milestones)
-- Elemento de `18px x 18px` rotacionado em 45 graus com geometria ajustada.
-- Linhas de dependência SVG são responsivas para encostar exatamente nas pontas do losango com margem de segurança de `4px`, prevenindo qualquer travessia na forma geométrica.
-- Suporta arrasto por clique assim como as barras normais de tarefas.
-
-### 4. Editor de Tarefas Estilo TickTick / Todoist
-- **Campos em Pílula (*Meta Chips*)**: Projeto, Status, Dependência e Marco organizados horizontalmente.
-- **Bubbles Selecionáveis**: Botões de progresso em pílula (`0%`, `25%`, `50%`, `75%`, `100%`) com transição de seleção ativada.
-- **Transição Suave**: Sombras coloridas pulsantes baseadas na identidade visual roxa.
-
-### 5. Visualização da Linha de Base (Baseline Ghost)
-- Renderização de uma sombra/caixa tracejada translucida projetada *por trás* da barra de tarefa indicando o planejamento original.
-- Melhora a percepção de desvios no cronograma sem poluir a interface.
-
-### 6. Sistema de Confirmação (ConfirmDialog)
-- Substituição integral de modais nativos do navegador (`window.confirm()`) por um componente elegante `ConfirmDialog`.
-- Mantém coerência no design Glassmorphism e suporta dark mode nativamente.
+> O `legacy.css` de 3.492 linhas com que este redesign começou foi **deletado por completo** na Fase 8.
 
 ---
 
-## 📐 Regras de Layout e Isolamento Visual
+## Tokens
 
-- **Isolamento de Texto na Sidebar**: A coluna lateral possui `position: relative; z-index: 15; background: inherit; overflow: hidden;`, garantindo que os blocos de tarefas que rolam pela linha do tempo **jamais fiquem sobrepostos aos títulos das atividades na barra lateral**.
-- **Desenho de Curvas Ortogonais Adaptativas**: Conectores SVG calculados via `getConnectorPath(x1, y1, x2, y2)` contornam as atividades com curvas Bezier suaves estilo MS Project / Primavera P6.
+Nenhum componente declara cor literal. Tudo vem de `tokens.css`.
+
+### Superfícies e texto
+
+| Token | Uso |
+|---|---|
+| `--surface-0` | Fundo da aplicação |
+| `--surface-1` | Painel, card, linha |
+| `--surface-2` | Alternativa sutil, hover |
+| `--surface-3` | Recuado: cabeçalhos, trilhos, segmented |
+| `--surface-inset` | Mesa de trabalho, fundo mais profundo |
+| `--text-1` / `--text-2` / `--text-3` | Primário / secundário / terciário |
+| `--line-hairline` / `--line-strong` | Divisória interna / borda de painel |
+
+### Estados de cronograma
+
+**A única fonte de cor semântica do produto.** Substituíram as seis cores arbitrárias e os hex soltos dentro dos componentes.
+
+| Token | Significado |
+|---|---|
+| `--sched-not-started` | Não iniciada |
+| `--sched-on-track` | Em andamento |
+| `--sched-at-risk` | Em risco |
+| `--sched-late` | Atrasada · destrutivo |
+| `--sched-done` | Concluída |
+| `--sched-critical` | Caminho crítico |
+| `--sched-baseline` | Linha de base, setas de dependência |
+| `--sched-slack` | Folga |
+| `--gantt-weekend` | Faixa de não-útil na timeline |
+
+Cada um tem variante `-soft` para fundo de pílula. O token de fim de semana é próprio porque reutilizar uma superfície inverte o contraste no tema escuro.
+
+### Marca
+
+`--brand` (#B90973) e `--brand-gradient`. Permitidos em **quatro** lugares e mais nenhum:
+
+1. Botão primário
+2. Anel de foco e célula ativa
+3. Logo
+4. Barra de progresso do projeto
+
+### Raio, tipografia, movimento
+
+- **Raio**: 6 (controles) · 10 (cards) · 14 (sheets) · pill. Raio grande destrói densidade.
+- **Tipografia**: SF-first (`-apple-system`), Inter de fallback. Escala: `micro` 11 · `small` 12 · `body` 13 · `read` 15 · `title` 19 · `display` 28. `tabular-nums` em toda data e número.
+- **Movimento**: 3 durações (120 / 200 / 320ms) e 2 easings. `prefers-reduced-motion` respeitado.
+- **Elevação**: 4 níveis com tinta neutra fria, nunca preto puro.
+
+### Densidade
+
+`[data-density]` no `<html>` controla `--gantt-row-h` (40px / 30px), paddings e alturas de controle.
+
+---
+
+## Material
+
+Vidro (`backdrop-filter`) é para **overlays sobre conteúdo**, nunca para superfícies densas de dados. Na versão anterior, `glass-card` estava em KPI, projeto, anomalia, tabela e settings — quando tudo é vidro, nada é destaque.
+
+---
+
+## Componentes estruturais
+
+| Componente | Altura | Papel |
+|---|---|---|
+| `AppRail` | 64px | Navegação global; expande em overlay, não empurra o layout |
+| `TopBar` | 52px | *Onde você está*: projeto + views |
+| `ViewBar` | 44px | *O que dá para fazer aqui* |
+| `Inspector` | 380px | Único caminho de edição de detalhe |
+
+---
+
+## O Gantt
+
+### Layout
+
+**Um scroller para os dois eixos.** O cabeçalho gruda com `position: sticky; top: 0`; a planilha com `left: 0`. Scroll vertical e horizontal ficam alinhados nativamente, sem uma linha de JS.
+
+Uma linha é **um elemento** contendo as células e a barra. É isso que faz o hover atravessar as duas metades — a sensação de MS Project.
+
+### Barras
+
+- Altura derivada de `--gantt-row-h`, centrada verticalmente
+- Progresso como **faixa interna mais escura**, não overlay branco: a cor de status continua legível
+- Rótulo dentro quando cabe, **fora quando não cabe** — nunca some
+- Tarefa-resumo é um **colchete**, não uma barra: comunica agrupamento, não trabalho
+- Marco em losango; baseline tracejada; folga pontilhada após o término
+
+### Timeline
+
+Fins de semana e linhas de dia desenhados com **gradientes repetidos**, não com um elemento por dia. Um ano de timeline custava 365 nós; agora custa zero.
+
+Ticks e setas de dependência são cortados fora da janela visível.
+
+### Virtualização
+
+Por **spacers**, não `transform` — transform criaria bloco de contenção e perturbaria o `sticky`.
+
+---
+
+## Acessibilidade
+
+- Anel de foco visível em tudo (`--focus-ring`)
+- Overlays sobre Radix: foco preso, `Escape` fecha, papéis ARIA corretos
+- Contraste calibrado em oklch para os dois temas
+- Alvos densos com no mínimo 26px
+
+---
+
+## Regras para código novo
+
+1. **Nunca** escreva cor literal. Use um token.
+2. **Nunca** use a marca fora dos quatro lugares permitidos.
+3. Tailwind para shell, páginas e formulários; CSS semântico só onde a densidade exige (o miolo do Gantt).
+4. Overlays sempre sobre Radix — não escreva Dialog, Popover ou Menu à mão.
+5. Data e número sempre com `tabular-nums`.
+6. Uma instância de tooltip e de menu de contexto, posicionada por estado — nunca uma por linha.

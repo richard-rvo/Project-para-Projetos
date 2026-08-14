@@ -1,189 +1,199 @@
 # Product Requirements Document (PRD)
 ## Projeta — Sistema de Gestão de Projetos
 
-> **Versão**: 2.0 | **Última atualização**: Agosto 2026
+> **Versão**: 3.0 · **Atualizado**: agosto de 2026
+> Histórico do redesign e estado por fase: [`docs/REDESIGN.md`](docs/REDESIGN.md)
 
 ---
 
-### 1. Visão Geral do Produto
+## 1. Visão geral
 
-O **Projeta** é uma aplicação web voltada para a gestão executiva de múltiplos projetos e atividades em ambientes industriais e corporativos. Diferente de sistemas complexos de prateleira, ele oferece uma experiência simplificada, veloz e responsiva, inspirada no layout consagrado do Microsoft Project, combinada com os padrões de design de ferramentas modernas como Linear e Asana.
+O **Projeta** é uma aplicação web para gestão executiva de múltiplos projetos em ambientes industriais e corporativos. O objetivo é entregar o rigor de cronograma do Microsoft Project com a calma visual e a velocidade de uma ferramenta moderna.
 
-Opera **100% no navegador (Client-Side / Local-First)**, garantindo privacidade total dos dados, velocidade máxima de resposta e funcionamento sem dependência de servidor ou internet.
-
----
-
-### 2. Público-Alvo
-
-- Gerentes de Projeto (PMs) e Engenheiros de Planejamento e Controle
-- Coordenadores de Equipes de campo e escritório
-- Inspetores e técnicos que registram anomalias e não-conformidades em campo (via mobile)
-- Diretores e Executivos que precisam de visão consolidada, acompanhamento rápido de metas e relatórios de status
+Opera **100% no navegador (local-first)**: privacidade total, resposta imediata e funcionamento sem servidor ou internet.
 
 ---
 
-### 3. Objetivos
+## 2. Público-alvo
 
-- Fornecer uma interface intuitiva para o cadastro rápido e acompanhamento visual de tarefas.
-- Permitir vinculações complexas (dependências) sem a necessidade de fluxogramas difíceis de ler.
-- Gerar curvas S (Planejado vs Realizado) matematicamente precisas e ponderadas por peso de tarefa.
-- Registrar anomalias e não-conformidades diretamente do celular, com câmera, fotos e campos industriais.
-- Exportar relatórios executivos de status de projeto em formato PDF/impressão sem dependências externas.
-- Operar 100% no navegador (Client-Side / Local-First) garantindo privacidade e velocidade absurda de resposta.
+- Gerentes de projeto e engenheiros de planejamento e controle
+- Coordenadores de equipes de campo e de escritório
+- Inspetores e técnicos que registram anomalias em campo, pelo celular
+- Diretores que precisam de visão consolidada de portfólio
 
 ---
 
-### 4. Arquitetura de Navegação (v2.0)
+## 3. Objetivos
 
-A navegação segue um modelo em **dois níveis** para separar visões globais de visões contextuais de projeto:
-
-#### Nível 1 — Sidebar Global (sempre visível)
-| Item | Descrição |
-|------|-----------|
-| **Dashboard** | KPIs macro de todos os projetos, saúde, próximas entregas |
-| **Projetos** | Lista/grid de todos os projetos cadastrados |
-| **Anomalias** | Central global de todas as anomalias de todos os projetos |
-| **Relatórios** | Exportação de relatórios de status por projeto |
-| **Configurações** | Backup, restauração e preferências |
-| **Perfil** | Informações do usuário (rodapé da sidebar) |
-
-#### Nível 2 — Workspace do Projeto (tabs contextuais)
-Ao selecionar um projeto, o sistema abre o **Workspace** com tabs horizontais:
-
-| Tab | Conteúdo |
-|-----|----------|
-| **Visão Geral** | KPIs do projeto, progresso vs planejado, próximas entregas, anomalias recentes |
-| **Gantt** | Gráfico de Gantt interativo completo |
-| **Curva S** | Curva S ponderada com tooltip interativo e linha "Hoje" |
-| **Tarefas** | Lista tabular de tarefas com filtros, ordenação e paginação |
-| **Anomalias** | Registro e gestão de anomalias do projeto |
-
-> **Princípio de UX**: O menu lateral jamais muda. O contexto do projeto é mantido através de tabs horizontais na área de conteúdo — padrão usado por Linear, Jira, ClickUp e Notion.
+- Planejar cronogramas com rigor real — dependências tipadas, calendário de trabalho e caminho crítico calculado, não aproximado
+- Operar o Gantt inteiramente pelo teclado, sem tocar o mouse
+- Escalar para milhares de tarefas sem degradar
+- Registrar anomalias direto do celular, com fotos
+- Gerar relatórios executivos em PDF sem dependências externas
+- Manter os dados no dispositivo do usuário
 
 ---
 
-### 5. Funcionalidades Principais (Core Features)
+## 4. Arquitetura de navegação
 
-#### 5.1. Dashboard Executivo Global
-- Grid de saúde de todos os projetos com indicador colorido (Verde/Amarelo/Vermelho) calculado por desvio de progresso.
-- KPIs globais: total de projetos, em andamento, concluídos, tarefas vencendo na semana, anomalias abertas e críticas.
-- Feed de próximas entregas (7 dias) e anomalias abertas consolidadas de todos os projetos.
-- Clicar em um card de projeto abre diretamente seu Workspace.
+Dois níveis, com **no máximo duas barras de chrome** entre o topo da janela e o conteúdo.
 
-#### 5.2. Painel de Múltiplos Projetos
-- Criação, leitura, edição e exclusão de projetos.
-- Cards executivos com progresso, saúde, contagem de tarefas, badges de status e datas.
-- Indicador de saúde automático calculado com base no desvio entre progresso planejado e realizado.
+### Nível 0 — Trilho global (`AppRail`, 64px)
 
-#### 5.3. Gráfico de Gantt Interativo (Estilo MS Project)
-- **Painel Duplo Resizing**: O usuário pode arrastar o divisor central para revelar mais da planilha ou mais da linha do tempo.
-- **Planilha de Edição Rápida (Esquerda)**: Colunas indexadas (ID, Nome, Duração, Início, Término, Progresso, Predecessoras, Recursos). Edição via duplo-clique estilo Excel.
-- **Linha do Tempo (Direita)**: Gráfico SVG desenhado dinamicamente com zoom Dia/Semana/Mês.
-- **Drag & Drop**: Reordenação de tarefas, ajuste de datas e duração arrastando barras.
-- **Caminho Crítico (CPM)**: Identificação visual das tarefas que impactam diretamente o término do projeto.
-- **Baseline (Linha de Base)**: Snapshot das datas originais para comparação visual com o estado atual.
-- **Marcos (Milestones)**: Tarefas do tipo diamante com renderização e dependências específicas.
+Ícones sempre visíveis; expande para 232px ao passar o mouse, **sobrepondo** o conteúdo em vez de empurrá-lo. Pode ser fixado.
 
-#### 5.4. Sistema de Vínculos e Dependências
-- Suporte a múltiplos predecessores por tarefa (ex: `1, 3`).
-- Renderização visual de setas com rotas ortogonais inteligentes (Bezier suave estilo MS Project / Primavera P6).
-- Proteção nativa contra dependências circulares.
-- Motor de **Auto-Agendamento (Forward Pass)**: ao mover uma tarefa predecessora, todas as sucessoras são empurradas automaticamente em cascata.
+| Item | Conteúdo |
+|---|---|
+| **Portfólio** | Todos os projetos em Cards, Tabela ou Timeline |
+| **Anomalias** | Central global de todos os projetos |
+| **Relatórios** | Geração e impressão |
+| **Configurações** | Aparência, backup, dados |
 
-#### 5.5. Motor da Curva S (Corrigido — v2.0)
-- Geração autônoma baseada nas datas das tarefas do projeto selecionado.
-- **Cálculo ponderado por duração**: tarefas mais longas têm peso proporcionalmente maior no progresso planejado e realizado. Corrige a distorção anterior onde uma tarefa de 1 dia valia o mesmo que uma de 30 dias.
-- **Funções de data UTC-safe**: `daysBetween` e `addDays` usam sufixo `T00:00:00Z` e `setUTCDate` para evitar bugs de fuso horário (GMT-3) e horário de verão (DST).
-- **Datas no eixo X**: usam `T12:00:00` para evitar rollback de dia em timezones negativos.
-- **Amostragem inteligente**: máximo ~30 pontos por gráfico para evitar labels sobrepostos em projetos longos.
-- **Linha "Hoje"**: referência vertical no gráfico indicando a data atual.
-- **Tooltip interativo**: ao mover o mouse sobre o gráfico, exibe data, % planejado e % realizado no ponto mais próximo.
+Também carrega os controles de tema, densidade e fixação.
 
-#### 5.6. Registro de Anomalias (Mobile-Friendly — v2.0)
+### Nível 1 — Barra de contexto (`TopBar`, 52px)
 
-Módulo de registro de não-conformidades e anomalias industriais, acessível dentro do workspace do projeto ou globalmente.
+Uma linha só: `[← ] [Projeto ⌄] [Visão Geral · Gantt · Quadro · Curva S · Tarefas · Anomalias] [busca ⌘K] [notificações]`
 
-**Formulário em 4 steps** (otimizado para mobile):
-1. **Identificação**: título, severidade (baixa/média/alta/crítica), tipo (segurança/qualidade/prazo/técnico/ambiental), responsável pelo registro, tarefa vinculada.
-2. **Detalhes**: descrição, OS (Ordem de Serviço), equipamento/ativo, localização física, disciplina técnica, causa raiz, ação corretiva.
-3. **Fotos**: câmera nativa via `<input capture="environment">`, compressão automática client-side para ≤ 300KB, máximo 5 fotos por anomalia.
-4. **Revisar**: tela de confirmação com todos os dados antes de salvar.
+### Nível 2 — Barra da view (`ViewBar`, 44px)
 
-**Funcionalidades adicionais:**
-- FAB (botão flutuante) para registro rápido em telas mobile.
-- Lightbox para visualização de fotos em tela cheia.
-- Filtros por projeto, severidade, status e texto livre na Central Global.
-- Status de resolução: Aberta → Em Análise → Resolvida → Cancelada.
-- Badge de notificação no header e na tab mostrando contagem de anomalias abertas.
+Ações da view ativa. **Regra de divisão:** o TopBar diz *onde você está*; a ViewBar diz *o que dá para fazer aqui*. Nenhuma das duas repete o título da outra.
 
-#### 5.7. Exportação de Relatórios de Status (v2.0)
+### Nível 3 — Inspector (drawer 380px)
 
-Central de geração e exportação de relatórios executivos sem dependências externas (usa `window.print()` + CSS de impressão).
-
-**Tipos de relatório:**
-- **Relatório de Status Executivo**: cabeçalho com logo, KPIs (progresso real, planejado, desvio, tarefas, anomalias), mini Curva S em SVG, tabela completa de tarefas com status (linhas atrasadas em vermelho), resumo de anomalias.
-- **Relatório de Anomalias**: listagem detalhada com todos os campos industriais e fotos (dimensionadas para impressão A4).
-
-**Características do layout de impressão:**
-- Sidebar, header e botões são ocultados automaticamente via `@media print`.
-- Layout A4 otimizado com margens e page-break por seção.
-- Footer com nome do software e timestamp de emissão.
-
-#### 5.8. Visão Geral do Projeto (v2.0)
-- Barra de metadados do projeto: datas de início/fim, status, descrição.
-- KPIs contextuais: progresso real, desvio (adiantado/atrasado), tarefas concluídas, tarefas atrasadas, anomalias abertas.
-- Barra de progresso com comparativo planejado vs realizado.
-- Lista das próximas entregas (tarefas não concluídas ordenadas por deadline).
-- Feed das anomalias mais recentes do projeto.
-- Links rápidos para navegar para as tabs de Tarefas e Anomalias.
-
-#### 5.9. Armazenamento e Persistência (v2.0)
-- IndexedDB **versão 2** com três object stores: `projects`, `tasks`, `anomalies`.
-- Índices otimizados: `by-project` em tasks e anomalias; `by-status` em anomalias.
-- Fotos das anomalias armazenadas como base64 local (não saem do dispositivo).
-- Backup JSON exporta projetos e tarefas (fotos não exportadas para manter arquivo compacto).
-- Import restaura projetos, tarefas e dados de anomalias sem fotos.
-- Tema persistido no `localStorage` (chave `projeta_theme`).
+O **único** caminho de edição de detalhe de tarefa. A edição inline nas células cobre as colunas da grade; o Inspector cobre o resto.
 
 ---
 
-### 6. Requisitos Não Funcionais (NFRs)
+## 5. Funcionalidades
 
-#### 6.1. Stack Tecnológico
-- **Core**: React 18+ (Hooks, Context API, JSX).
-- **Build Tool**: Vite 5+.
-- **Estilização**: CSS Vanilla puro (nenhum framework CSS externo). Design System centralizado em `index.css`.
-- **Banco de Dados**: IndexedDB via biblioteca `idb` (Client-side, zero backend).
-- **Ícones**: Lucide React.
+### 5.1 Portfólio
 
-#### 6.2. Design System & UI/UX
-- Padrão **Glassmorphism**: `backdrop-filter: blur`, cartões com bordas suaves, sombras refinadas.
-- Identidade visual **PROJETA**: gradiente vibrante do Laranja `#FE8345` ao Roxo `#B90973` em botões primários e destaques.
-- Navegação **em dois níveis**: sidebar global + tabs contextuais por projeto (sem troca de página para visões de projeto).
-- Breadcrumb dinâmico no header ao navegar dentro de um projeto.
-- **Mobile-first** para o módulo de anomalias: formulário em sheet (bottom sheet em mobile, modal centralizado em desktop).
-- Tema claro e escuro (`Dark Mode`), controlável pelo usuário via sidebar.
-- Micro-interações com transições de `0.25s cubic-bezier`.
-- `@media print` dedicado para relatórios com layout A4.
+Funde o antigo Dashboard com a lista de Projetos. Faixa de métricas (projetos, em andamento, progresso médio, vencendo em 7 dias, atrasadas, anomalias abertas) e três modos:
 
-#### 6.3. Performance e Responsividade
-- O Gantt não deve sofrer engasgos ao arrastar barras. Estados locais do React isolam re-renderizações da árvore principal.
-- Gráficos SVG (Gantt e Curva S) escaláveis com Fluid Layout.
-- Imagens de anomalias comprimidas client-side antes de salvar no IndexedDB (máx. 300KB por foto).
-- Curva S com amostragem inteligente (máx. 30 pontos) para manter performance em projetos longos.
+- **Cards** — saúde, progresso com marca do planejado, status, período
+- **Tabela** — comparação linha a linha
+- **Timeline** — mini-Gantt de todos os projetos lado a lado, revelando sobreposição e concentração de trabalho
+
+### 5.2 Gantt
+
+O bloco estratégico do produto. Um **único scroller** para os dois eixos: o cabeçalho gruda no topo e a planilha à esquerda, sem sincronização em JS.
+
+**Estrutura e visual**
+- Hover atravessando planilha e timeline na mesma linha
+- Tarefas-resumo como colchete, colapsáveis
+- Progresso como faixa interna mais escura; rótulo sai da barra quando não cabe
+- Marcos em losango, linha e pílula "Hoje", fins de semana e feriados sombreados
+- Baseline com desvio, folga como barra fantasma
+
+**Interação**
+- Teclado completo: setas navegam, `F2`/`Enter` edita, `Tab`/`Shift+Tab` indenta, `Del` remove
+- Arrastar barras, redimensionar, arrastar o progresso pela alça
+- **Drag-to-connect**: ponto conector nas pontas, linha elástica, recusa ciclos e duplicatas
+- Desfazer/refazer (`⌘Z` / `⇧⌘Z`) em toda edição de tarefa, válido em qualquer tela
+- Menu de contexto, copiar/colar/duplicar
+- Seleção simples e múltipla
+
+**Rigor de cronograma**
+- Dependências **FS, SS, FF, SF** com defasagem em dias úteis
+- **Calendário de trabalho por projeto**: dias úteis e feriados. Uma tarefa que termina na sexta libera a sucessora na segunda
+- **CPM completo**: forward pass (ES/EF), backward pass (LS/LF), folga total e folga livre
+- Duração contada em **dias úteis**
+- Restrição "não iniciar antes de"
+- Detecção de dependência circular
+
+**Escala**
+- Virtualização de linhas, setas e marcações — 1.000 tarefas a 60 FPS
+- Zoom contínuo, "ajustar ao projeto" e ⌘+scroll ancorado no cursor
+- Minimapa com janela arrastável
+- Filtros (texto, status, críticas, atrasadas) e agrupamento
+- Colunas redimensionáveis, persistidas por projeto
+
+### 5.3 Visão geral do projeto
+
+Faixa de métricas e grade de 12 colunas. A coluna larga mostra a **forma** do cronograma — janela de 30 dias e Curva S. A estreita mostra o que exige atenção: próximas entregas, marcos, anomalias, período.
+
+### 5.4 Quadro
+
+Uma coluna por status, com contador. Arrastar entre colunas altera o status; soltar em "Concluída" marca 100%.
+
+### 5.5 Tabela de tarefas
+
+Usa as **mesmas definições de coluna do Gantt**. Ordenação por qualquer coluna, filtros por status, seleção múltipla e ações em massa.
+
+### 5.6 Curva S
+
+Planejado vs realizado ponderado por duração. A **área entre as curvas** é tingida pelo sinal do desvio. Seletor de período e export CSV.
+
+O cálculo vive em `utils/scurve.js` e é o mesmo consumido pela Visão Geral e pelo relatório impresso.
+
+### 5.7 Anomalias
+
+Split view: lista densa à esquerda, detalhe à direita. Mesma interface na central global e na tela do projeto.
+
+Registro em 4 passos, pensado para o celular em campo: identificação, detalhes industriais (OS, equipamento, local, disciplina, causa raiz, ação corretiva), fotos e revisão. Câmera nativa, compressão automática para ~300 KB, até 5 fotos. Status: aberta → em análise → resolvida → cancelada.
+
+### 5.8 Relatórios
+
+Pré-visualização A4 real — folha branca com sombra sobre mesa recuada. Status executivo (KPIs, Curva S, cronograma, anomalias) ou registro de anomalias com fotos. Impressão via `window.print()`.
+
+### 5.9 Persistência
+
+IndexedDB **versão 3**, stores `projects`, `tasks`, `anomalies`.
+
+- `task.dependsOn` é uma lista de `{ id, type, lag }`
+- `project.calendar` guarda `{ workdays, holidays }`
+- Migração v2→v3 converte o formato antigo e **preserva o original** em `dependsOnLegacy`
+- Backup JSON exporta tudo menos fotos; a importação aceita backups v2 e v3
 
 ---
 
-### 7. Roadmap — Próximas Versões (v3.0+)
+## 6. Requisitos não funcionais
 
-| Prioridade | Funcionalidade |
-|------------|---------------|
-| 🔴 Alta | Tipos de dependência alternativos (FF, SS, SF) além do padrão FS |
-| 🔴 Alta | Exportação para Excel (.xlsx) via SheetJS |
-| 🟡 Média | Filtros avançados por responsável no Gantt |
-| 🟡 Média | Notificações push para tarefas próximas ao vencimento |
-| 🟡 Média | Modo offline completo com Service Worker (PWA) |
-| 🟢 Baixa | Importação em lote de tarefas via CSV/Excel |
-| 🟢 Baixa | Calendário de feriados e finais de semana no auto-agendamento |
-| 🟢 Baixa | Relatório de variância de custo e prazo (EVM — Earned Value Management) |
-| 🟢 Baixa | Multi-usuário com sincronização via backend opcional |
+### 6.1 Stack
+
+- **Core**: React 18 (hooks, Context API)
+- **Build**: Vite 5
+- **Estilo**: **Tailwind CSS v4** com design tokens em `@theme`, mais CSS semântico para o miolo do Gantt
+- **Componentes**: **shadcn/ui** sobre primitivos Radix (Dialog, Popover, DropdownMenu, ContextMenu, Command, Select, Tooltip, Sonner)
+- **Banco**: IndexedDB via `idb`
+- **Ícones**: Lucide
+
+> **Nota de arquitetura.** As versões anteriores exigiam "CSS vanilla puro, nenhum framework". A decisão foi revista: o app usa Tailwind e shadcn, **exceto** a grade e a timeline do Gantt, que ficam em CSS semântico com variáveis vindas dos mesmos tokens. Classe utilitária por célula numa grade virtualizada custa caro, e a densidade do Gantt precisa de controle direto.
+
+### 6.2 Design system
+
+Ver [`DESIGN.md`](DESIGN.md). Em resumo: superfícies neutras, cor reservada para estado de cronograma, marca como acento raro, densidade adaptativa, tipografia SF-first.
+
+### 6.3 Performance
+
+- Gantt virtualizado: **1.000 tarefas a 60 FPS** (medido)
+- Fundo da timeline desenhado com gradientes, não com um elemento por dia
+- Arrasto sem re-render: escrita imperativa durante o gesto
+- Fotos comprimidas antes de gravar
+
+### 6.4 Acessibilidade
+
+- Anel de foco visível em todo controle
+- Overlays sobre Radix: foco preso, `Escape` fecha, papéis ARIA corretos
+- `prefers-reduced-motion` respeitado
+- Gantt operável só pelo teclado
+
+---
+
+## 7. Roadmap
+
+| Prioridade | Item |
+|---|---|
+| 🔴 Alta | Ordenação de colunas no Gantt (exige decidir como conviver com a ordem manual e a hierarquia) |
+| 🔴 Alta | Presets de view (exige definir o que um preset guarda) |
+| 🟡 Média | Nivelamento de recursos e detecção de sobrealocação |
+| 🟡 Média | Importação em lote de tarefas via CSV/Excel |
+| 🟡 Média | PWA com service worker para uso offline instalado |
+| 🟢 Baixa | EVM — variância de custo e prazo |
+| 🟢 Baixa | Múltiplas linhas de base por projeto |
+| 🟢 Baixa | Multi-usuário com sincronização opcional |
+
+### Entregue nas versões anteriores do roadmap
+
+Dependências FS/SS/FF/SF · Exportação para Excel · Filtros avançados no Gantt · Calendário de feriados no auto-agendamento
