@@ -10,7 +10,13 @@ import { MONTH_BAND_H, TICK_BAND_H } from './ganttConfig';
    é isso que dispensa qualquer sincronização de scroll em JS.
    ═══════════════════════════════════════════════════════════════ */
 
-export default function GanttHeader({ columns, gridWidth, layout, zoom }) {
+export default function GanttHeader({ columns, gridWidth, layout, zoom, visibleDays, onResizeColumn }) {
+  /* Ticks só da faixa visível; o restante vira dois espaçadores. Em
+     zoom de mês, três anos seriam ~1.100 divs para dezenas visíveis. */
+  const first = visibleDays?.first ?? 0;
+  const last = visibleDays?.last ?? layout.totalDays;
+  const ticks = layout.ticks.filter((t) => t.index + t.span >= first && t.index <= last);
+  const padLeft = ticks.length ? ticks[0].index * layout.dayWidth : 0;
   return (
     <div className="gantt-head">
       <div className="gantt-head-grid" style={{ width: gridWidth }}>
@@ -32,6 +38,13 @@ export default function GanttHeader({ columns, gridWidth, layout, zoom }) {
             title={col.label}
           >
             {col.label}
+            {onResizeColumn && !col.grow && (
+              <span
+                className="gantt-col-grip"
+                onMouseDown={(e) => onResizeColumn(e, col)}
+                title={'Arraste para redimensionar ' + col.label}
+              />
+            )}
           </div>
         ))}
       </div>
@@ -42,14 +55,19 @@ export default function GanttHeader({ columns, gridWidth, layout, zoom }) {
             const width = month.days * layout.dayWidth;
             return (
               <div key={month.key} className="gantt-month" style={{ width }}>
-                {width > 56 && <span>{month.label}</span>}
+                {/* Nome inteiro só quando cabe; senão "ago/26"; em faixas
+                    muito estreitas, nada — melhor vazio que cortado. */}
+                {width > 110 ? <span>{month.label}</span>
+                  : width > 44 ? <span>{month.shortLabel}</span>
+                    : null}
               </div>
             );
           })}
         </div>
 
         <div className="gantt-band-tick" style={{ height: TICK_BAND_H }}>
-          {layout.ticks.map((tick) => (
+          {padLeft > 0 && <div style={{ width: padLeft, flexShrink: 0 }} aria-hidden="true" />}
+          {ticks.map((tick) => (
             <div
               key={tick.date}
               className={[

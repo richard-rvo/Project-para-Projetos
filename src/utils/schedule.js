@@ -140,6 +140,14 @@ export function getMonthLabel(dateStr) {
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
+/** ago/26 — para faixas estreitas, onde o nome inteiro seria cortado. */
+export function getMonthLabelShort(dateStr) {
+  const d = parseForDisplay(dateStr);
+  if (!d) return '';
+  const m = d.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '');
+  return m + '/' + String(d.getFullYear()).slice(2);
+}
+
 const DAY_CHARS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
 
 /** Inicial do dia da semana — cabeçalho de dia da timeline. */

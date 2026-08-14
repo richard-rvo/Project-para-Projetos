@@ -50,7 +50,7 @@ O app funcionava, mas a organização visual estava ruim por razões **estrutura
 | 4 | Inspector único | ✅ Concluída |
 | 5 | Portfólio e Visão Geral | ✅ Concluída |
 | 6 | Gantt · Onda C — rigor de cronograma | ✅ Concluída |
-| 7 | Gantt · Onda D — escala | ⬜ Pendente |
+| 7 | Gantt · Onda D — escala | ✅ Concluída |
 | 8 | Views restantes | ⬜ Pendente |
 | 9 | Documentação | ⬜ Pendente |
 
@@ -126,14 +126,21 @@ Conferido contra rede calculada à mão: ES/EF/LS/LF exatos, caminho crítico co
 
 ---
 
-## ⬜ Fase 7 — Gantt · Onda D (escala)
+## ✅ Fase 7 — Gantt · Onda D (escala)
 
-- Virtualização de linhas e da timeline por chunks
-- "Fit to project", ⌘+scroll para zoom, minimapa
-- Filtros, agrupamento (responsável, grupo, status) e ordenação — reusando a engine de colunas
-- Colunas redimensionáveis e reordenáveis, persistidas por projeto
+**Critério atingido:** 1.000 tarefas a **60 FPS**, 29 linhas no DOM em vez de 1.000, 1.424 nós no canvas contra ~30.000, e 40 eventos de arrasto processados em 1ms.
 
-**Pronto quando:** 1.000 tarefas rolam a 60fps e o drag de barra não engasga.
+- Virtualização de linhas por spacers (não `transform`, que criaria um bloco de contenção e perturbaria o `sticky` da planilha), com corte de setas de dependência e de ticks fora da janela
+- Zoom contínuo: a granularidade do eixo decorre da largura do dia, não de presets. "Ajustar" encaixou 17.716px de timeline em 1.536px de viewport; ⌘+scroll mantém sob o cursor o mesmo dia
+- Filtros (texto, status, só críticas, só atrasadas) e agrupamento por status/grupo/recursos
+- Minimapa com janela arrastável, que se esconde quando tudo já cabe na tela
+- Colunas redimensionáveis, persistidas **por projeto**
+
+**Bugs corrigidos:** o fallback da virtualização renderizava TODAS as linhas antes de o scroller ser medido, travando a thread no primeiro paint — exatamente o que a virtualização existe para evitar; e uma colisão de nomes (o `const from` do corte contra o `const from` das bordas, no mesmo bloco) criava um *temporal dead zone* que derrubava a camada de dependências inteira.
+
+**Deixado de fora, de propósito:**
+- *Ordenação por coluna* — em um Gantt a ordem das linhas **é** o plano, definida por arrasto e por hierarquia. Ordenar por outra chave briga com as duas, e resolver esse conflito é uma decisão de produto, não de implementação.
+- *Presets de view* — depende de definir o que um preset guarda (colunas? filtros? zoom? densidade?), e essa escolha ainda não foi feita.
 
 ## ⬜ Fase 8 — Views restantes
 

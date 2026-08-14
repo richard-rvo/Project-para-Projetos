@@ -5,6 +5,7 @@ import {
   daysBetween,
   durationDays,
   getMonthLabel,
+  getMonthLabelShort,
   isWeekend,
   today,
 } from '../../utils/schedule';
@@ -52,7 +53,13 @@ export function useGanttLayout(tasks, dayWidth, tick) {
 
       const key = date.slice(0, 7);
       if (!currentMonth || currentMonth.key !== key) {
-        currentMonth = { key, label: getMonthLabel(date), startIndex: i, days: 0 };
+        currentMonth = {
+          key,
+          label: getMonthLabel(date),
+          shortLabel: getMonthLabelShort(date),
+          startIndex: i,
+          days: 0,
+        };
         months.push(currentMonth);
       }
       currentMonth.days++;

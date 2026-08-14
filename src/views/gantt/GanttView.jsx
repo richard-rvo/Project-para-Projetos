@@ -12,7 +12,7 @@ import {
 import ConfirmDialog from '../../components/ConfirmDialog';
 import * as XLSX from 'xlsx';
 import {
-  AlertCircle, Download, Plus, Settings, Target, Undo2, Redo2, Hourglass,
+  AlertCircle, Download, Plus, Settings, Target, Undo2, Redo2, Hourglass, Maximize2,
 } from 'lucide-react';
 
 import {
@@ -25,7 +25,9 @@ import { calculateTaskPlannedProgress } from '../../utils/progress';
 import {
   ZOOM_LEVELS, COLUMNS,
   DEFAULT_GRID_W, MIN_GRID_W, MAX_GRID_W,
-  rowHeightFor, loadVisibleColumns, saveVisibleColumns,
+  rowHeightFor, loadVisibleColumns, saveVisibleColumns, HEADER_H,
+  MIN_DAY_W, MAX_DAY_W, tickForDayWidth, nearestZoomId,
+  loadColumnWidths, saveColumnWidths, MIN_COL_W, MAX_COL_W,
 } from './ganttConfig';
 import {
   useProjectTasks, useAutoScheduling, useScheduleAnalysis,
@@ -37,12 +39,19 @@ import {
 import { useGanttLayout } from './useGanttLayout';
 import { useGanttKeyboard } from './useGanttKeyboard';
 import { useGanttLinking, linkTasks } from './useGanttLinking';
+import {
+  useScrollViewport, useVirtualRows, useVirtualDays, useZoomOnWheel,
+} from './useGanttViewport';
 import GanttHeader from './GanttHeader';
 import GanttRow from './GanttRow';
 import GanttDependencies from './GanttDependencies';
 import GanttTooltip from './GanttTooltip';
 import GanttContextMenu from './GanttContextMenu';
 import GanttCalendarMenu from './GanttCalendarMenu';
+import GanttFilterMenu from './GanttFilterMenu';
+import GanttGroupRow from './GanttGroupRow';
+import GanttMinimap from './GanttMinimap';
+import { useGanttRows, EMPTY_FILTERS } from './useGanttFilters';
 
 const EMPTY_SET = new Set();
 
@@ -59,12 +68,14 @@ export default function GanttView() {
   const rowH = rowHeightFor(state.density);
 
   /* ── Estado da view ─────────────────────────────────────────── */
-  const [zoomId, setZoomId] = useState('day');
+  const [dayWidth, setDayWidth] = useState(32);
   const [gridWidth, setGridWidth] = useState(DEFAULT_GRID_W);
   const [visibleCols, setVisibleCols] = useState(loadVisibleColumns);
   const [showBarLabels, setShowBarLabels] = useState(true);
   const [showCriticalPath, setShowCriticalPath] = useState(false);
   const [showSlack, setShowSlack] = useState(false);
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const [colWidths, setColWidths] = useState({});
 
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [collapsedIds, setCollapsedIds] = useState(() => new Set());
@@ -95,7 +106,10 @@ export default function GanttView() {
   const newTaskRef = useRef(null);
   const didInitialScroll = useRef(false);
 
-  const zoom = ZOOM_LEVELS.find((z) => z.id === zoomId) || ZOOM_LEVELS[0];
+  const zoom = useMemo(
+    () => ({ dayWidth, tick: tickForDayWidth(dayWidth), id: nearestZoomId(dayWidth) }),
+    [dayWidth]
+  );
   const activeProject = state.projects.find((p) => p.id === state.activeProjectId);
 
   const tasks = useProjectTasks(state.tasks, state.activeProjectId, collapsedIds);
@@ -107,6 +121,25 @@ export default function GanttView() {
   const criticalIds = showCriticalPath ? analysis.criticalIds : EMPTY_SET;
   const layout = useGanttLayout(tasks, zoom.dayWidth, zoom.tick);
 
+  /* ── Virtualização ──────────────────────────────────────────
+     Sem isto, 1.000 tarefas montam ~30.000 nós e o scroll morre. */
+  /* As linhas exibidas vêm do filtro; cabeçalho de grupo é uma linha
+     como outra qualquer, então a virtualização não precisa saber que
+     ele existe. */
+  const { rows, filteredOut } = useGanttRows(tasks, filters, analysis.criticalIds);
+
+  /* Índice por id: com filtro ou agrupamento a posição visual deixa de
+     ser o índice no array de tarefas, e as setas apontariam errado. */
+  const rowIndexById = useMemo(() => {
+    const map = new Map();
+    rows.forEach((r, i) => { if (r.kind === 'task') map.set(r.id, i); });
+    return map;
+  }, [rows]);
+
+  const viewport = useScrollViewport(scrollerRef);
+  const vRows = useVirtualRows(viewport, rows.length, rowH, HEADER_H);
+  const vDays = useVirtualDays(viewport, gridWidth, zoom.dayWidth, layout.totalDays);
+
   /* Barreira única de escrita: nada derivado (rollup, hasChildren,
      isSummary) chega ao IndexedDB. */
   const saveTasks = useCallback(
@@ -115,9 +148,37 @@ export default function GanttView() {
   );
 
   const columns = useMemo(
-    () => COLUMNS.filter((c) => c.alwaysOn || visibleCols[c.id]),
-    [visibleCols]
+    () => COLUMNS.filter((c) => c.alwaysOn || visibleCols[c.id])
+      .map((c) => (colWidths[c.id] ? { ...c, width: colWidths[c.id] } : c)),
+    [visibleCols, colWidths]
   );
+
+  /* Larguras são por projeto: cada cronograma tem nomes de tamanho
+     diferente. */
+  useEffect(() => {
+    setColWidths(loadColumnWidths(state.activeProjectId));
+  }, [state.activeProjectId]);
+
+  const handleResizeColumn = useCallback((e, col) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startW = col.width;
+
+    const onMove = (ev) => {
+      const next = Math.max(MIN_COL_W, Math.min(MAX_COL_W, startW + ev.clientX - startX));
+      setColWidths((prev) => ({ ...prev, [col.id]: next }));
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.body.classList.remove('is-col-resizing');
+      setColWidths((prev) => { saveColumnWidths(state.activeProjectId, prev); return prev; });
+    };
+    document.body.classList.add('is-col-resizing');
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, [state.activeProjectId]);
 
   /* ── Ajuda de formatação ────────────────────────────────────── */
   /* Duração em DIAS ÚTEIS: um intervalo de segunda a sexta dura 5,
@@ -179,6 +240,37 @@ export default function GanttView() {
   }, [state.activeProjectId]);
 
   useEffect(() => { saveVisibleColumns(visibleCols); }, [visibleCols]);
+
+  /* Ajusta a largura do dia para o projeto inteiro caber na tela. */
+  const fitToProject = useCallback(() => {
+    const available = (scrollerRef.current?.clientWidth || 0) - gridWidth - 24;
+    if (available <= 0 || !layout.totalDays) return;
+    const next = Math.max(MIN_DAY_W, Math.min(MAX_DAY_W, available / layout.totalDays));
+    setDayWidth(next);
+    requestAnimationFrame(() => { if (scrollerRef.current) scrollerRef.current.scrollLeft = 0; });
+  }, [gridWidth, layout.totalDays]);
+
+  /* ⌘+scroll mantém sob o cursor o mesmo dia que estava lá antes —
+     zoom que salta para outro ponto do calendário desorienta. */
+  const zoomAtCursor = useCallback((direction, clientX) => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const box = el.getBoundingClientRect();
+    const anchorPx = clientX - box.left + el.scrollLeft - gridWidth;
+
+    setDayWidth((prev) => {
+      const next = Math.max(MIN_DAY_W, Math.min(MAX_DAY_W, prev * (direction > 0 ? 1.15 : 1 / 1.15)));
+      const anchorDay = anchorPx / prev;
+      requestAnimationFrame(() => {
+        if (scrollerRef.current) {
+          scrollerRef.current.scrollLeft += anchorDay * (next - prev);
+        }
+      });
+      return next;
+    });
+  }, [gridWidth]);
+
+  useZoomOnWheel(scrollerRef, zoomAtCursor);
 
   /* ── Seleção ────────────────────────────────────────────────── */
   const handleRowMouseDown = useCallback((e, task, index) => {
@@ -581,9 +673,12 @@ export default function GanttView() {
       <ViewBar>
         <ViewBarSegments
           options={ZOOM_LEVELS.map((z) => ({ id: z.id, label: z.label }))}
-          value={zoomId}
-          onChange={setZoomId}
+          value={zoom.id}
+          onChange={(id) => setDayWidth(ZOOM_LEVELS.find((z) => z.id === id).dayWidth)}
         />
+        <ViewBarButton icon={Maximize2} onClick={fitToProject} title="Ajustar o projeto inteiro à tela">
+          Ajustar
+        </ViewBarButton>
         <ViewBarDivider />
         <ViewBarButton
           icon={AlertCircle}
@@ -610,6 +705,7 @@ export default function GanttView() {
 
         <div className="ml-auto" />
 
+        <GanttFilterMenu filters={filters} onChange={setFilters} filteredOut={filteredOut} />
         <ViewBarButton icon={Download} onClick={exportToExcel}>Excel</ViewBarButton>
 
         <GanttCalendarMenu
@@ -669,6 +765,8 @@ export default function GanttView() {
               gridWidth={gridWidth}
               layout={layout}
               zoom={zoom}
+              visibleDays={vDays}
+              onResizeColumn={handleResizeColumn}
             />
 
             <div className="gantt-rows">
@@ -697,11 +795,33 @@ export default function GanttView() {
                 criticalIds={criticalIds}
                 showCriticalPath={showCriticalPath}
                 selectedId={selectedIds.size === 1 ? [...selectedIds][0] : null}
+                visibleRange={vRows}
+                rowIndexById={rowIndexById}
               />
 
-              {tasks.map((task, index) => (
-                <GanttRow key={task.id} task={task} index={index} ctx={ctx} />
-              ))}
+              {/* Spacers em vez de transform: transform criaria um novo
+                  bloco de contenção e quebraria o sticky da planilha. */}
+              {vRows.padTop > 0 && <div style={{ height: vRows.padTop }} aria-hidden="true" />}
+
+              {rows.slice(vRows.start, vRows.end).map((row, i) =>
+                row.kind === 'group' ? (
+                  <GanttGroupRow
+                    key={row.id}
+                    row={row}
+                    gridWidth={gridWidth}
+                    layout={layout}
+                  />
+                ) : (
+                  <GanttRow
+                    key={row.id}
+                    task={row.task}
+                    index={vRows.start + i}
+                    ctx={ctx}
+                  />
+                )
+              )}
+
+              {vRows.padBottom > 0 && <div style={{ height: vRows.padBottom }} aria-hidden="true" />}
 
               {/* Linha elástica do arrasto de ligação */}
               {linkDrag && (
@@ -752,6 +872,14 @@ export default function GanttView() {
 
         <GanttTooltip data={tooltip} />
       </div>
+
+      <GanttMinimap
+        tasks={tasks}
+        layout={layout}
+        viewport={viewport}
+        gridWidth={gridWidth}
+        scrollerRef={scrollerRef}
+      />
 
       <GanttContextMenu
         data={contextMenu}

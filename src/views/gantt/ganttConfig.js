@@ -21,10 +21,31 @@ import { viewStart, viewEnd, viewProgress } from './useGanttTasks';
 /* ── Zoom ──────────────────────────────────────────────────────── */
 
 export const ZOOM_LEVELS = [
-  { id: 'day', label: 'Dia', dayWidth: 32, tick: 'day' },
-  { id: 'week', label: 'Semana', dayWidth: 13, tick: 'week' },
-  { id: 'month', label: 'Mês', dayWidth: 4, tick: 'month' },
+  { id: 'day', label: 'Dia', dayWidth: 32 },
+  { id: 'week', label: 'Semana', dayWidth: 13 },
+  { id: 'month', label: 'Mês', dayWidth: 4 },
 ];
+
+export const MIN_DAY_W = 1.5;
+export const MAX_DAY_W = 90;
+
+/**
+ * A granularidade do eixo decorre da largura do dia, não de um preset.
+ * É o que permite zoom contínuo — "ajustar ao projeto" e ⌘+scroll
+ * produzem larguras que nenhum preset teria.
+ */
+export function tickForDayWidth(dayWidth) {
+  if (dayWidth >= 18) return 'day';
+  if (dayWidth >= 7) return 'week';
+  return 'month';
+}
+
+/** Preset mais próximo, para o segmented control acender o certo. */
+export function nearestZoomId(dayWidth) {
+  return ZOOM_LEVELS.reduce((best, z) =>
+    Math.abs(z.dayWidth - dayWidth) < Math.abs(best.dayWidth - dayWidth) ? z : best
+  ).id;
+}
 
 /* ── Geometria ─────────────────────────────────────────────────── */
 
@@ -228,3 +249,24 @@ export function saveVisibleColumns(visible) {
     /* modo privado do navegador — seguir sem persistir */
   }
 }
+
+/* ── Larguras de coluna, por projeto ──────────────────────────────
+   Cada cronograma tem nomes de tarefa de comprimento diferente; uma
+   largura global obrigaria a reajustar a cada troca de projeto.   */
+
+const WIDTH_KEY = (projectId) => `projeta_gantt_widths_${projectId}`;
+
+export function loadColumnWidths(projectId) {
+  if (!projectId) return {};
+  try { return JSON.parse(localStorage.getItem(WIDTH_KEY(projectId))) || {}; }
+  catch { return {}; }
+}
+
+export function saveColumnWidths(projectId, widths) {
+  if (!projectId) return;
+  try { localStorage.setItem(WIDTH_KEY(projectId), JSON.stringify(widths)); }
+  catch { /* modo privado — seguir sem persistir */ }
+}
+
+export const MIN_COL_W = 44;
+export const MAX_COL_W = 420;

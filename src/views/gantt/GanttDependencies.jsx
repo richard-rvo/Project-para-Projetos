@@ -81,12 +81,23 @@ export default function GanttDependencies({
   criticalIds,
   showCriticalPath,
   selectedId,
+  visibleRange,
+  rowIndexById,
 }) {
   const links = useMemo(() => {
-    const indexById = new Map(tasks.map((t, i) => [t.id, i]));
+    /* Com filtro ou agrupamento, a posição visual da linha deixa de
+       ser o índice no array de tarefas. */
+    const indexById = rowIndexById || new Map(tasks.map((t, i) => [t.id, i]));
     const result = [];
 
-    tasks.forEach((task, rowIndex) => {
+    /* Só as setas que cruzam a janela visível. Um <path> por vínculo
+       em 1.000 tarefas é o que mais pesa no recálculo de scroll. */
+    const rangeFrom = visibleRange ? visibleRange.start - 30 : -Infinity;
+    const rangeTo = visibleRange ? visibleRange.end + 30 : Infinity;
+
+    tasks.forEach((task) => {
+      const rowIndex = indexById.get(task.id);
+      if (rowIndex === undefined) return; // filtrada para fora
       if (!viewStart(task) || !viewEnd(task)) return;
 
       parseDependencies(task.dependsOn).forEach((depId) => {
@@ -94,8 +105,13 @@ export default function GanttDependencies({
         const depIndex = indexById.get(depId);
         if (depIndex === undefined) return;
 
-        const dep = tasks[depIndex];
+        const dep = tasks.find((t) => t.id === depId);
+        if (!dep) return;
         if (!viewStart(dep) || !viewEnd(dep)) return;
+
+        const lo = Math.min(depIndex, rowIndex);
+        const hi = Math.max(depIndex, rowIndex);
+        if (hi < rangeFrom || lo > rangeTo) return;
 
         const from = edgesOf(dep, layout);
         const to = edgesOf(task, layout);
@@ -120,7 +136,7 @@ export default function GanttDependencies({
     });
 
     return result;
-  }, [tasks, layout, rowH, criticalIds, showCriticalPath, selectedId]);
+  }, [tasks, layout, rowH, criticalIds, showCriticalPath, selectedId, visibleRange, rowIndexById]);
 
   if (!links.length) return null;
 
@@ -128,7 +144,7 @@ export default function GanttDependencies({
     <svg
       className="gantt-deps"
       width={layout.totalWidth}
-      height={tasks.length * rowH}
+      height={(rowIndexById ? rowIndexById.size + 1 : tasks.length) * rowH}
       aria-hidden="true"
     >
       <defs>
