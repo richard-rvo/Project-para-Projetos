@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo } from 'react';
-import { viewStart, viewEnd } from './useGanttTasks';
+import { viewStart, viewEnd, stageOf, isLate } from '../../utils/taskState';
 
 /* ═══════════════════════════════════════════════════════════════
    Minimapa: o projeto inteiro numa faixa, com a janela visível
@@ -11,9 +11,9 @@ import { viewStart, viewEnd } from './useGanttTasks';
    ═══════════════════════════════════════════════════════════════ */
 
 const TONE = {
-  'Concluída': 'var(--sched-done)',
-  'Em Andamento': 'var(--sched-on-track)',
-  'Atrasada': 'var(--sched-late)',
+  done: 'var(--sched-done)',
+  'in-progress': 'var(--sched-on-track)',
+  'not-started': 'var(--sched-not-started)',
 };
 
 export default function GanttMinimap({ tasks, layout, viewport, gridWidth, scrollerRef }) {
@@ -27,7 +27,10 @@ export default function GanttMinimap({ tasks, layout, viewport, gridWidth, scrol
       if (!start || !end) return null;
       const left = (layout.xOf(start) / layout.totalWidth) * 100;
       const width = Math.max(0.25, (layout.widthOf(start, end) / layout.totalWidth) * 100);
-      return { id: t.id, left, width, tone: TONE[t.status] || 'var(--sched-not-started)' };
+      /* No minimapa a barra tem 3px: atraso SUBSTITUI a cor do
+         estágio aqui, porque não há espaço para uma segunda marca. */
+      const tone = isLate(t) ? 'var(--sched-late)' : TONE[stageOf(t)];
+      return { id: t.id, left, width, tone };
     }).filter(Boolean);
   }, [tasks, layout]);
 

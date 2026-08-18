@@ -16,7 +16,9 @@ import {
   SCHEDULE_MODES,
 } from '../../utils/schedule';
 import { calculateTaskPlannedProgress } from '../../utils/progress';
-import { viewStart, viewEnd, viewProgress } from './useGanttTasks';
+import {
+  viewStart, viewEnd, viewProgress, stageLabel, isLate,
+} from '../../utils/taskState';
 
 /* ── Zoom ──────────────────────────────────────────────────────── */
 
@@ -82,19 +84,16 @@ export function rowHeightFor(density) {
 
 /* ── Estados ───────────────────────────────────────────────────── */
 
-export const STATUS_OPTIONS = [
-  'Não Iniciada',
-  'Em Andamento',
-  'Concluída',
-  'Atrasada',
-];
+/* Estágio e atraso são DERIVADOS — ver utils/taskState.js. O enum
+   `status` que existia aqui misturava os dois eixos e por isso mentia
+   nos dois: 'Concluída' podia conviver com 0%, e 'Atrasada' nunca era
+   atribuída por ninguém. */
 
-/** Classe modificadora da barra por status — a cor vem do CSS. */
-export const STATUS_MODIFIER = {
-  'Não Iniciada': 'is-not-started',
-  'Em Andamento': 'is-on-track',
-  'Concluída': 'is-done',
-  'Atrasada': 'is-late',
+/** Classe modificadora da barra por estágio — a cor vem do CSS. */
+export const STAGE_MODIFIER = {
+  'not-started': 'is-not-started',
+  'in-progress': 'is-on-track',
+  done: 'is-done',
 };
 
 export const SCHEDULE_MODE_OPTIONS = [
@@ -174,6 +173,18 @@ export const COLUMNS = [
     type: 'number',
     summaryLocked: true,
     render: (t) => `${viewProgress(t)}%`,
+  },
+  {
+    /* Derivada: não é editável porque editar estado é editar progresso.
+       Fora da ordem padrão — quem quiser a acrescenta pelo "+". */
+    id: 'stage',
+    label: 'Estado',
+    field: 'progress',
+    width: 108,
+    align: 'left',
+    editable: false,
+    type: 'text',
+    render: (t) => (isLate(t) ? `${stageLabel(t)} · atrasada` : stageLabel(t)),
   },
   {
     id: 'planned',

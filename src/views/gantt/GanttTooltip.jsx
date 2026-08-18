@@ -1,6 +1,8 @@
 import React from 'react';
 import { formatDateTimeShort, isManual } from '../../utils/schedule';
-import { viewStart, viewEnd, viewProgress } from './useGanttTasks';
+import {
+  viewStart, viewEnd, viewProgress, stageLabel, isLate,
+} from '../../utils/taskState';
 
 /* ═══════════════════════════════════════════════════════════════
    Tooltip da barra.
@@ -59,12 +61,8 @@ export default function GanttTooltip({ data, ctx }) {
         <dt>Progresso</dt>
         <dd className="tabular">{progress}%</dd>
 
-        {task.status && (
-          <>
-            <dt>Status</dt>
-            <dd>{task.status}</dd>
-          </>
-        )}
+        <dt>Estado</dt>
+        <dd>{isLate(task) ? `${stageLabel(task)} · atrasada` : stageLabel(task)}</dd>
 
         {task.resources && (
           <>

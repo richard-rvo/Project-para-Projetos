@@ -1,12 +1,31 @@
 /* ═══════════════════════════════════════════════════════════════
-   PROGRESS — progresso planejado, realizado e saúde do projeto
+   PROGRESS — realizado, planejado e saúde do projeto
    ═══════════════════════════════════════════════════════════════
 
    Toda aritmética de data vem de schedule.js. Este módulo só sabe
    ponderar progresso.
+
+   ── O que mudou, e por quê ────────────────────────────────────────
+
+   "Planejado" tinha DUAS definições incompatíveis convivendo no app:
+
+   · por LINHA DE BASE, em calculateTaskPlannedProgress
+   · pelo CRONOGRAMA ATUAL, aqui e em scurve.js
+
+   A segunda é um espelho, não uma medida: as datas atuais são
+   justamente as que o auto-agendamento empurra quando algo atrasa.
+   O planejado perseguia o realizado, e o desvio voltava para perto de
+   zero exatamente quando o projeto derrapava. A saúde — Boa, Atenção,
+   Crítica — que aparece em todo card do Portfólio e no relatório
+   executivo saía desse cálculo.
+
+   Agora existe uma definição só, a que gerenciamento de projeto usa:
+   planejado é a LINHA DE BASE. Sem baseline não há planejado, e o app
+   diz isso em vez de inventar um número.
    ═══════════════════════════════════════════════════════════════ */
 
 import { dateOf, durationDays, today } from './schedule';
+import { viewProgress, leaves } from './taskState';
 
 /**
  * Quanto a tarefa DEVERIA estar concluída hoje, segundo sua linha
@@ -28,62 +47,99 @@ export function calculateTaskPlannedProgress(baselineStart, baselineEnd) {
   return Math.min(100, Math.max(0, Math.round((elapsed / totalDays) * 100)));
 }
 
+/** A tarefa tem linha de base gravada nas duas pontas? */
+export function hasBaseline(task) {
+  return Boolean(task?.baselineStart && task?.baselineEnd);
+}
+
 /**
- * Métricas agregadas do projeto, ponderadas por duração: uma tarefa
- * de 30 dias pesa 30× mais que uma de 1 dia.
+ * Métricas agregadas do projeto.
  *
- * A duração usada aqui é a INCLUSIVA de schedule.durationDays — a
- * mesma que o Gantt desenha. Até a Fase 0 este módulo usava a
- * exclusiva, então a Curva S e a saúde do projeto discordavam do
- * cronograma que o usuário via na tela.
+ * `progress` (realizado) é ponderado pela duração ATUAL e existe
+ * sempre — é uma medida do trabalho feito, independente de haver
+ * plano contra o que comparar.
  *
- * @returns {{progress:number, planned:number, deviation:number, health:string}}
+ * `planned`, `deviation` e `health` só existem quando há linha de
+ * base, e são calculados SÓ sobre as tarefas que a têm, ponderados
+ * pela duração da baseline — o orçamento de prazo de cada tarefa, na
+ * lógica de valor agregado. Sem baseline vêm `null` / 'Sem base',
+ * para a tela poder pedir a linha de base em vez de exibir um desvio
+ * que não significa nada.
+ *
+ * `earned` é o valor agregado — o realizado ponderado pelo MESMO
+ * orçamento que o planejado usa. É ele, e não `progress`, que deve
+ * aparecer ao lado de `planned`: comparar dois números com bases de
+ * ponderação diferentes é como a Curva S e a Visão Geral passaram a
+ * discordar em um ponto percentual.
+ *
+ * @returns {{progress:number, earned:number|null, planned:number|null,
+ *            deviation:number|null, health:string, hasBaseline:boolean,
+ *            baselineCoverage:number}}
  */
 export function calculateProjectMetrics(projectTasks) {
-  if (!projectTasks || projectTasks.length === 0) {
-    return { progress: 0, planned: 0, deviation: 0, health: 'N/A' };
+  /* Só folhas: a tarefa-resumo é a soma dos filhos, então ponderar as
+     duas juntas conta o mesmo trabalho duas vezes. */
+  const tasks = leaves(projectTasks);
+  if (tasks.length === 0) {
+    return {
+      progress: 0,
+      earned: null,
+      planned: null,
+      deviation: null,
+      health: 'Sem base',
+      hasBaseline: false,
+      baselineCoverage: 0,
+    };
   }
 
-  const todayStr = today();
-
-  let totalDuration = 0;
-  let earnedProgress = 0;
-  let plannedProgressSum = 0;
-
-  projectTasks.forEach((t) => {
+  /* ── Realizado: sempre disponível ──────────────────────────── */
+  let actualWeight = 0;
+  let earned = 0;
+  tasks.forEach((t) => {
     const dur = Math.max(1, durationDays(t.startDate, t.endDate));
-    totalDuration += dur;
+    actualWeight += dur;
+    earned += dur * viewProgress(t);
+  });
+  const progress = actualWeight > 0 ? Math.round(earned / actualWeight) : 0;
 
-    /* Realizado: duração × progresso informado */
-    earnedProgress += dur * (t.progress || 0);
+  /* ── Planejado: só com linha de base ───────────────────────── */
+  const based = tasks.filter(hasBaseline);
+  const baselineCoverage = Math.round((based.length / tasks.length) * 100);
 
-    /* Planejado: fração do prazo já decorrida até hoje */
-    if (!t.startDate) return;
+  if (based.length === 0) {
+    return {
+      progress,
+      earned: null,
+      planned: null,
+      deviation: null,
+      health: 'Sem base',
+      hasBaseline: false,
+      baselineCoverage: 0,
+    };
+  }
 
-    if (!t.endDate) {
-      if (dateOf(t.startDate) <= todayStr) plannedProgressSum += dur * 100;
-      return;
-    }
+  let budget = 0;
+  let plannedValue = 0;
+  let earnedValue = 0;
 
-    const elapsed = durationDays(t.startDate, todayStr);
-    if (elapsed <= 0) return; // ainda não começou
-    if (elapsed >= dur) {
-      plannedProgressSum += dur * 100;
-    } else {
-      plannedProgressSum += dur * (elapsed / dur) * 100;
-    }
+  based.forEach((t) => {
+    /* Orçamento de prazo da tarefa: a duração que o plano previu. */
+    const dur = Math.max(1, durationDays(t.baselineStart, t.baselineEnd));
+    budget += dur;
+    plannedValue += dur * calculateTaskPlannedProgress(t.baselineStart, t.baselineEnd);
+    earnedValue += dur * viewProgress(t);
   });
 
-  const progress =
-    totalDuration > 0 ? Math.round(earnedProgress / totalDuration) : 0;
-  const planned =
-    totalDuration > 0 ? Math.round(plannedProgressSum / totalDuration) : 0;
-  const deviation = progress - planned;
+  const planned = budget > 0 ? Math.round(plannedValue / budget) : 0;
+  const earnedPct = budget > 0 ? Math.round(earnedValue / budget) : 0;
+  const deviation = earnedPct - planned;
 
-  let health = 'N/A';
-  if (deviation >= -5) health = 'Boa';
-  else if (deviation >= -15) health = 'Atenção';
-  else health = 'Crítica';
+  let health = 'Boa';
+  if (deviation < -15) health = 'Crítica';
+  else if (deviation < -5) health = 'Atenção';
 
-  return { progress, planned, deviation, health };
+  return {
+    progress, earned: earnedPct, planned, deviation,
+    health, hasBaseline: true, baselineCoverage,
+  };
 }

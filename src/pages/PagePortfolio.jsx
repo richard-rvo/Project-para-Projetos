@@ -12,7 +12,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { calculateProjectMetrics } from '../utils/progress';
-import { today, addDays, dateOf, formatDateLong } from '../utils/schedule';
+import { today, addDays, formatDateLong } from '../utils/schedule';
+import { countByStage, isDueWithin, projectSpan } from '../utils/taskState';
 import {
   Plus, Search, LayoutGrid, Table2, GanttChartSquare, Trash2, FolderOpen,
   CalendarRange,
@@ -40,7 +41,7 @@ const HEALTH_DOT = {
   Boa: 'bg-sched-done',
   Atenção: 'bg-sched-at-risk',
   Crítica: 'bg-sched-late',
-  'N/A': 'bg-sched-not-started',
+  'Sem base': 'bg-sched-not-started',
 };
 
 /**
@@ -74,6 +75,8 @@ export default function PagePortfolio() {
       return {
         project: p,
         metrics: calculateProjectMetrics(projTasks),
+        span: projectSpan(projTasks),
+        lateCount: countByStage(projTasks).late,
         taskCount: projTasks.length,
         openAnomalies: anomalies.filter(
           (a) => a.projectId === p.id && a.status === 'aberta'
@@ -90,17 +93,14 @@ export default function PagePortfolio() {
 
   /* Faixa de métricas do portfólio inteiro. */
   const summary = useMemo(() => {
-    const todayStr = today();
-    const weekStr = addDays(todayStr, 7);
     const active = projects.filter((p) => p.status === 'Em Andamento').length;
     const avg = rows.length
       ? Math.round(rows.reduce((s, r) => s + r.metrics.progress, 0) / rows.length)
       : 0;
-    const dueSoon = tasks.filter(
-      (t) => t.status !== 'Concluída' && t.endDate
-        && dateOf(t.endDate) >= todayStr && dateOf(t.endDate) <= weekStr
-    ).length;
-    const late = tasks.filter((t) => t.status === 'Atrasada').length;
+    /* Antes contava por um status que ninguém atribuía: este número
+       era sempre zero, num portfólio cheio de tarefas vencidas. */
+    const dueSoon = tasks.filter((t) => isDueWithin(t, 7)).length;
+    const late = countByStage(tasks).late;
     const openAnoms = anomalies.filter((a) => a.status === 'aberta').length;
     return { total: projects.length, active, avg, dueSoon, late, openAnoms };
   }, [projects, tasks, anomalies, rows]);
@@ -219,7 +219,7 @@ function MetricsStrip({ summary }) {
 function CardsGrid({ rows, onOpen, onDelete }) {
   return (
     <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3">
-      {rows.map(({ project, metrics, taskCount, openAnomalies }) => (
+      {rows.map(({ project, metrics, span, lateCount, taskCount, openAnomalies }) => (
         <article
           key={project.id}
           onClick={() => onOpen(project.id)}
@@ -263,8 +263,13 @@ function CardsGrid({ rows, onOpen, onDelete }) {
             <Pill className="bg-surface-3 text-text-2">
               {taskCount} tarefa{taskCount !== 1 ? 's' : ''}
             </Pill>
-            {openAnomalies > 0 && (
+            {lateCount > 0 && (
               <Pill className="bg-sched-late-soft text-sched-late">
+                {lateCount} atrasada{lateCount !== 1 ? 's' : ''}
+              </Pill>
+            )}
+            {openAnomalies > 0 && (
+              <Pill className="bg-sched-at-risk-soft text-sched-at-risk">
                 {openAnomalies} anomalia{openAnomalies !== 1 ? 's' : ''}
               </Pill>
             )}
@@ -284,8 +289,8 @@ function CardsGrid({ rows, onOpen, onDelete }) {
 
           <div className="mt-2.5 flex items-center gap-1.5 text-micro text-text-3">
             <CalendarRange size={12} strokeWidth={1.8} />
-            <span className="tabular-nums">
-              {formatDateLong(project.startDate)} → {formatDateLong(project.endDate)}
+            <span className="tabular-nums" title="Período real, calculado das tarefas">
+              {formatDateLong(span.start)} → {formatDateLong(span.end)}
             </span>
           </div>
         </article>
@@ -316,7 +321,7 @@ function ProjectsTable({ rows, onOpen, onDelete }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map(({ project, metrics, taskCount }) => (
+          {rows.map(({ project, metrics, span, taskCount }) => (
             <tr
               key={project.id}
               onClick={() => onOpen(project.id)}
@@ -348,7 +353,7 @@ function ProjectsTable({ rows, onOpen, onDelete }) {
               </td>
               <td className="px-3 py-2.5 text-small tabular-nums text-text-2">{taskCount}</td>
               <td className="whitespace-nowrap px-3 py-2.5 text-small tabular-nums text-text-2">
-                {formatDateLong(project.startDate)} → {formatDateLong(project.endDate)}
+                {formatDateLong(span.start)} → {formatDateLong(span.end)}
               </td>
               <td className="px-3 py-2.5">
                 <button
@@ -394,7 +399,7 @@ function ProgressTrack({ value, planned }) {
         className="h-full rounded-full transition-[width] duration-300"
         style={{ width: `${Math.min(100, value)}%`, background: 'var(--brand-gradient)' }}
       />
-      {planned > 0 && planned < 100 && (
+      {planned !== null && planned > 0 && planned < 100 && (
         <span
           className="absolute inset-y-0 w-px bg-text-3"
           style={{ left: `${Math.min(100, planned)}%` }}

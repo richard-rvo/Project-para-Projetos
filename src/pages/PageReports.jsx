@@ -12,6 +12,7 @@ import { calendarOf } from '../utils/calendar';
 import { workingMinutesBetween } from '../utils/worktime';
 import { formatDuration } from '../utils/duration';
 import { formatDatetime } from '../components/anomalies/anomalyConfig';
+import { countByStage, stageLabel, isLate, lateDays } from '../utils/taskState';
 import { Printer, FileBarChart } from 'lucide-react';
 
 /* ═══════════════════════════════════════════════════════════════
@@ -63,8 +64,9 @@ export default function PageReports() {
   }
 
   const metrics = calculateProjectMetrics(projTasks);
-  const done = projTasks.filter((t) => t.status === 'Concluída').length;
-  const late = projTasks.filter((t) => t.status === 'Atrasada').length;
+  const counts = countByStage(projTasks);
+  const done = counts.done;
+  const late = counts.late;
   const openAnomalies = projAnomalies.filter((a) => a.status === 'aberta').length;
 
   return (
@@ -112,20 +114,37 @@ export default function PageReports() {
               <Section title="Resumo executivo">
                 <div className="grid grid-cols-5 gap-px bg-[#ddd]">
                   <Kpi label="Progresso real" value={`${metrics.progress}%`} />
-                  <Kpi label="Planejado" value={`${metrics.planned}%`} />
+                  <Kpi
+                    label="Planejado"
+                    value={metrics.hasBaseline ? `${metrics.planned}%` : '—'}
+                  />
                   <Kpi
                     label="Desvio"
-                    value={`${metrics.deviation > 0 ? '+' : ''}${Math.round(metrics.deviation)}%`}
-                    tone={metrics.deviation < 0 ? '#b4331f' : '#1d7a4c'}
+                    value={metrics.hasBaseline
+                      ? `${metrics.deviation > 0 ? '+' : ''}${metrics.deviation}%`
+                      : '—'}
+                    tone={metrics.hasBaseline && metrics.deviation < 0 ? '#b4331f' : '#1d7a4c'}
                   />
                   <Kpi label="Tarefas" value={`${done}/${projTasks.length}`} />
                   <Kpi label="Atrasadas" value={late} tone={late ? '#b4331f' : undefined} />
                 </div>
                 <p className="mt-3 text-[11px] leading-relaxed text-[#444]">
-                  Saúde do projeto: <strong>{metrics.health}</strong>.{' '}
-                  {metrics.deviation < 0
-                    ? `A execução está ${Math.abs(Math.round(metrics.deviation))} pontos abaixo do planejado.`
-                    : 'A execução está no ritmo planejado ou acima dele.'}
+                  {metrics.hasBaseline ? (
+                    <>
+                      Saúde do projeto: <strong>{metrics.health}</strong>.{' '}
+                      {metrics.deviation < 0
+                        ? `A execução está ${Math.abs(metrics.deviation)} pontos abaixo do planejado.`
+                        : 'A execução está no ritmo planejado ou acima dele.'}
+                    </>
+                  ) : (
+                    <>
+                      Sem linha de base gravada, não há planejado contra o que
+                      comparar — o desvio e a saúde ficam indisponíveis. Grave uma
+                      linha de base no Gantt para que este relatório passe a
+                      medir progresso contra plano.
+                    </>
+                  )}
+                  {late > 0 && ` ${late} tarefa(s) além do término.`}
                   {openAnomalies > 0 && ` ${openAnomalies} anomalia(s) em aberto.`}
                 </p>
               </Section>
@@ -163,8 +182,8 @@ export default function PageReports() {
                           )}
                         </td>
                         <td className="px-1.5 py-1 tabular-nums">{t.progress || 0}%</td>
-                        <td className={cn('px-1.5 py-1', t.status === 'Atrasada' && 'font-semibold text-[#b4331f]')}>
-                          {t.status}
+                        <td className={cn('px-1.5 py-1', isLate(t) && 'font-semibold text-[#b4331f]')}>
+                          {isLate(t) ? `${stageLabel(t)} · ${lateDays(t)}d` : stageLabel(t)}
                         </td>
                       </tr>
                     ))}

@@ -1,5 +1,8 @@
 import { useMemo } from 'react';
-import { viewStart, viewEnd } from './useGanttTasks';
+import {
+  viewStart, viewEnd, stageOf, isLate, labelForStage,
+} from '../../utils/taskState';
+import { today } from '../../utils/schedule';
 
 /* ═══════════════════════════════════════════════════════════════
    Filtros e agrupamento do Gantt.
@@ -12,14 +15,14 @@ import { viewStart, viewEnd } from './useGanttTasks';
 
 export const GROUP_OPTIONS = [
   { id: 'none', label: 'Sem agrupamento' },
-  { id: 'status', label: 'Status' },
+  { id: 'stage', label: 'Estado' },
   { id: 'resourceGroup', label: 'Grupo de recurso' },
   { id: 'resources', label: 'Recursos' },
 ];
 
 export const EMPTY_FILTERS = {
   text: '',
-  statuses: [],
+  stages: [],
   group: 'none',
   onlyCritical: false,
   onlyLate: false,
@@ -27,7 +30,7 @@ export const EMPTY_FILTERS = {
 
 export function hasActiveFilters(f) {
   return Boolean(
-    f.text.trim() || f.statuses.length || f.onlyCritical || f.onlyLate
+    f.text.trim() || f.stages.length || f.onlyCritical || f.onlyLate
   );
 }
 
@@ -41,10 +44,16 @@ export function useGanttRows(tasks, filters, criticalIds) {
   return useMemo(() => {
     const term = filters.text.trim().toLowerCase();
 
+    /* Uma leitura de hoje para o filtro inteiro: chamar today() por
+       tarefa em 1.000 linhas é trabalho repetido à toa. */
+    const ref = today();
+
     const matches = (t) => {
       if (term && !String(t.name || '').toLowerCase().includes(term)) return false;
-      if (filters.statuses.length && !filters.statuses.includes(t.status)) return false;
-      if (filters.onlyLate && t.status !== 'Atrasada') return false;
+      if (filters.stages.length && !filters.stages.includes(stageOf(t))) return false;
+      /* Antes comparava com um status que ninguém atribuía, então este
+         filtro devolvia lista vazia num cronograma cheio de vencidas. */
+      if (filters.onlyLate && !isLate(t, ref)) return false;
       if (filters.onlyCritical && !criticalIds.has(t.id)) return false;
       return true;
     };
@@ -62,7 +71,9 @@ export function useGanttRows(tasks, filters, criticalIds) {
        resultado não dançar a cada re-render. */
     const buckets = new Map();
     kept.forEach((task) => {
-      const raw = task[filters.group];
+      const raw = filters.group === 'stage'
+        ? labelForStage(stageOf(task))
+        : task[filters.group];
       const key = raw && String(raw).trim() ? String(raw).trim() : '— sem valor —';
       if (!buckets.has(key)) buckets.set(key, []);
       buckets.get(key).push(task);

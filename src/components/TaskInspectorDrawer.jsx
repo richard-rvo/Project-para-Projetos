@@ -11,6 +11,7 @@ import {
   isManual, SCHEDULE_MODES,
 } from '../utils/schedule';
 import { calculateTaskPlannedProgress } from '../utils/progress';
+import { stateOf, viewProgress } from '../utils/taskState';
 import { calendarOf, calendarsOf, defaultCalendarOf } from '../utils/calendar';
 import {
   addWorkingMinutes, workingMinutesBetween, snapForward, minutesPerDay,
@@ -40,18 +41,13 @@ import {
    vez de um bloco inteiro.
    ═══════════════════════════════════════════════════════════════ */
 
-const STATUS_OPTIONS = [
-  { id: 'Não Iniciada', tone: 'not-started' },
-  { id: 'Em Andamento', tone: 'on-track' },
-  { id: 'Concluída', tone: 'done' },
-  { id: 'Atrasada', tone: 'late' },
-];
-
-const TONE_CLASS = {
-  'not-started': 'data-[on=true]:bg-sched-not-started-soft data-[on=true]:text-sched-not-started',
-  'on-track': 'data-[on=true]:bg-sched-on-track-soft data-[on=true]:text-sched-on-track',
-  done: 'data-[on=true]:bg-sched-done-soft data-[on=true]:text-sched-done',
-  late: 'data-[on=true]:bg-sched-late-soft data-[on=true]:text-sched-late',
+/* Estado não é editável aqui porque não é um campo: estágio é a
+   leitura de `progress` e atraso é medido contra hoje. Editar o
+   estado É mover o progresso — que é o controle logo abaixo. */
+const STAGE_TONE_CLASS = {
+  'not-started': 'bg-sched-not-started-soft text-sched-not-started',
+  'on-track': 'bg-sched-on-track-soft text-sched-on-track',
+  done: 'bg-sched-done-soft text-sched-done',
 };
 
 export default function TaskInspectorDrawer() {
@@ -171,6 +167,7 @@ export default function TaskInspectorDrawer() {
   const calendars = calendarsOf(project);
   const durationMinutes = workingMinutesBetween(calendar, task.startDate, task.endDate);
   const milestone = isMilestone(task);
+  const derived = stateOf(task);
   const planned = calculateTaskPlannedProgress(task.baselineStart, task.baselineEnd);
   const drift = task.baselineEnd && task.endDate ? daysBetween(task.baselineEnd, task.endDate) : null;
 
@@ -230,29 +227,29 @@ export default function TaskInspectorDrawer() {
 
         {/* ── Corpo ──────────────────────────────────────────── */}
         <div className="min-h-0 flex-1 overflow-auto px-4 py-4">
-          <Section label="Status">
-            <div className="flex flex-wrap gap-1.5">
-              {STATUS_OPTIONS.map((opt) => (
-                <button
-                  key={opt.id}
-                  type="button"
-                  data-on={task.status === opt.id}
-                  onClick={() => commit({ status: opt.id }, 'Alterar status')}
-                  className={cn(
-                    'rounded-full px-2.5 py-1 text-small font-medium transition-colors',
-                    'bg-surface-3 text-text-2 hover:text-text-1',
-                    TONE_CLASS[opt.tone]
-                  )}
-                >
-                  {opt.id}
-                </button>
-              ))}
-            </div>
-          </Section>
-
           <Section
             label="Progresso"
-            aside={<span className="text-small font-semibold tabular-nums text-text-1">{clampProgress(task.progress)}%</span>}
+            aside={
+              <span className="flex items-center gap-1.5">
+                <span className={cn(
+                  'rounded-full px-2 py-0.5 text-micro font-medium',
+                  STAGE_TONE_CLASS[derived.tone]
+                )}>
+                  {derived.label}
+                </span>
+                {derived.late && (
+                  <span
+                    title={`${derived.lateDays} dia(s) além do término`}
+                    className="rounded-full bg-sched-late-soft px-2 py-0.5 text-micro font-semibold tabular-nums text-sched-late"
+                  >
+                    {derived.lateDays}d atrás
+                  </span>
+                )}
+                <span className="text-small font-semibold tabular-nums text-text-1">
+                  {viewProgress(task)}%
+                </span>
+              </span>
+            }
           >
             {task.isSummary ? (
               <p className="text-small text-text-3">

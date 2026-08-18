@@ -1,8 +1,10 @@
 import React from 'react';
 import { ChevronRight, GripVertical, AlertTriangle } from 'lucide-react';
 import { isMilestone, isManual } from '../../utils/schedule';
-import { viewStart, viewEnd, viewProgress } from './useGanttTasks';
-import { STATUS_MODIFIER } from './ganttConfig';
+import {
+  viewStart, viewEnd, viewProgress, stageOf, isLate,
+} from '../../utils/taskState';
+import { STAGE_MODIFIER } from './ganttConfig';
 
 /* ═══════════════════════════════════════════════════════════════
    Uma linha do Gantt = células da planilha + barra, no MESMO
@@ -73,6 +75,7 @@ export default function GanttRow({ task, index, ctx }) {
      move. Quando a data fixada desrespeita a predecessora, o Gantt
      avisa — e só avisa: corrigir seria desfazer a decisão dele. */
   const manual = isManual(task);
+  const late = isLate({ ...task, endDate });
   const violation = analysis?.byId?.get(task.id)?.violationMinutes ?? 0;
 
   const rowClass = [
@@ -204,7 +207,7 @@ export default function GanttRow({ task, index, ctx }) {
 
         {hasDates && milestone && (
           <div
-            className={`gantt-milestone ${critical ? 'is-critical' : ''} ${dimmed ? 'is-dimmed' : ''}`}
+            className={`gantt-milestone ${critical ? 'is-critical' : ''} ${dimmed ? 'is-dimmed' : ''} ${late ? 'is-late' : ''}`}
             style={{
               left: layout.xOf(startDate, task)
                 + (layout.subday ? 0 : layout.dayWidth / 2),
@@ -223,7 +226,11 @@ export default function GanttRow({ task, index, ctx }) {
           <div
             className={[
               'gantt-bar',
-              task.isSummary ? 'is-summary' : STATUS_MODIFIER[task.status] || 'is-not-started',
+              task.isSummary ? 'is-summary' : STAGE_MODIFIER[stageOf(task)],
+              /* Atraso é CONDIÇÃO, não estágio: entra por cima da cor
+                 do estágio em vez de substituí-la, para "em andamento
+                 e atrasada" — o caso que mais importa — ser legível. */
+              late ? 'is-late' : '',
               critical ? 'is-critical' : '',
               dimmed ? 'is-dimmed' : '',
               task.isBlocked ? 'is-blocked' : '',

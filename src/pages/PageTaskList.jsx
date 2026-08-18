@@ -5,13 +5,15 @@ import ViewBar, { ViewBarButton, ViewBarDivider } from '../components/shell/View
 import ConfirmDialog from '../components/ConfirmDialog';
 import {
   DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent,
-  DropdownMenuLabel, DropdownMenuTrigger,
+  DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
   Plus, Search, SlidersHorizontal, Trash2, CheckCheck, ArrowUpDown, ListChecks, X,
 } from 'lucide-react';
-import { COLUMNS, STATUS_OPTIONS } from '../views/gantt/ganttConfig';
-import { viewStart, viewEnd, viewProgress } from '../views/gantt/useGanttTasks';
+import { COLUMNS } from '../views/gantt/ganttConfig';
+import {
+  STAGES, stageOf, stageLabel, isLate, lateDays, viewStart, viewEnd, viewProgress,
+} from '../utils/taskState';
 import { today, SCHEDULE_MODES } from '../utils/schedule';
 import {
   calendarOf, calendarsOf, defaultCalendarOf, workdayStart,
@@ -32,11 +34,10 @@ import { formatDuration } from '../utils/duration';
    a ordem das linhas É o plano.
    ═══════════════════════════════════════════════════════════════ */
 
-const STATUS_TONE = {
-  'Não Iniciada': 'bg-sched-not-started-soft text-sched-not-started',
-  'Em Andamento': 'bg-sched-on-track-soft text-sched-on-track',
-  'Concluída': 'bg-sched-done-soft text-sched-done',
-  'Atrasada': 'bg-sched-late-soft text-sched-late',
+const STAGE_TONE = {
+  'not-started': 'bg-sched-not-started-soft text-sched-not-started',
+  'in-progress': 'bg-sched-on-track-soft text-sched-on-track',
+  done: 'bg-sched-done-soft text-sched-done',
 };
 
 const SORTABLE = {
@@ -45,7 +46,7 @@ const SORTABLE = {
   end: (t) => viewEnd(t) || '',
   progress: (t) => viewProgress(t),
   duration: (t) => t.__durationMinutes ?? 0,
-  status: (t) => String(t.status || ''),
+  stage: (t) => stageOf(t),
   resources: (t) => String(t.resources || '').toLowerCase(),
 };
 
@@ -81,7 +82,8 @@ export default function PageTaskList() {
     useContext(AppContext);
 
   const [query, setQuery] = useState('');
-  const [statuses, setStatuses] = useState([]);
+  const [stages, setStages] = useState([]);
+  const [onlyLate, setOnlyLate] = useState(false);
   const [sort, setSort] = useState({ key: 'start', dir: 'asc' });
   const [selected, setSelected] = useState(() => new Set());
   const [confirmBulk, setConfirmBulk] = useState(false);
@@ -108,7 +110,8 @@ export default function PageTaskList() {
       .filter((t) => {
         if (t.projectId !== projectId) return false;
         if (term && !String(t.name || '').toLowerCase().includes(term)) return false;
-        if (statuses.length && !statuses.includes(t.status)) return false;
+        if (stages.length && !stages.includes(stageOf(t))) return false;
+        if (onlyLate && !isLate(t)) return false;
         return true;
       })
       /* Ordenar por duração exige compará-las na mesma unidade, e
@@ -128,7 +131,7 @@ export default function PageTaskList() {
       if (av === bv) return (a.order ?? 0) - (b.order ?? 0);
       return (av > bv ? 1 : -1) * factor;
     });
-  }, [state.tasks, projectId, query, statuses, sort, ctx]);
+  }, [state.tasks, projectId, query, stages, onlyLate, sort, ctx]);
 
   const toggleSort = (key) => setSort((prev) =>
     prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }
@@ -150,7 +153,7 @@ export default function PageTaskList() {
       startDate: start,
       endDate: addWorkingMinutes(cal, start, 5 * minutesPerDay(cal)),
       scheduleMode: SCHEDULE_MODES.AUTO,
-      status: 'Não Iniciada', progress: 0, dependsOn: [],
+      progress: 0, dependsOn: [],
       indentLevel: 0, order: total,
     };
     await addTask(task);
@@ -160,7 +163,9 @@ export default function PageTaskList() {
   const completeSelected = async () => {
     const list = state.tasks
       .filter((t) => selected.has(t.id))
-      .map((t) => ({ ...t, status: 'Concluída', progress: 100 }));
+      /* Concluir é escrever 100%: o estágio é a leitura do progresso,
+         não um campo à parte que poderia discordar dele. */
+      .map((t) => ({ ...t, progress: 100 }));
     if (!list.length) return;
     await updateTasksBatch(list, 'Concluir tarefas');
     showToast(`${list.length} tarefa(s) concluída(s)`, 'success');
@@ -184,25 +189,38 @@ export default function PageTaskList() {
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <ViewBarButton icon={SlidersHorizontal} active={statuses.length > 0}>
-              Status{statuses.length ? ` (${statuses.length})` : ''}
+            <ViewBarButton
+              icon={SlidersHorizontal}
+              active={stages.length > 0 || onlyLate}
+            >
+              Estado{stages.length || onlyLate ? ` (${stages.length + (onlyLate ? 1 : 0)})` : ''}
             </ViewBarButton>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-48">
+          <DropdownMenuContent align="start" className="w-52">
             <DropdownMenuLabel className="text-micro uppercase tracking-wide text-text-3">
               Mostrar apenas
             </DropdownMenuLabel>
-            {STATUS_OPTIONS.map((s) => (
+            {STAGES.map((stage) => (
               <DropdownMenuCheckboxItem
-                key={s}
-                checked={statuses.includes(s)}
-                onCheckedChange={() => setStatuses((prev) =>
-                  prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s])}
+                key={stage.id}
+                checked={stages.includes(stage.id)}
+                onCheckedChange={() => setStages((prev) =>
+                  prev.includes(stage.id)
+                    ? prev.filter((x) => x !== stage.id)
+                    : [...prev, stage.id])}
                 onSelect={(e) => e.preventDefault()}
               >
-                {s}
+                {stage.label}
               </DropdownMenuCheckboxItem>
             ))}
+            <DropdownMenuSeparator />
+            <DropdownMenuCheckboxItem
+              checked={onlyLate}
+              onCheckedChange={setOnlyLate}
+              onSelect={(e) => e.preventDefault()}
+            >
+              Só atrasadas
+            </DropdownMenuCheckboxItem>
           </DropdownMenuContent>
         </DropdownMenu>
 
@@ -247,10 +265,10 @@ export default function PageTaskList() {
                   />
                 ))}
                 <SortHeader
-                  label="Status"
-                  active={sort.key === 'status'}
+                  label="Estado"
+                  active={sort.key === 'stage'}
                   dir={sort.dir}
-                  onClick={() => toggleSort('status')}
+                  onClick={() => toggleSort('stage')}
                 />
                 <th className="w-14 px-3 py-2" />
               </tr>
@@ -288,11 +306,23 @@ export default function PageTaskList() {
                   ))}
 
                   <td className="px-3 py-2">
-                    <span className={cn(
-                      'rounded-full px-2 py-0.5 text-micro font-medium',
-                      STATUS_TONE[task.status] || 'bg-surface-3 text-text-2'
-                    )}>
-                      {task.status || '—'}
+                    <span className="flex flex-wrap items-center gap-1">
+                      <span className={cn(
+                        'rounded-full px-2 py-0.5 text-micro font-medium',
+                        STAGE_TONE[stageOf(task)]
+                      )}>
+                        {stageLabel(task)}
+                      </span>
+                      {/* Atraso é condição: acompanha o estágio em vez
+                          de substituí-lo. */}
+                      {isLate(task) && (
+                        <span
+                          title={`${lateDays(task)} dia(s) além do término`}
+                          className="rounded-full bg-sched-late-soft px-2 py-0.5 text-micro font-semibold tabular-nums text-sched-late"
+                        >
+                          {lateDays(task)}d
+                        </span>
+                      )}
                     </span>
                   </td>
 

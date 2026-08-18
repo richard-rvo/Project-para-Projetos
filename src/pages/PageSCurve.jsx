@@ -5,7 +5,7 @@ import ViewBar, { ViewBarSegments, ViewBarButton } from '../components/shell/Vie
 import CurveChart from '../components/CurveChart';
 import { computeSCurve } from '../utils/scurve';
 import { today, addDays, formatDateLong } from '../utils/schedule';
-import { TrendingUp, Download } from 'lucide-react';
+import { TrendingUp, Download, Target, GanttChartSquare } from 'lucide-react';
 
 /* ═══════════════════════════════════════════════════════════════
    CURVA S — planejado vs realizado
@@ -26,7 +26,7 @@ const RANGES = [
 ];
 
 export default function PageSCurve() {
-  const { state } = useContext(AppContext);
+  const { state, setProjectTab } = useContext(AppContext);
   const [range, setRange] = useState('all');
 
   const project = state.projects.find((p) => p.id === state.activeProjectId);
@@ -86,6 +86,29 @@ export default function PageSCurve() {
                 Adicione tarefas com data de início e término.
               </p>
             </div>
+          </div>
+        ) : !curve.hasBaseline ? (
+          /* Antes esta tela derivava o "planejado" das datas ATUAIS —
+             as mesmas que o auto-agendamento empurra quando algo
+             atrasa. O planejado perseguia o realizado e o desvio
+             voltava para zero justamente quando o projeto derrapava.
+             Sem linha de base a comparação não existe, e dizer isso é
+             mais útil que desenhar duas curvas iguais. */
+          <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
+            <Target size={40} strokeWidth={1.2} className="text-text-3" />
+            <div>
+              <h3 className="text-read font-semibold text-text-1">
+                Sem linha de base para comparar
+              </h3>
+              <p className="mx-auto mt-1 max-w-md text-small leading-relaxed text-text-2">
+                A Curva S compara o executado contra o PLANO, não contra o
+                cronograma de hoje — que se move junto com os atrasos. Grave uma
+                linha de base no Gantt e a comparação passa a existir.
+              </p>
+            </div>
+            <ViewBarButton icon={GanttChartSquare} onClick={() => setProjectTab('gantt')}>
+              Ir para o Gantt
+            </ViewBarButton>
           </div>
         ) : (
           <div className="flex flex-col gap-4">

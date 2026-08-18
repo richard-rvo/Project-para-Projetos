@@ -3,25 +3,33 @@ import { AppContext } from '../context/AppContext';
 import { cn } from '@/lib/utils';
 import ViewBar, { ViewBarButton } from '../components/shell/ViewBar';
 import { Plus, Columns3, CalendarDays, Users } from 'lucide-react';
-import { STATUS_OPTIONS } from '../views/gantt/ganttConfig';
-import { viewProgress } from '../views/gantt/useGanttTasks';
-import { today, dateOf, formatDateShort, durationDays, SCHEDULE_MODES } from '../utils/schedule';
+import {
+  STAGES, stageOf, isLate, lateDays, progressForStage, viewProgress, leaves,
+} from '../utils/taskState';
+import { today, formatDateShort, SCHEDULE_MODES } from '../utils/schedule';
 import { defaultCalendarOf, workdayStart } from '../utils/calendar';
 import { addWorkingMinutes, minutesPerDay } from '../utils/worktime';
 
 /* ═══════════════════════════════════════════════════════════════
    QUADRO
 
-   Uma coluna por status, com contador e limite visual de carga.
-   Arrastar entre colunas muda o status — é a única edição que um
-   quadro deve fazer; o resto vai para o Inspector.
+   Uma coluna por ESTÁGIO, com contador e marca de atraso.
+
+   A coluna "Atrasada" saiu. Atraso é uma condição medida contra a
+   data de hoje, não um estágio de trabalho: arrastar um card para lá
+   não mudava data nenhuma, só carimbava uma opinião que o resto do
+   app ignorava. Agora o atraso aparece como MARCA no card e no
+   contador da coluna, e o card continua no estágio em que está — que
+   é como "em andamento e atrasada" fica legível.
+
+   Arrastar entre colunas move o PROGRESSO, que é o dado real; o
+   estágio é a leitura dele.
    ═══════════════════════════════════════════════════════════════ */
 
 const COLUMN_TONE = {
-  'Não Iniciada': 'bg-sched-not-started',
-  'Em Andamento': 'bg-sched-on-track',
-  'Concluída': 'bg-sched-done',
-  'Atrasada': 'bg-sched-late',
+  'not-started': 'bg-sched-not-started',
+  'in-progress': 'bg-sched-on-track',
+  done: 'bg-sched-done',
 };
 
 function generateId() {
@@ -34,34 +42,37 @@ export default function PageKanban() {
   const [overColumn, setOverColumn] = useState(null);
 
   const projectId = state.activeProjectId;
+  /* Só folhas: um card "Execução" que é o cabeçalho de seis tarefas
+     não é uma coisa que alguém arrasta entre colunas. */
   const tasks = useMemo(
-    () => state.tasks.filter((t) => t.projectId === projectId),
+    () => leaves(state.tasks.filter((t) => t.projectId === projectId)),
     [state.tasks, projectId]
   );
 
-  const byStatus = useMemo(() => {
-    const map = new Map(STATUS_OPTIONS.map((s) => [s, []]));
-    tasks.forEach((t) => {
-      const key = map.has(t.status) ? t.status : 'Não Iniciada';
-      map.get(key).push(t);
-    });
+  const byStage = useMemo(() => {
+    const map = new Map(STAGES.map((s) => [s.id, []]));
+    tasks.forEach((t) => map.get(stageOf(t)).push(t));
     return map;
   }, [tasks]);
 
-  const drop = async (status) => {
+  const lateTotal = useMemo(() => tasks.filter((t) => isLate(t)).length, [tasks]);
+
+  const drop = async (stageId) => {
     setOverColumn(null);
     const task = tasks.find((t) => t.id === dragId);
     setDragId(null);
-    if (!task || task.status === status) return;
+    if (!task || stageOf(task) === stageId) return;
 
-    /* Mover para Concluída marca 100%: um card em "Concluída" com 40%
-       é uma contradição que o usuário teria de corrigir à mão. */
-    const patch = { ...task, status };
-    if (status === 'Concluída') patch.progress = 100;
-    await updateTasksBatch([patch], 'Mover no quadro');
+    /* O estágio é derivado do progresso, então mover de coluna é
+       escrever progresso. Não existe mais como um card ficar em
+       "Concluída" com 40%: a contradição virou impossível. */
+    await updateTasksBatch(
+      [{ ...task, progress: progressForStage(stageId, task.progress) }],
+      'Mover no quadro'
+    );
   };
 
-  const addTo = async (status) => {
+  const addTo = async (stageId) => {
     /* Nasce com jornada e no calendário padrão do projeto — as três
        telas que criam tarefa precisam concordar no formato. */
     const cal = defaultCalendarOf(state.projects.find((p) => p.id === projectId));
@@ -71,7 +82,7 @@ export default function PageKanban() {
       startDate: start,
       endDate: addWorkingMinutes(cal, start, 5 * minutesPerDay(cal)),
       scheduleMode: SCHEDULE_MODES.AUTO,
-      status, progress: status === 'Concluída' ? 100 : 0,
+      progress: progressForStage(stageId, 0),
       dependsOn: [], indentLevel: 0, order: tasks.length,
     };
     await addTask(task);
@@ -85,37 +96,52 @@ export default function PageKanban() {
       <ViewBar>
         <Columns3 size={14} strokeWidth={1.8} className="text-text-3" />
         <span className="text-small text-text-2">
-          {tasks.length} tarefa{tasks.length !== 1 ? 's' : ''} em {STATUS_OPTIONS.length} colunas
+          {tasks.length} tarefa{tasks.length !== 1 ? 's' : ''} em {STAGES.length} colunas
         </span>
+        {lateTotal > 0 && (
+          <span className="rounded-full bg-sched-late-soft px-2 py-0.5 text-micro font-semibold tabular-nums text-sched-late">
+            {lateTotal} atrasada{lateTotal !== 1 ? 's' : ''}
+          </span>
+        )}
       </ViewBar>
 
       <div className="min-h-0 flex-1 overflow-auto p-4">
         <div className="flex h-full min-h-0 gap-3">
-          {STATUS_OPTIONS.map((status) => {
-            const items = byStatus.get(status) || [];
+          {STAGES.map((stage) => {
+            const items = byStage.get(stage.id) || [];
+            const lateHere = items.filter((t) => isLate(t)).length;
             return (
               <section
-                key={status}
-                onDragOver={(e) => { e.preventDefault(); setOverColumn(status); }}
-                onDragLeave={() => setOverColumn((c) => (c === status ? null : c))}
-                onDrop={() => drop(status)}
+                key={stage.id}
+                onDragOver={(e) => { e.preventDefault(); setOverColumn(stage.id); }}
+                onDragLeave={() => setOverColumn((c) => (c === stage.id ? null : c))}
+                onDrop={() => drop(stage.id)}
                 className={cn(
                   'flex min-w-64 flex-1 flex-col rounded-[10px] border bg-surface-2 transition-colors',
-                  overColumn === status
+                  overColumn === stage.id
                     ? 'border-brand bg-brand-soft'
                     : 'border-line'
                 )}
               >
                 <header className="flex shrink-0 items-center gap-2 px-3 py-2.5">
-                  <span className={cn('size-2 rounded-full', COLUMN_TONE[status])} />
-                  <h2 className="text-body font-semibold text-text-1">{status}</h2>
+                  <span className={cn('size-2 rounded-full', COLUMN_TONE[stage.id])} />
+                  <h2 className="text-body font-semibold text-text-1">{stage.label}</h2>
                   <span className="rounded-full bg-surface-1 px-1.5 text-micro font-semibold tabular-nums text-text-3">
                     {items.length}
                   </span>
+                  {/* Atraso não é coluna: é uma marca sobre o estágio. */}
+                  {lateHere > 0 && (
+                    <span
+                      title={`${lateHere} atrasada(s) nesta coluna`}
+                      className="rounded-full bg-sched-late-soft px-1.5 text-micro font-semibold tabular-nums text-sched-late"
+                    >
+                      {lateHere}
+                    </span>
+                  )}
                   <button
                     type="button"
-                    onClick={() => addTo(status)}
-                    title={`Nova tarefa em ${status}`}
+                    onClick={() => addTo(stage.id)}
+                    title={`Nova tarefa em ${stage.label}`}
                     className="ml-auto grid size-6 place-items-center rounded-[5px] text-text-3 transition-colors hover:bg-surface-1 hover:text-text-1"
                   >
                     <Plus size={14} />
@@ -151,9 +177,8 @@ export default function PageKanban() {
 
 function Card({ task, dragging, onDragStart, onDragEnd, onOpen }) {
   const progress = viewProgress(task);
-  const todayStr = today();
-  const overdue = task.endDate && dateOf(task.endDate) < todayStr && task.status !== 'Concluída';
-  const days = task.endDate ? durationDays(todayStr, task.endDate) - 1 : null;
+  const overdue = isLate(task);
+  const behind = overdue ? lateDays(task) : 0;
 
   return (
     <article
@@ -179,7 +204,7 @@ function Card({ task, dragging, onDragStart, onDragEnd, onOpen }) {
 
       <div className="mt-2 h-1 overflow-hidden rounded-full bg-surface-3">
         <span
-          className={cn('block h-full rounded-full', COLUMN_TONE[task.status] || 'bg-sched-not-started')}
+          className={cn('block h-full rounded-full', COLUMN_TONE[stageOf(task)])}
           style={{ width: `${progress}%` }}
         />
       </div>
@@ -192,7 +217,7 @@ function Card({ task, dragging, onDragStart, onDragEnd, onOpen }) {
             overdue ? 'font-semibold text-sched-late' : 'text-text-3'
           )}>
             <CalendarDays size={10} strokeWidth={1.8} />
-            {overdue ? `${Math.abs(days)}d atrás` : formatDateShort(task.endDate)}
+            {overdue ? `${behind}d atrás` : formatDateShort(task.endDate)}
           </span>
         )}
       </div>

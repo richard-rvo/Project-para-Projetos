@@ -584,7 +584,6 @@ export default function GanttView() {
       startDate: start,
       endDate: addWorkingMinutes(projectCalendar, start, 5 * minutesPerDay(projectCalendar)),
       scheduleMode: SCHEDULE_MODES.AUTO,
-      status: 'Não Iniciada',
       progress: 0,
       dependsOn: [],
       indentLevel: 0,

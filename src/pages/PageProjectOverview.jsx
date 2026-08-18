@@ -6,6 +6,9 @@ import CurveChart from '../components/CurveChart';
 import { calculateProjectMetrics } from '../utils/progress';
 import { computeSCurve } from '../utils/scurve';
 import { today, addDays, dateOf, formatDateLong, durationDays, isMilestone } from '../utils/schedule';
+import {
+  countByStage, stageOf, isLate, viewProgress, projectSpan, leaves,
+} from '../utils/taskState';
 import { Calendar, Clock, AlertTriangle, ChevronRight, Flag } from 'lucide-react';
 
 /* ═══════════════════════════════════════════════════════════════
@@ -24,11 +27,10 @@ import { Calendar, Clock, AlertTriangle, ChevronRight, Flag } from 'lucide-react
 
 const HORIZON_DAYS = 30;
 
-const STATUS_TONE = {
-  'Não Iniciada': 'neutral',
-  'Em Andamento': 'on-track',
-  'Concluída': 'done',
-  'Atrasada': 'late',
+const STAGE_TONE = {
+  'not-started': 'neutral',
+  'in-progress': 'on-track',
+  done: 'done',
 };
 
 const SEVERITY_TONE = {
@@ -58,12 +60,16 @@ export default function PageProjectOverview() {
   const horizonEnd = addDays(todayStr, HORIZON_DAYS);
   const metrics = calculateProjectMetrics(tasks);
 
-  const done = tasks.filter((t) => t.status === 'Concluída').length;
-  const late = tasks.filter((t) => t.status === 'Atrasada').length;
+  /* Resumo não é entrega: é o cabeçalho do bloco. Fora das listas. */
+  const leafTasks = leaves(tasks);
+  const counts = countByStage(tasks, todayStr);
+  const done = counts.done;
+  const late = counts.late;
+  const span = projectSpan(tasks);
   const openAnomalies = anomalies.filter((a) => a.status === 'aberta').length;
 
   /* Janela de 30 dias: o que está em curso ou começa em breve. */
-  const inHorizon = tasks
+  const inHorizon = leafTasks
     /* dateOf nos dois lados: 'T08:00' é maior que a data-só do mesmo
        dia, e sem isso a tarefa que começa no último dia da janela
        ficava de fora. */
@@ -77,16 +83,16 @@ export default function PageProjectOverview() {
       start: t.startDate,
       end: t.endDate,
       progress: t.progress || 0,
-      tone: STATUS_TONE[t.status] || 'neutral',
+      tone: isLate(t) ? 'late' : STAGE_TONE[stageOf(t)],
       milestone: isMilestone(t),
     }));
 
-  const upcoming = tasks
-    .filter((t) => t.endDate && dateOf(t.endDate) >= todayStr && t.status !== 'Concluída')
+  const upcoming = leafTasks
+    .filter((t) => t.endDate && dateOf(t.endDate) >= todayStr && viewProgress(t) < 100)
     .sort((a, b) => a.endDate.localeCompare(b.endDate))
     .slice(0, 6);
 
-  const milestones = tasks
+  const milestones = leafTasks
     .filter((t) => isMilestone(t) && dateOf(t.startDate) >= todayStr)
     .sort((a, b) => a.startDate.localeCompare(b.startDate))
     .slice(0, 4);
@@ -99,12 +105,18 @@ export default function PageProjectOverview() {
     <div className="flex flex-col gap-4">
       <section className="flex flex-wrap items-stretch gap-px overflow-hidden rounded-[10px] border border-line bg-line">
         <Metric label="Progresso real" value={`${metrics.progress}%`} />
-        <Metric
-          label={metrics.deviation >= 0 ? 'Adiantado' : 'Atrasado'}
-          value={`${metrics.deviation > 0 ? '+' : ''}${Math.round(metrics.deviation)}%`}
-          tone={metrics.deviation >= 0 ? 'done' : 'late'}
-        />
-        <Metric label="Tarefas concluídas" value={`${done}/${tasks.length}`} />
+        {/* Sem linha de base não existe planejado, e inventar um
+            número aqui era o que fazia a saúde do projeto mentir. */}
+        {metrics.hasBaseline ? (
+          <Metric
+            label={metrics.deviation >= 0 ? 'Adiantado' : 'Atrasado'}
+            value={`${metrics.deviation > 0 ? '+' : ''}${metrics.deviation}%`}
+            tone={metrics.deviation >= 0 ? 'done' : 'late'}
+          />
+        ) : (
+          <Metric label="Desvio" value="Sem base" hint="Grave uma linha de base no Gantt" />
+        )}
+        <Metric label="Tarefas concluídas" value={`${done}/${counts.total}`} />
         <Metric label="Tarefas atrasadas" value={late} tone={late > 0 ? 'late' : null} />
         <Metric label="Anomalias abertas" value={openAnomalies} tone={openAnomalies > 0 ? 'at-risk' : null} />
       </section>
@@ -219,10 +231,21 @@ export default function PageProjectOverview() {
 
           <Card title="Período" icon={Calendar}>
             <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-small">
-              <dt className="text-text-3">Início</dt>
-              <dd className="text-right tabular-nums text-text-1">{formatDateLong(project.startDate)}</dd>
-              <dt className="text-text-3">Término</dt>
-              <dd className="text-right tabular-nums text-text-1">{formatDateLong(project.endDate)}</dd>
+              {/* Real = as tarefas. Meta = o que foi declarado na
+                  criação do projeto e nunca mais tocado — antes só a
+                  meta aparecia, e contradizia o Gantt em silêncio. */}
+              <dt className="text-text-3">Início real</dt>
+              <dd className="text-right tabular-nums text-text-1">{formatDateLong(span.start)}</dd>
+              <dt className="text-text-3">Término real</dt>
+              <dd className="text-right tabular-nums text-text-1">{formatDateLong(span.end)}</dd>
+              {(project.startDate || project.endDate) && (
+                <>
+                  <dt className="text-text-3">Meta</dt>
+                  <dd className="text-right tabular-nums text-text-2">
+                    {formatDateLong(project.startDate)} → {formatDateLong(project.endDate)}
+                  </dd>
+                </>
+              )}
               <dt className="text-text-3">Status</dt>
               <dd className="text-right text-text-1">{project.status || 'Planejado'}</dd>
             </dl>
@@ -240,9 +263,9 @@ export default function PageProjectOverview() {
 
 /* ── Peças ─────────────────────────────────────────────────────── */
 
-function Metric({ label, value, tone }) {
+function Metric({ label, value, tone, hint }) {
   return (
-    <div className="flex min-w-36 flex-1 flex-col gap-0.5 bg-surface-1 px-4 py-3">
+    <div className="flex min-w-36 flex-1 flex-col gap-0.5 bg-surface-1 px-4 py-3" title={hint}>
       <span className="text-micro font-medium uppercase tracking-wide text-text-3">{label}</span>
       <span
         className={cn(

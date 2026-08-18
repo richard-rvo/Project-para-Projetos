@@ -7,17 +7,17 @@ import {
 import { ViewBarButton } from '../../components/shell/ViewBar';
 import { Filter, X } from 'lucide-react';
 import { GROUP_OPTIONS, EMPTY_FILTERS, hasActiveFilters } from './useGanttFilters';
-import { STATUS_OPTIONS } from './ganttConfig';
+import { STAGES } from '../../utils/taskState';
 
 export default function GanttFilterMenu({ filters, onChange, filteredOut }) {
   const active = hasActiveFilters(filters);
   const grouping = filters.group !== 'none';
 
-  const toggleStatus = (status) => {
-    const next = filters.statuses.includes(status)
-      ? filters.statuses.filter((s) => s !== status)
-      : [...filters.statuses, status];
-    onChange({ ...filters, statuses: next });
+  const toggleStage = (id) => {
+    const next = filters.stages.includes(id)
+      ? filters.stages.filter((s) => s !== id)
+      : [...filters.stages, id];
+    onChange({ ...filters, stages: next });
   };
 
   return (
@@ -56,16 +56,16 @@ export default function GanttFilterMenu({ filters, onChange, filteredOut }) {
 
         <DropdownMenuSeparator />
         <DropdownMenuLabel className="text-micro uppercase tracking-wide text-text-3">
-          Status
+          Estado
         </DropdownMenuLabel>
-        {STATUS_OPTIONS.map((status) => (
+        {STAGES.map((stage) => (
           <DropdownMenuCheckboxItem
-            key={status}
-            checked={filters.statuses.includes(status)}
-            onCheckedChange={() => toggleStatus(status)}
+            key={stage.id}
+            checked={filters.stages.includes(stage.id)}
+            onCheckedChange={() => toggleStage(stage.id)}
             onSelect={(e) => e.preventDefault()}
           >
-            {status}
+            {stage.label}
           </DropdownMenuCheckboxItem>
         ))}
 

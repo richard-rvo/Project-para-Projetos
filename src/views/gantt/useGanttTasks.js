@@ -4,6 +4,7 @@ import { dependencyIds, readDependencies } from '../../utils/dependencies';
 import { calendarOf } from '../../utils/calendar';
 import { addWorkingMinutes, workingMinutesBetween, snapForward } from '../../utils/worktime';
 import { analyseSchedule, requiredStart } from '../../utils/cpm';
+import { viewStart, viewEnd, viewProgress } from '../../utils/taskState';
 
 /* ═══════════════════════════════════════════════════════════════
    Regras de cronograma do Gantt: hierarquia, auto-agendamento e
@@ -12,13 +13,11 @@ import { analyseSchedule, requiredStart } from '../../utils/cpm';
    ═══════════════════════════════════════════════════════════════ */
 
 /* ── Acessores de exibição ─────────────────────────────────────────
-   Uma tarefa-resumo mostra os valores agregados dos filhos, mas
-   GUARDA os seus próprios. Renderize sempre com estes acessores;
-   grave sempre nos campos crus.                                    */
+   Mudaram de casa para utils/taskState.js, que precisa deles para
+   derivar estágio e atraso e não pode importar de um módulo de hook.
+   Reexportados aqui para os imports existentes seguirem valendo.   */
 
-export const viewStart = (t) => t.rollup?.startDate ?? t.startDate;
-export const viewEnd = (t) => t.rollup?.endDate ?? t.endDate;
-export const viewProgress = (t) => t.rollup?.progress ?? t.progress ?? 0;
+export { viewStart, viewEnd, viewProgress } from '../../utils/taskState';
 
 /**
  * Remove tudo que é derivado antes de persistir. Sem isso o rollup e

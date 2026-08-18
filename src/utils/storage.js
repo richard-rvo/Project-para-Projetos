@@ -7,7 +7,7 @@ import {
 import { hasTime } from './schedule';
 
 const DB_NAME = 'gantt-dinamico-db';
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 
 let dbPromise = null;
 
@@ -121,6 +121,44 @@ export function upgradeTaskToV4(task, cal) {
   };
 }
 
+/* ── v4 → v5 ──────────────────────────────────────────────────────
+   O campo `status` da tarefa é aposentado. Ele misturava dois eixos
+   ortogonais e mentia dos dois lados: os três primeiros valores são
+   ESTÁGIO, que já vive em `progress` e podia contradizê-lo; o quarto,
+   'Atrasada', é CONDIÇÃO medida contra hoje — e como era digitado,
+   ninguém no app o atribuía, então três telas contavam "Tarefas
+   atrasadas" e mostravam zero num cronograma cheio de vencidas.
+
+   Agora os dois são derivados em utils/taskState.js.
+
+   Como nas migrações anteriores, o valor original fica guardado ao
+   lado em `statusLegacy`. Uma única reconciliação é aplicada: quem
+   estava 'Concluída' passa a 100%, porque esse valor é inequívoco e
+   sem ele a tarefa voltaria a aparecer como não concluída. Os demais
+   não inventam progresso — 'Em Andamento' com 0% passa a ler-se como
+   'Não Iniciada', que é o que o dado de fato diz.                  */
+
+export function upgradeTaskToV5(task) {
+  if (!task || !task.status) return task;
+
+  const next = { ...task, statusLegacy: task.status };
+  if (task.status === 'Concluída' && (Number(task.progress) || 0) < 100) {
+    next.progress = 100;
+  }
+  delete next.status;
+  return next;
+}
+
+async function migrateToV5(tx) {
+  const taskStore = tx.objectStore('tasks');
+  let cursor = await taskStore.openCursor();
+  while (cursor) {
+    const upgraded = upgradeTaskToV5(cursor.value);
+    if (upgraded !== cursor.value) await cursor.update(upgraded);
+    cursor = await cursor.continue();
+  }
+}
+
 async function migrateToV4(tx) {
   const projectStore = tx.objectStore('projects');
   const calendarByProject = new Map();
@@ -170,6 +208,9 @@ export async function initDB() {
         }
         if (oldVersion >= 1 && oldVersion < 4) {
           migrateToV4(tx);
+        }
+        if (oldVersion >= 1 && oldVersion < 5) {
+          migrateToV5(tx);
         }
       },
     });
@@ -272,7 +313,7 @@ export async function exportDB() {
     tasks,
     anomalies: anomaliesNoPhotos,
     exportedAt: new Date().toISOString(),
-    version: 4,
+    version: 5,
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -286,7 +327,7 @@ export async function exportDB() {
 }
 
 /**
- * Importa backups v2, v3 E v4.
+ * Importa backups v2, v3, v4 E v5.
  *
  * Um backup gerado antes da v3 traz `dependsOn` como CSV; um anterior
  * à v4 traz datas sem hora e um calendário só. Gravado cru, o primeiro
@@ -306,9 +347,11 @@ export async function importDB(jsonString) {
     );
 
     const tasks = data.tasks.map((t) =>
-      upgradeTaskToV4(
-        { ...t, dependsOn: readDependencies(t.dependsOn) },
-        calendarByProject.get(t.projectId) || DEFAULT_CALENDAR
+      upgradeTaskToV5(
+        upgradeTaskToV4(
+          { ...t, dependsOn: readDependencies(t.dependsOn) },
+          calendarByProject.get(t.projectId) || DEFAULT_CALENDAR
+        )
       )
     );
 

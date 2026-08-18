@@ -512,8 +512,29 @@
   .gantt-bar.is-not-started { --bar-bg: var(--sched-not-started); }
   .gantt-bar.is-on-track    { --bar-bg: var(--sched-on-track); }
   .gantt-bar.is-done        { --bar-bg: var(--sched-done); }
-  .gantt-bar.is-late        { --bar-bg: var(--sched-late); }
   .gantt-bar.is-critical    { --bar-bg: var(--sched-critical); }
+
+  /* ── Atrasada ─────────────────────────────────────────────────
+     Atraso é CONDIÇÃO, não estágio: uma tarefa pode estar em
+     andamento E atrasada, e esse é justamente o caso que mais
+     importa para quem toca o cronograma. Por isso a marca se soma à
+     cor do estágio em vez de trocá-la — antes `is-late` sobrescrevia
+     --bar-bg e a informação de quanto já foi feito desaparecia.
+
+     `outline` e não `box-shadow`: as sombras da barra já estão
+     ocupadas por hover, seleção e modo manual, e outline compõe com
+     todas elas sem disputar a propriedade. */
+  .gantt-bar.is-late,
+  .gantt-milestone.is-late .gantt-milestone-shape {
+    outline: 1.5px solid var(--sched-late);
+    outline-offset: -1.5px;
+  }
+
+  .gantt-bar.is-late .gantt-bar-outside-label,
+  .gantt-milestone.is-late .gantt-bar-outside-label {
+    color: var(--sched-late);
+    font-weight: 600;
+  }
 
   .gantt-bar:hover {
     box-shadow:
