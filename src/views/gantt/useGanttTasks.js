@@ -1,11 +1,9 @@
 import { useMemo, useCallback } from 'react';
-import { addDays, durationDays } from '../../utils/schedule';
+import { isManual } from '../../utils/schedule';
 import { dependencyIds, readDependencies } from '../../utils/dependencies';
-import {
-  DEFAULT_CALENDAR, calendarOf, nextWorkingDay, workingDuration,
-  endFromWorkingDuration, shiftWorkingDays,
-} from '../../utils/calendar';
-import { analyseSchedule } from '../../utils/cpm';
+import { calendarOf } from '../../utils/calendar';
+import { addWorkingMinutes, workingMinutesBetween, snapForward } from '../../utils/worktime';
+import { analyseSchedule, requiredStart } from '../../utils/cpm';
 
 /* ═══════════════════════════════════════════════════════════════
    Regras de cronograma do Gantt: hierarquia, auto-agendamento e
@@ -36,14 +34,48 @@ export function stripComputed(task) {
 export const parseDependencies = dependencyIds;
 
 /**
+ * Peso de um filho no progresso do resumo, na regra do MS Project:
+ *
+ *     %Concluída do resumo = Σ(Duração Real) / Σ(Duração)
+ *     Duração Real = Duração × %Concluída
+ *
+ * A estrutura sempre foi essa; o que estava errado era a DURAÇÃO.
+ * Ela era contada em dias corridos, e no MS Project duração é sempre
+ * tempo útil no calendário DA TAREFA. Um filho que atravessava o fim
+ * de semana pesava o dobro de outro com o mesmo trabalho: sex→seg
+ * contava 4, ter→qua contava 2, e o resumo mostrava 33% onde o certo
+ * era 50%.
+ *
+ * Marco pesa ZERO, como no MS Project: duração zero não entra nem no
+ * numerador nem no denominador, então concluir um marco não move a
+ * porcentagem do pai. Antes pesava 1, porque `durationDays` é
+ * inclusiva e devolve 1 para início e término no mesmo dia.
+ */
+function progressWeight(child, project) {
+  return workingMinutesBetween(
+    calendarOf(project, child),
+    viewStart(child),
+    viewEnd(child)
+  );
+}
+
+/**
  * Tarefas do projeto, ordenadas, com resumo calculado de baixo para
  * cima: uma tarefa com filhos herda o menor início, o maior término e
- * o progresso ponderado por duração.
+ * o progresso ponderado por duração útil.
+ *
+ * `project` entra porque o peso depende do calendário de cada filho —
+ * numa cadeia com turno de campo 24h e equipe administrativa 8h/dia,
+ * "um dia" de cada um é trabalho bem diferente.
  *
  * Também marca `hasChildren` e `depth` para o render da hierarquia.
+ *
+ * Função pura, exportada à parte do hook: o rollup é a regra de
+ * negócio mais fácil de quebrar em silêncio deste arquivo, e assim ela
+ * pode ser testada sem montar React.
  */
-export function useProjectTasks(allTasks, projectId, collapsedIds) {
-  return useMemo(() => {
+export function buildProjectTasks(allTasks, projectId, collapsedIds, project) {
+  {
     const ordered = allTasks
       .filter((t) => t.projectId === projectId)
       .sort(
@@ -83,15 +115,25 @@ export function useProjectTasks(allTasks, projectId, collapsedIds) {
       let totalDur = 0;
       let earned = 0;
       children.forEach((c) => {
-        const d = durationDays(viewStart(c), viewEnd(c)) || 1;
+        const d = progressWeight(c, project);
         totalDur += d;
         earned += d * viewProgress(c);
       });
 
+      /* Só marcos por baixo: a soma dos pesos é zero e a ponderação
+         não existe. A média simples é a única resposta que não é NaN,
+         e trata os marcos como igualmente importantes — que é o que
+         eles são quando não há mais nada para comparar. */
+      const progress = totalDur > 0
+        ? Math.round(earned / totalDur)
+        : Math.round(
+          children.reduce((sum, c) => sum + viewProgress(c), 0) / children.length
+        );
+
       task.rollup = {
         startDate: starts[0] || task.startDate,
         endDate: ends[ends.length - 1] || task.endDate,
-        progress: totalDur > 0 ? Math.round(earned / totalDur) : 0,
+        progress,
       };
     }
 
@@ -108,7 +150,14 @@ export function useProjectTasks(allTasks, projectId, collapsedIds) {
       if (task.hasChildren && collapsedIds.has(task.id)) hideBelowLevel = level;
     }
     return visible;
-  }, [allTasks, projectId, collapsedIds]);
+  }
+}
+
+export function useProjectTasks(allTasks, projectId, collapsedIds, project) {
+  return useMemo(
+    () => buildProjectTasks(allTasks, projectId, collapsedIds, project),
+    [allTasks, projectId, collapsedIds, project]
+  );
 }
 
 /** Mapa predecessora → lista de sucessoras. */
@@ -125,13 +174,15 @@ function buildSuccessorMap(tasks) {
 
 /**
  * Auto-agendamento (forward pass) respeitando tipo de dependência,
- * defasagem e calendário de trabalho.
+ * defasagem, MODO da tarefa e o calendário DE CADA TAREFA.
  *
- * Antes somava dias corridos e só entendia FS: mover uma tarefa que
- * terminava na sexta jogava a sucessora para o sábado.
+ * O calendário é resolvido por tarefa dentro do laço, e não uma vez
+ * por projeto: com calendários diferentes na mesma cadeia — turno de
+ * campo 24h alimentando uma revisão administrativa de 8h/dia — usar o
+ * calendário do projeto para as duas dá uma data que nenhuma das duas
+ * equipes consegue cumprir.
  */
 export function applyForwardPass(changedTask, allTasks, project) {
-  const calendar = calendarOf(project);
   const updates = new Map([[changedTask.id, changedTask]]);
   const successors = buildSuccessorMap(allTasks);
   const queue = [changedTask];
@@ -154,53 +205,34 @@ export function applyForwardPass(changedTask, allTasks, project) {
       const link = readDependencies(base.dependsOn).find((d) => d.id === task.id);
       if (!link) continue;
 
+      /* Tarefa manual não se move — mas a cadeia ATRAVESSA ela: as
+         sucessoras dela continuam sendo calculadas a partir das datas
+         que o planejador fixou. Parar aqui deixaria metade do
+         cronograma sem recalcular. */
+      if (isManual(base)) {
+        queue.push(base);
+        continue;
+      }
+
+      const cal = calendarOf(project, base);
       const pred = current(task.id);
-      const duration = workingDuration(base.startDate, base.endDate, calendar);
-      const lag = link.lag || 0;
+      const duration = workingMinutesBetween(cal, base.startDate, base.endDate);
 
-      let start = null;
-      let finish = null;
-
-      switch (link.type) {
-        case 'SS':
-          start = shiftWorkingDays(nextWorkingDay(pred.startDate, calendar), lag, calendar);
-          break;
-        case 'FF':
-          finish = shiftWorkingDays(pred.endDate, lag, calendar);
-          break;
-        case 'SF':
-          finish = shiftWorkingDays(pred.startDate, lag, calendar);
-          break;
-        case 'FS':
-        default:
-          /* +1 porque o término é inclusivo: terminar na sexta libera
-             a sucessora na segunda, não na própria sexta. */
-          start = shiftWorkingDays(
-            nextWorkingDay(addDays(pred.endDate, 1), calendar),
-            lag,
-            calendar
-          );
-          break;
-      }
-
-      if (finish && !start) {
-        start = shiftWorkingDays(finish, -(duration - 1), calendar);
-      }
+      let start = requiredStart(link, pred, cal, duration);
       if (!start) continue;
 
-      start = nextWorkingDay(start, calendar);
       if (base.constraintStart && start < base.constraintStart) {
-        start = nextWorkingDay(base.constraintStart, calendar);
+        start = snapForward(cal, base.constraintStart);
       }
 
       /* Só empurra para frente. Puxar de volta exigiria saber se a
-         folga é intencional — é o que as restrições resolvem. */
+         folga é intencional — é o que o modo manual resolve. */
       if (start <= base.startDate) continue;
 
       const moved = {
         ...base,
         startDate: start,
-        endDate: endFromWorkingDuration(start, duration, calendar),
+        endDate: addWorkingMinutes(cal, start, duration),
       };
       updates.set(moved.id, moved);
       queue.push(moved);
@@ -222,8 +254,5 @@ export function useAutoScheduling(project) {
  * A implementação vive em utils/cpm.js — aqui só memorizamos.
  */
 export function useScheduleAnalysis(tasks, project) {
-  return useMemo(
-    () => analyseSchedule(tasks, calendarOf(project)),
-    [tasks, project]
-  );
+  return useMemo(() => analyseSchedule(tasks, project), [tasks, project]);
 }

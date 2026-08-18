@@ -1,125 +1,215 @@
-import { addDays, daysBetween, dayOfWeek, parseISO } from './schedule';
+import { dateOf, addDays } from './schedule';
+import {
+  addWorkingMinutes, workingMinutesBetween, snapForward, snapBackward,
+  minutesPerDay, isWorkingDay as isWorkingDayOf, startOfWorkingDay,
+  endOfWorkingDay,
+} from './worktime';
 
 /* ═══════════════════════════════════════════════════════════════
-   CALENDÁRIO DE TRABALHO
+   CALENDÁRIOS DE TRABALHO
    ═══════════════════════════════════════════════════════════════
 
-   Até aqui o auto-agendamento somava dias corridos: mover uma tarefa
-   que terminava na sexta empurrava a sucessora para o sábado. O
-   cronograma ficava impossível de cumprir e o planejador precisava
-   corrigir à mão toda vez.
+   Duas mudanças em relação ao modelo anterior.
 
-   Duração passa a ser contada em DIAS ÚTEIS, como no MS Project.
-   Nenhuma data existente é reescrita pela migração — o que muda é
-   como a duração daquele intervalo é contada e como novas datas são
-   calculadas.
+   1. O calendário ganhou JORNADA. Antes era só `{ workdays, holidays }`
+      — dias inteiros, sem hora — e por isso o cronograma não conseguia
+      dizer que uma tarefa começa 13:00 e termina 17:00.
+
+   2. O calendário deixou de ser um por projeto e virou uma BIBLIOTECA
+      por projeto, com atribuição por tarefa, como as base calendars do
+      MS Project. Numa parada de manutenção a equipe administrativa
+      roda 8h/dia e o turno de campo roda 24h; com um calendário só,
+      qualquer soma entre as duas estava errada.
+
+   A tarefa aponta um calendário por `calendarId`. Vazio herda o padrão
+   do projeto — é o caso da esmagadora maioria das tarefas, e é o que
+   evita ter de tocar em cronograma antigo para ele continuar certo.
+
+   A aritmética não mora aqui: mora em utils/worktime.js. Este módulo
+   resolve QUAL calendário vale e mantém compatibilidade com o formato
+   antigo, que ainda chega por backup importado.
    ═══════════════════════════════════════════════════════════════ */
 
-/** Seg–Sex, sem feriados. */
-export const DEFAULT_CALENDAR = {
-  workdays: [1, 2, 3, 4, 5], // 0 = domingo … 6 = sábado
-  holidays: [],
-};
+/* ── Presets ───────────────────────────────────────────────────────
+   Ponto de partida do editor de calendários. Turno da noite atravessa
+   a meia-noite, o que um turno único não representa: fica como dois
+   trechos do mesmo dia (00:00–06:00 e 22:00–24:00), somando as mesmas
+   8 horas e mantendo cada turno dentro de um dia. */
 
-/** Aceita projeto, calendário ou nada. */
-export function calendarOf(source) {
-  const cal = source?.calendar || source || DEFAULT_CALENDAR;
+export const CALENDAR_PRESETS = [
+  {
+    id: 'padrao',
+    name: 'Padrão',
+    workdays: [1, 2, 3, 4, 5],
+    shifts: [{ from: '08:00', to: '12:00' }, { from: '13:00', to: '17:00' }],
+    holidays: [],
+  },
+  {
+    id: '24h',
+    name: '24 Horas',
+    workdays: [0, 1, 2, 3, 4, 5, 6],
+    shifts: [{ from: '00:00', to: '24:00' }],
+    holidays: [],
+  },
+  {
+    id: 'noturno',
+    name: 'Turno Noturno',
+    workdays: [1, 2, 3, 4, 5],
+    shifts: [{ from: '00:00', to: '06:00' }, { from: '22:00', to: '24:00' }],
+    holidays: [],
+  },
+  {
+    id: 'seis-por-um',
+    name: 'Seis por Um',
+    workdays: [1, 2, 3, 4, 5, 6],
+    shifts: [{ from: '07:00', to: '13:00' }],
+    holidays: [],
+  },
+];
+
+/** Seg–Sex, 08:00–12:00 e 13:00–17:00. */
+export const DEFAULT_CALENDAR = CALENDAR_PRESETS[0];
+
+export const DEFAULT_CALENDAR_ID = DEFAULT_CALENDAR.id;
+
+/* ── Forma ─────────────────────────────────────────────────────── */
+
+/**
+ * Completa os campos que faltam sem inventar jornada: um calendário
+ * sem `shifts` veio do formato antigo, onde o dia útil era o dia
+ * inteiro sem hora nenhuma. Herdar a jornada Padrão nesse caso é o
+ * comportamento certo — é o que o usuário via como "um dia de
+ * trabalho" antes de existir hora.
+ */
+export function normalizeCalendar(cal, fallback = DEFAULT_CALENDAR) {
+  const source = cal || fallback;
   return {
-    workdays: Array.isArray(cal.workdays) && cal.workdays.length
-      ? cal.workdays
-      : DEFAULT_CALENDAR.workdays,
-    holidays: Array.isArray(cal.holidays) ? cal.holidays : [],
+    id: source.id || fallback.id,
+    name: source.name || fallback.name,
+    workdays: Array.isArray(source.workdays) && source.workdays.length
+      ? source.workdays
+      : fallback.workdays,
+    shifts: Array.isArray(source.shifts) && source.shifts.length
+      ? source.shifts
+      : fallback.shifts,
+    holidays: Array.isArray(source.holidays) ? source.holidays : [],
   };
 }
 
-export function isWorkingDay(dateStr, cal = DEFAULT_CALENDAR) {
-  if (!dateStr) return false;
-  if (cal.holidays?.includes(dateStr)) return false;
-  return cal.workdays.includes(dayOfWeek(dateStr));
+/**
+ * Biblioteca de calendários do projeto.
+ *
+ * Tolera as três formas que podem chegar: a nova (`calendars`), a
+ * antiga (`calendar` de dia inteiro, que vira o "Padrão" do projeto
+ * preservando dias úteis e feriados) e a ausência das duas.
+ */
+export function calendarsOf(project) {
+  const list = project?.calendars;
+  if (Array.isArray(list) && list.length) {
+    return list.map((c) => normalizeCalendar(c));
+  }
+  if (project?.calendar) {
+    return [normalizeCalendar({ ...project.calendar, id: DEFAULT_CALENDAR_ID, name: DEFAULT_CALENDAR.name })];
+  }
+  return [DEFAULT_CALENDAR];
+}
+
+/** Calendário padrão do projeto — o que a tarefa herda. */
+export function defaultCalendarOf(project) {
+  const list = calendarsOf(project);
+  return list.find((c) => c.id === project?.defaultCalendarId) || list[0];
+}
+
+/** Busca por id dentro da biblioteca; cai no padrão se o id sumiu. */
+export function resolveCalendar(project, calendarId) {
+  if (!calendarId) return defaultCalendarOf(project);
+  return calendarsOf(project).find((c) => c.id === calendarId) || defaultCalendarOf(project);
 }
 
 /**
- * Primeiro dia útil em `dateStr` ou depois.
- * O limite de 400 impede laço infinito caso alguém configure um
- * calendário sem nenhum dia útil.
+ * O calendário que vale para uma tarefa: o dela, senão o padrão do
+ * projeto. Chamado sem tarefa, devolve o padrão — é como a maior parte
+ * do código que só conhece o projeto continua funcionando.
  */
-export function nextWorkingDay(dateStr, cal = DEFAULT_CALENDAR) {
-  let d = dateStr;
-  for (let i = 0; i < 400; i++) {
-    if (isWorkingDay(d, cal)) return d;
-    d = addDays(d, 1);
-  }
-  return dateStr;
+export function calendarOf(project, task) {
+  return resolveCalendar(project, task?.calendarId);
 }
 
-export function previousWorkingDay(dateStr, cal = DEFAULT_CALENDAR) {
-  let d = dateStr;
-  for (let i = 0; i < 400; i++) {
-    if (isWorkingDay(d, cal)) return d;
-    d = addDays(d, -1);
-  }
-  return dateStr;
+/* ── Atalhos de dia ────────────────────────────────────────────────
+   Camada fina sobre worktime, para quem raciocina em dia: o cabeçalho
+   da timeline, o sombreado de não-útil e o editor de feriados. */
+
+export function isWorkingDay(cal, date) {
+  return isWorkingDayOf(cal, dateOf(date));
+}
+
+/** Primeiro dia útil em `date` ou depois. */
+export function nextWorkingDay(cal, date) {
+  const dt = snapForward(cal, dateOf(date));
+  return dateOf(dt) || dateOf(date);
+}
+
+/** Último dia útil em `date` ou antes. */
+export function previousWorkingDay(cal, date) {
+  const dt = snapBackward(cal, `${dateOf(date)}T23:59`);
+  return dateOf(dt) || dateOf(date);
+}
+
+/** Abertura do dia como instante — para uma data-só virar início. */
+export function workdayStart(cal, date) {
+  return startOfWorkingDay(cal, dateOf(date)) || snapForward(cal, dateOf(date));
+}
+
+/** Fechamento do dia como instante — para uma data-só virar término. */
+export function workdayEnd(cal, date) {
+  return endOfWorkingDay(cal, dateOf(date)) || snapBackward(cal, `${dateOf(date)}T23:59`);
 }
 
 /**
- * Duração em dias úteis, inclusiva nas duas pontas — mesma convenção
- * de schedule.durationDays, só que pulando não-úteis.
- * Um intervalo inteiramente sobre não-úteis conta 1, para nenhuma
- * tarefa ter duração zero.
+ * Duração em DIAS úteis do calendário, fracionária.
+ * Um dia é `minutesPerDay` daquele calendário — 8h no Padrão, 24h no
+ * 24 Horas. É por isso que a mesma tarefa de "3 dias" não dura o mesmo
+ * tempo de relógio em calendários diferentes.
  */
-export function workingDuration(start, end, cal = DEFAULT_CALENDAR) {
-  if (!start || !end) return 0;
-  const span = daysBetween(start, end);
-  if (span < 0) return 0;
-
-  let count = 0;
-  for (let i = 0; i <= span; i++) {
-    if (isWorkingDay(addDays(start, i), cal)) count++;
-  }
-  return Math.max(1, count);
+export function workingDays(cal, start, finish) {
+  return workingMinutesBetween(cal, start, finish) / minutesPerDay(cal);
 }
 
-/**
- * Término que dá exatamente `duration` dias úteis a partir de `start`.
- * O início é empurrado para o próximo dia útil se cair fora.
- */
-export function endFromWorkingDuration(start, duration, cal = DEFAULT_CALENDAR) {
-  if (!start) return '';
-  const from = nextWorkingDay(start, cal);
-  const target = Math.max(1, Math.round(duration));
+/** Término que dá exatamente `days` dias úteis a partir de `start`. */
+export function finishFromWorkingDays(cal, start, days) {
+  return addWorkingMinutes(cal, start, days * minutesPerDay(cal));
+}
 
-  let counted = 0;
-  let cursor = from;
-  for (let i = 0; i < 4000; i++) {
-    if (isWorkingDay(cursor, cal)) {
-      counted++;
-      if (counted >= target) return cursor;
-    }
+/** Desloca N dias úteis, preservando a hora dentro da jornada. */
+export function shiftWorkingDays(cal, dt, n) {
+  return addWorkingMinutes(cal, dt, n * minutesPerDay(cal));
+}
+
+/** Feriados dentro da janela — usada para sombrear a timeline. */
+export function holidaysBetween(cal, from, to) {
+  const start = dateOf(from);
+  const end = dateOf(to);
+  return (cal?.holidays || []).filter((h) => h >= start && h <= end);
+}
+
+/** Dias não úteis da janela — fim de semana E feriado, do calendário. */
+export function nonWorkingDaysBetween(cal, from, to) {
+  const out = [];
+  let cursor = dateOf(from);
+  const end = dateOf(to);
+  for (let i = 0; i < 4000 && cursor <= end; i++) {
+    if (!isWorkingDayOf(cal, cursor)) out.push(cursor);
     cursor = addDays(cursor, 1);
   }
-  return cursor;
-}
-
-/** Desloca em N dias úteis (N pode ser negativo). Zero devolve o próprio dia. */
-export function shiftWorkingDays(dateStr, n, cal = DEFAULT_CALENDAR) {
-  if (!dateStr || n === 0) return dateStr;
-  const step = n > 0 ? 1 : -1;
-  let remaining = Math.abs(n);
-  let cursor = dateStr;
-
-  for (let i = 0; i < 4000 && remaining > 0; i++) {
-    cursor = addDays(cursor, step);
-    if (isWorkingDay(cursor, cal)) remaining--;
-  }
-  return cursor;
-}
-
-/** Lista de feriados dentro da janela — usada para sombrear a timeline. */
-export function holidaysBetween(from, to, cal = DEFAULT_CALENDAR) {
-  return (cal.holidays || []).filter((h) => h >= from && h <= to);
+  return out;
 }
 
 /** Valida uma data ISO digitada pelo usuário no editor de feriados. */
 export function isValidISODate(value) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(value) && parseISO(value) !== null;
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+/** Valida 'HH:mm' digitado no editor de turnos. */
+export function isValidTime(value) {
+  return /^([01]\d|2[0-4]):[0-5]\d$/.test(value);
 }

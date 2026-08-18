@@ -12,7 +12,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { calculateProjectMetrics } from '../utils/progress';
-import { today, addDays, formatDateLong } from '../utils/schedule';
+import { today, addDays, dateOf, formatDateLong } from '../utils/schedule';
 import {
   Plus, Search, LayoutGrid, Table2, GanttChartSquare, Trash2, FolderOpen,
   CalendarRange,
@@ -97,7 +97,8 @@ export default function PagePortfolio() {
       ? Math.round(rows.reduce((s, r) => s + r.metrics.progress, 0) / rows.length)
       : 0;
     const dueSoon = tasks.filter(
-      (t) => t.status !== 'Concluída' && t.endDate && t.endDate >= todayStr && t.endDate <= weekStr
+      (t) => t.status !== 'Concluída' && t.endDate
+        && dateOf(t.endDate) >= todayStr && dateOf(t.endDate) <= weekStr
     ).length;
     const late = tasks.filter((t) => t.status === 'Atrasada').length;
     const openAnoms = anomalies.filter((a) => a.status === 'aberta').length;

@@ -1,4 +1,4 @@
-import { addDays, durationDays, today } from './schedule';
+import { addDays, dateOf, durationDays, today } from './schedule';
 
 /* ═══════════════════════════════════════════════════════════════
    CURVA S — planejado vs realizado, ponderado por duração
@@ -25,8 +25,11 @@ export function computeSCurve(tasks, samples = 30) {
   };
   if (!tasks?.length) return empty;
 
-  const starts = tasks.map((t) => t.startDate).filter(Boolean).sort();
-  const ends = tasks.map((t) => t.endDate).filter(Boolean).sort();
+  /* A curva é amostrada por DIA: o eixo tem um ponto por dia, e
+     comparar um instante com uma data-só sairia um dia fora. Os
+     instantes entram aqui reduzidos à parte-data. */
+  const starts = tasks.map((t) => dateOf(t.startDate)).filter(Boolean).sort();
+  const ends = tasks.map((t) => dateOf(t.endDate)).filter(Boolean).sort();
   if (!starts.length || !ends.length) return empty;
 
   const minDate = starts[0];
@@ -73,8 +76,8 @@ export function computeSCurve(tasks, samples = 30) {
         /* Distribui o progresso já feito linearmente entre o início e
            hoje (ou o término, se a tarefa já foi concluída antes). */
         const finishedEarly =
-          t.status === 'Concluída' && t.endDate && t.endDate < todayStr;
-        const spanEnd = finishedEarly ? t.endDate : todayStr;
+          t.status === 'Concluída' && t.endDate && dateOf(t.endDate) < todayStr;
+        const spanEnd = finishedEarly ? dateOf(t.endDate) : todayStr;
         const span = Math.max(1, durationDays(t.startDate, spanEnd));
         const elapsed = durationDays(t.startDate, date);
 

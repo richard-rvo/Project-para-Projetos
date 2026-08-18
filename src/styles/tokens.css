@@ -106,6 +106,14 @@
   --overlay-material: oklch(1 0 0 / 0.78);
   --overlay-blur: 20px;
 
+  /* ── Gantt ────────────────────────────────────────────────────
+     Faixa do botão "adicionar coluna" no fim do cabeçalho. Vive
+     num token porque o CORPO precisa reservar exatamente a mesma
+     largura: as duas metades dividem o mesmo `gridWidth`, e sem
+     isso a coluna que cresce absorve a diferença e desalinha o
+     cabeçalho em relação às células.                             */
+  --gantt-add-col-w: 34px;
+
   /* ── Raio ─────────────────────────────────────────────────────
      Menor que o antigo 8/12/20 — raio grande destrói densidade.  */
   --radius-control: 6px;

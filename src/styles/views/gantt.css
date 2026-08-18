@@ -206,6 +206,14 @@
     align-items: stretch;
     flex-shrink: 0;
     background: var(--surface-1);
+    /* Reserva a MESMA faixa que o botão "+" ocupa no cabeçalho.
+
+       As duas metades recebem `width: gridWidth`, mas só o cabeçalho
+       tem a célula do "+". Como `name` é a única coluna que cresce,
+       ela absorvia a diferença — ficava 34px mais estreita no
+       cabeçalho, e todas as colunas depois dela apareciam deslocadas
+       em relação às células do corpo. */
+    padding-right: var(--gantt-add-col-w);
     border-right: 1px solid var(--line-strong);
     border-bottom: 1px solid var(--line-hairline);
   }
@@ -216,12 +224,10 @@
     border-bottom: 1px solid var(--line-hairline);
   }
 
-  /* O hover atravessa as duas metades. É esta regra — e o fato de a
-     linha ser um elemento só — que dá a sensação de MS Project. */
-  .gantt-row:hover .gantt-row-grid,
-  .gantt-row:hover .gantt-row-time {
-    background: var(--surface-2);
-  }
+  /* Sem realce de hover na linha: num cronograma o ponteiro atravessa
+     dezenas de linhas a caminho da barra que interessa, e cada uma
+     acendia no caminho. A seleção é que precisa ser visível — ela diz
+     onde o usuário está; o hover só dizia onde o mouse passou. */
 
   .gantt-row.is-selected .gantt-row-grid,
   .gantt-row.is-selected .gantt-row-time {
@@ -360,6 +366,12 @@
     outline: 2px solid var(--brand);
     outline-offset: -2px;
     border-radius: 3px;
+  }
+
+  /* O select nativo precisa da seta e do cursor; o resto vem de cima. */
+  .gantt-cell-input.is-select {
+    padding-right: 2px;
+    cursor: pointer;
   }
 
   .gantt-new-input {
@@ -519,6 +531,46 @@
   .gantt-bar.is-dimmed,
   .gantt-milestone.is-dimmed {
     opacity: 0.28;
+  }
+
+  /* ── Agendada manualmente ─────────────────────────────────────
+     Datas fixadas pelo planejador: o auto-agendamento não as move.
+     As pontas em colchete são a mesma convenção do MS Project, e
+     existem para que "esta tarefa não vai andar sozinha" seja legível
+     na barra, sem precisar abrir a coluna Modo. */
+  .gantt-bar.is-manual {
+    border-radius: 2px;
+    box-shadow:
+      inset 0 0 0 1px oklch(0 0 0 / 0.10),
+      inset 3px 0 0 -1px var(--text-2),
+      inset -3px 0 0 -1px var(--text-2);
+  }
+
+  .gantt-row.is-selected .gantt-bar.is-manual {
+    box-shadow:
+      inset 3px 0 0 -1px var(--text-2),
+      inset -3px 0 0 -1px var(--text-2),
+      0 0 0 2px var(--surface-1),
+      0 0 0 4px var(--brand);
+  }
+
+  /* Manual com data que desrespeita a predecessora. Só marca — mover
+     seria desfazer a decisão que o modo manual representa. */
+  .gantt-bar.is-violating {
+    outline: 1.5px dashed var(--sched-late);
+    outline-offset: 2px;
+  }
+
+  .gantt-violation {
+    position: absolute;
+    top: 50%;
+    right: -18px;
+    translate: 0 -50%;
+    display: grid;
+    place-items: center;
+    color: var(--sched-late);
+    z-index: 6;
+    pointer-events: auto;
   }
 
   .gantt-bar.is-blocked {
@@ -773,59 +825,6 @@
     border-radius: 3px;
   }
 
-  /* ── Pontos conectores ────────────────────────────────────────
-     Só aparecem no hover da barra: visíveis em 300 linhas de uma
-     vez, virariam ruído puro. */
-  .gantt-link-dot {
-    position: absolute;
-    top: 50%;
-    width: 11px;
-    height: 11px;
-    translate: 0 -50%;
-    border-radius: 50%;
-    background: var(--surface-1);
-    border: 2.5px solid var(--brand);
-    opacity: 0;
-    cursor: crosshair;
-    z-index: 7;
-    transition:
-      opacity var(--dur-1) var(--ease-standard),
-      scale var(--dur-1) var(--ease-spring);
-  }
-
-  .gantt-link-dot.is-left { left: -6px; }
-  .gantt-link-dot.is-right { right: -6px; }
-
-  .gantt-bar:hover .gantt-link-dot { opacity: 1; }
-  .gantt-link-dot:hover { scale: 1.25; }
-
-  /* Alvo válido enquanto a ligação está sendo arrastada */
-  .gantt-row.is-link-target .gantt-bar,
-  .gantt-row.is-link-target .gantt-milestone-shape {
-    box-shadow: 0 0 0 2px var(--surface-1), 0 0 0 4px var(--brand);
-  }
-
-  .gantt-row.is-link-target .gantt-row-time {
-    background: var(--brand-soft);
-  }
-
-  .gantt-link-layer {
-    position: absolute;
-    inset: 0;
-    z-index: 40;
-    overflow: visible;
-    pointer-events: none;
-  }
-
-  .gantt-link-line {
-    stroke: var(--brand);
-    stroke-width: 2;
-    stroke-dasharray: 5 4;
-    stroke-linecap: round;
-  }
-
-  .gantt-link-origin { fill: var(--brand); }
-
   /* ── Alça de progresso ────────────────────────────────────── */
   .gantt-progress-grip {
     position: absolute;
@@ -1035,8 +1034,8 @@
      Célula de cabeçalho que é um botão, no fim da planilha —
      mesmo lugar onde o MS Project põe "Adicionar Nova Coluna". */
   .gantt-hcell-add {
-    width: 34px;
-    flex: 0 0 34px;
+    width: var(--gantt-add-col-w);
+    flex: 0 0 var(--gantt-add-col-w);
     justify-content: center;
     color: var(--text-3);
     cursor: pointer;

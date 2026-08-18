@@ -1,9 +1,13 @@
 import { openDB } from 'idb';
 import { readDependencies } from './dependencies';
-import { DEFAULT_CALENDAR } from './calendar';
+import {
+  DEFAULT_CALENDAR, DEFAULT_CALENDAR_ID, defaultCalendarOf,
+  workdayStart, workdayEnd,
+} from './calendar';
+import { hasTime } from './schedule';
 
 const DB_NAME = 'gantt-dinamico-db';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 let dbPromise = null;
 
@@ -41,6 +45,105 @@ async function migrateToV3(tx) {
   }
 }
 
+/* ── v3 → v4 ──────────────────────────────────────────────────────
+   Datas de dia viram INSTANTES, e o calendário único do projeto vira
+   uma biblioteca de calendários.
+
+   Nenhuma data anda: o dia continua exatamente o mesmo, ganhando a
+   hora de abertura no início e a de fechamento no término. O que era
+   "10 a 14 de agosto" passa a ser "10/08 08:00 → 14/08 17:00", que é
+   o mesmo intervalo dito com precisão de relógio.
+
+   Como na v3, o valor original fica guardado ao lado. Migração é a
+   operação mais fácil de errar de forma irreversível.               */
+
+/** Projeto: `calendar` de dia inteiro → biblioteca com jornada. */
+export function upgradeProjectToV4(project) {
+  if (!project || Array.isArray(project.calendars)) return project;
+
+  const legacy = project.calendar;
+  const base = {
+    ...DEFAULT_CALENDAR,
+    id: DEFAULT_CALENDAR_ID,
+    name: DEFAULT_CALENDAR.name,
+    workdays: legacy?.workdays?.length ? legacy.workdays : DEFAULT_CALENDAR.workdays,
+    holidays: Array.isArray(legacy?.holidays) ? legacy.holidays : [],
+  };
+
+  const next = { ...project, calendars: [base], defaultCalendarId: base.id };
+  if (legacy) next.calendarLegacy = legacy;
+  delete next.calendar;
+  return next;
+}
+
+/**
+ * Tarefa: as quatro datas viram instantes, no calendário do projeto.
+ *
+ * O caso que exige cuidado é o MARCO. Marco é `startDate === endDate`;
+ * se o início ganhasse a abertura e o término o fechamento, todo marco
+ * do banco viraria uma tarefa de um dia — e uma perda dessas passaria
+ * despercebida por semanas. Igualdade detectada antes vira igualdade
+ * de instante.
+ */
+export function upgradeTaskToV4(task, cal) {
+  if (!task) return task;
+  if (hasTime(task.startDate) && hasTime(task.endDate)) return task;
+
+  const legacy = {
+    startDate: task.startDate,
+    endDate: task.endDate,
+    baselineStart: task.baselineStart,
+    baselineEnd: task.baselineEnd,
+  };
+
+  const pair = (start, end) => {
+    if (!start && !end) return [start, end];
+    if (start && start === end) {
+      const instant = workdayStart(cal, start);
+      return [instant, instant];
+    }
+    return [
+      start ? workdayStart(cal, start) : start,
+      end ? workdayEnd(cal, end) : end,
+    ];
+  };
+
+  const [startDate, endDate] = pair(task.startDate, task.endDate);
+  const [baselineStart, baselineEnd] = pair(task.baselineStart, task.baselineEnd);
+
+  return {
+    ...task,
+    startDate,
+    endDate,
+    baselineStart,
+    baselineEnd,
+    datesLegacy: legacy,
+  };
+}
+
+async function migrateToV4(tx) {
+  const projectStore = tx.objectStore('projects');
+  const calendarByProject = new Map();
+
+  let pCursor = await projectStore.openCursor();
+  while (pCursor) {
+    const upgraded = upgradeProjectToV4(pCursor.value);
+    calendarByProject.set(upgraded.id, defaultCalendarOf(upgraded));
+    if (upgraded !== pCursor.value) await pCursor.update(upgraded);
+    pCursor = await pCursor.continue();
+  }
+
+  const taskStore = tx.objectStore('tasks');
+  let cursor = await taskStore.openCursor();
+  while (cursor) {
+    const task = cursor.value;
+    const cal = calendarByProject.get(task?.projectId) || DEFAULT_CALENDAR;
+    const upgraded = upgradeTaskToV4(task, cal);
+    if (upgraded !== task) await cursor.update(upgraded);
+    cursor = await cursor.continue();
+  }
+}
+
 export async function initDB() {
   if (!dbPromise) {
     dbPromise = openDB(DB_NAME, DB_VERSION, {
@@ -64,6 +167,9 @@ export async function initDB() {
         if (oldVersion >= 1 && oldVersion < 3) {
           /* Só migra bancos que já existiam. Banco novo já nasce v3. */
           migrateToV3(tx);
+        }
+        if (oldVersion >= 1 && oldVersion < 4) {
+          migrateToV4(tx);
         }
       },
     });
@@ -166,7 +272,7 @@ export async function exportDB() {
     tasks,
     anomalies: anomaliesNoPhotos,
     exportedAt: new Date().toISOString(),
-    version: 3,
+    version: 4,
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -180,27 +286,31 @@ export async function exportDB() {
 }
 
 /**
- * Importa backups v2 E v3.
+ * Importa backups v2, v3 E v4.
  *
- * Um backup gerado antes desta versão traz `dependsOn` como CSV; se
- * fosse gravado cru, as dependências sumiriam silenciosamente — o
- * app novo só entende a lista. A normalização acontece na entrada,
- * não depois.
+ * Um backup gerado antes da v3 traz `dependsOn` como CSV; um anterior
+ * à v4 traz datas sem hora e um calendário só. Gravado cru, o primeiro
+ * perderia as dependências e o segundo deixaria o cronograma sem
+ * jornada — as duas perdas silenciosas. A normalização acontece na
+ * ENTRADA, com as mesmas funções da migração do banco, para o backup
+ * antigo não seguir caminho diferente do banco antigo.
  */
 export async function importDB(jsonString) {
   try {
     const data = JSON.parse(jsonString);
     if (!data.projects || !data.tasks) throw new Error('Formato inválido');
 
-    const projects = data.projects.map((p) => ({
-      ...p,
-      calendar: p.calendar || { ...DEFAULT_CALENDAR },
-    }));
+    const projects = data.projects.map(upgradeProjectToV4);
+    const calendarByProject = new Map(
+      projects.map((p) => [p.id, defaultCalendarOf(p)])
+    );
 
-    const tasks = data.tasks.map((t) => ({
-      ...t,
-      dependsOn: readDependencies(t.dependsOn),
-    }));
+    const tasks = data.tasks.map((t) =>
+      upgradeTaskToV4(
+        { ...t, dependsOn: readDependencies(t.dependsOn) },
+        calendarByProject.get(t.projectId) || DEFAULT_CALENDAR
+      )
+    );
 
     const db = await initDB();
     const tx = db.transaction(['projects', 'tasks', 'anomalies'], 'readwrite');

@@ -16,11 +16,16 @@ import {
 } from 'lucide-react';
 
 import {
-  addDays, daysBetween, durationDays, today, formatDateShort, clampProgress,
+  addDays, daysBetween, durationDays, today, formatDateShort,
+  formatDateTimeShort, clampProgress, isManual, SCHEDULE_MODES,
 } from '../../utils/schedule';
 import {
-  calendarOf, workingDuration, endFromWorkingDuration,
+  calendarOf, calendarsOf, defaultCalendarOf, workdayStart, workdayEnd,
 } from '../../utils/calendar';
+import {
+  addWorkingMinutes, workingMinutesBetween, snapForward, minutesPerDay,
+} from '../../utils/worktime';
+import { formatDuration, resolveDuration } from '../../utils/duration';
 import { calculateTaskPlannedProgress } from '../../utils/progress';
 import {
   ZOOM_LEVELS, COLUMNS,
@@ -28,6 +33,7 @@ import {
   rowHeightFor, HEADER_H,
   MIN_DAY_W, MAX_DAY_W, tickForDayWidth, nearestZoomId,
   loadColumnLayout, saveColumnLayout, MIN_COL_W, MAX_COL_W,
+  SUBDAY_MIN_DAY_W, DRAG_SNAP_MINUTES,
 } from './ganttConfig';
 import {
   useProjectTasks, useAutoScheduling, useScheduleAnalysis,
@@ -38,7 +44,6 @@ import {
 } from '../../utils/dependencies';
 import { useGanttLayout } from './useGanttLayout';
 import { useGanttKeyboard } from './useGanttKeyboard';
-import { useGanttLinking, linkTasks } from './useGanttLinking';
 import {
   useScrollViewport, useVirtualRows, useVirtualDays, useZoomOnWheel,
 } from './useGanttViewport';
@@ -92,16 +97,6 @@ export default function GanttView() {
   const [contextMenu, setContextMenu] = useState(null);
   const clipboardRef = useRef([]);
 
-  const [scheduleSettings, setScheduleSettings] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('gantt_schedule_settings')) || {
-        durationUnit: 'days', hoursPerDay: 8,
-      };
-    } catch {
-      return { durationUnit: 'days', hoursPerDay: 8 };
-    }
-  });
-
   const scrollerRef = useRef(null);
   const editInputRef = useRef(null);
   const newTaskRef = useRef(null);
@@ -113,14 +108,26 @@ export default function GanttView() {
   );
   const activeProject = state.projects.find((p) => p.id === state.activeProjectId);
 
-  const tasks = useProjectTasks(state.tasks, state.activeProjectId, collapsedIds);
+  /* ── Calendário ─────────────────────────────────────────────────
+     Cada tarefa pode ter o seu, então tudo que fala de tempo passa
+     por `calendarFor` — nunca pelo calendário do projeto direto.
+     Fica no topo porque a geometria e a duração dependem dele. */
+  const calendars = useMemo(() => calendarsOf(activeProject), [activeProject]);
+  const projectCalendar = useMemo(() => defaultCalendarOf(activeProject), [activeProject]);
+
+  const calendarFor = useCallback(
+    (task) => calendarOf(activeProject, task),
+    [activeProject]
+  );
+
+  const tasks = useProjectTasks(state.tasks, state.activeProjectId, collapsedIds, activeProject);
   const applyAutoScheduling = useAutoScheduling(activeProject);
 
   /* Análise CPM completa: sempre calculada, porque a folga alimenta a
      barra fantasma mesmo com o caminho crítico desligado. */
   const analysis = useScheduleAnalysis(tasks, activeProject);
   const criticalIds = showCriticalPath ? analysis.criticalIds : EMPTY_SET;
-  const layout = useGanttLayout(tasks, zoom.dayWidth, zoom.tick);
+  const layout = useGanttLayout(tasks, zoom.dayWidth, zoom.tick, calendarFor);
 
   /* ── Virtualização ──────────────────────────────────────────
      Sem isto, 1.000 tarefas montam ~30.000 nós e o scroll morre. */
@@ -194,28 +201,29 @@ export default function GanttView() {
     document.addEventListener('mouseup', onUp);
   }, [state.activeProjectId]);
 
-  /* ── Ajuda de formatação ────────────────────────────────────── */
-  /* Duração em DIAS ÚTEIS: um intervalo de segunda a sexta dura 5,
-     e não 5 corridos que atravessariam o fim de semana. */
-  const workingDurationOf = useCallback(
-    (task) => workingDuration(viewStart(task), viewEnd(task), calendarOf(activeProject)),
-    [activeProject]
+  /* ── Duração ────────────────────────────────────────────────── */
+  /* Duração em MINUTOS ÚTEIS do calendário da tarefa. É a única
+     unidade que soma certo entre uma tarefa de 8h/dia e outra de
+     24h/dia na mesma cadeia. */
+  const durationMinutesOf = useCallback(
+    (task) => workingMinutesBetween(calendarFor(task), viewStart(task), viewEnd(task)),
+    [calendarFor]
   );
 
-  const formatDuration = useCallback((days) => {
-    const { durationUnit, hoursPerDay } = scheduleSettings;
-    if (durationUnit === 'hours') return `${days * hoursPerDay}h`;
-    if (durationUnit === 'minutes') return `${days * hoursPerDay * 60}m`;
-    return `${days}d`;
-  }, [scheduleSettings]);
+  const durationLabel = useCallback(
+    (task) => formatDuration(durationMinutesOf(task), calendarFor(task)),
+    [durationMinutesOf, calendarFor]
+  );
 
-  const parseDurationToDays = useCallback((value) => {
-    const num = parseFloat(value) || 1;
-    const { durationUnit, hoursPerDay } = scheduleSettings;
-    if (durationUnit === 'hours') return Math.max(1, Math.ceil(num / hoursPerDay));
-    if (durationUnit === 'minutes') return Math.max(1, Math.ceil(num / (hoursPerDay * 60)));
-    return Math.max(1, Math.round(num));
-  }, [scheduleSettings]);
+  const calendarLabel = useCallback(
+    (task) => (task.calendarId ? calendarFor(task).name : ''),
+    [calendarFor]
+  );
+
+  const formatMinutes = useCallback(
+    (minutes) => formatDuration(minutes, projectCalendar),
+    [projectCalendar]
+  );
 
   /* Predecessoras são exibidas como número de linha, não como id. */
   /* "2FS+3" — número da linha, tipo e defasagem, como no MS Project. */
@@ -322,40 +330,116 @@ export default function GanttView() {
   }, []);
 
   /* ── Edição inline ──────────────────────────────────────────── */
+  /* O editor abre com a MESMA unidade que o commit vai gravar. Abrir
+     em dias corridos e gravar em dias úteis — o que acontecia aqui —
+     empurrava uma tarefa seg–sex para a semana seguinte só de abrir a
+     célula e apertar Enter. */
   const startEdit = useCallback((task, col) => {
     setEditingCell({ taskId: task.id, field: col.field, colId: col.id });
     if (col.id === 'dependencies') setEditValue(predecessorLabel(task.dependsOn));
-    else if (col.id === 'duration') setEditValue(String(durationDays(task.startDate, task.endDate)));
+    else if (col.id === 'duration') setEditValue(durationLabel(task));
+    else if (col.id === 'mode') setEditValue(isManual(task) ? SCHEDULE_MODES.MANUAL : SCHEDULE_MODES.AUTO);
     else setEditValue(task[col.field] ?? '');
-  }, [predecessorLabel]);
+  }, [predecessorLabel, durationLabel]);
 
   const commitEdit = useCallback(async () => {
     if (!editingCell) return;
     const task = tasks.find((t) => t.id === editingCell.taskId);
     if (!task) { setEditingCell(null); return; }
 
+    const cal = calendarFor(task);
+    const duration = workingMinutesBetween(cal, task.startDate, task.endDate);
     let modified;
-    if (editingCell.colId === 'duration') {
-      const days = parseDurationToDays(editValue);
-      modified = {
-        ...task,
-        endDate: endFromWorkingDuration(task.startDate, days, calendarOf(activeProject)),
-      };
-    } else if (editingCell.colId === 'dependencies') {
-      modified = { ...task, dependsOn: predecessorFromLabel(editValue, task.id) };
-    } else if (editingCell.colId === 'progress') {
-      modified = { ...task, progress: clampProgress(editValue) };
-    } else {
-      modified = { ...task, [editingCell.field]: editValue };
+    let becameManual = false;
+
+    switch (editingCell.colId) {
+      case 'duration': {
+        const minutes = resolveDuration(editValue, cal, duration);
+        modified = minutes === null || minutes === duration
+          ? task
+          : { ...task, endDate: addWorkingMinutes(cal, task.startDate, minutes) };
+        break;
+      }
+
+      case 'start': {
+        /* Editar o início DESLOCA a tarefa preservando a duração.
+           Antes gravava só o campo, então a tarefa mudava de duração
+           em vez de andar — e o término ficava onde estava. */
+        const start = snapForward(cal, editValue);
+        if (!start) { modified = task; break; }
+        modified = { ...task, startDate: start, endDate: addWorkingMinutes(cal, start, duration) };
+        /* Fixar o início à mão numa tarefa que TEM predecessora é uma
+           decisão sobre o cronograma, não sobre esta tarefa: sem virar
+           manual, o próximo recálculo desfaria a digitação em silêncio. */
+        if (!isManual(task) && readDependencies(task.dependsOn).length) {
+          modified.scheduleMode = SCHEDULE_MODES.MANUAL;
+          becameManual = true;
+        }
+        break;
+      }
+
+      case 'end': {
+        /* O término muda a DURAÇÃO, mantendo o início. */
+        const finish = editValue;
+        modified = finish && finish > task.startDate
+          ? { ...task, endDate: finish }
+          : task;
+        break;
+      }
+
+      case 'dependencies':
+        modified = { ...task, dependsOn: predecessorFromLabel(editValue, task.id) };
+        break;
+
+      case 'progress':
+        modified = { ...task, progress: clampProgress(editValue) };
+        break;
+
+      case 'mode':
+        modified = { ...task, scheduleMode: editValue || SCHEDULE_MODES.AUTO };
+        break;
+
+      case 'calendar': {
+        /* Trocar de calendário mantém o INÍCIO e a duração em dias, e
+           recalcula o término: "3 dias" num calendário 24h termina
+           antes de "3 dias" num de 8h, e é isso que o planejador quer
+           ver ao mudar a equipe da tarefa. */
+        const next = calendarOf(activeProject, { calendarId: editValue });
+        const days = duration / minutesPerDay(cal);
+        const start = snapForward(next, task.startDate);
+        modified = {
+          ...task,
+          calendarId: editValue || undefined,
+          startDate: start,
+          endDate: addWorkingMinutes(next, start, days * minutesPerDay(next)),
+        };
+        break;
+      }
+
+      default:
+        modified = { ...task, [editingCell.field]: editValue };
     }
 
     /* Só o que mexe no cronograma dispara o forward pass. */
-    const reschedules = ['duration', 'start', 'end', 'dependencies'].includes(editingCell.colId);
+    const reschedules = ['duration', 'start', 'end', 'dependencies', 'mode', 'calendar']
+      .includes(editingCell.colId);
     await saveTasks(reschedules ? applyAutoScheduling(modified, tasks) : [modified]);
     setEditingCell(null);
-  }, [editingCell, editValue, tasks, parseDurationToDays, predecessorFromLabel, applyAutoScheduling, updateTasksBatch]);
 
-  /* ── Arrastar barra ─────────────────────────────────────────── */
+    if (becameManual) {
+      showToast('Tarefa agendada manualmente — não será movida pelas predecessoras', 'info');
+    }
+  }, [
+    editingCell, editValue, tasks, calendarFor, activeProject,
+    predecessorFromLabel, applyAutoScheduling, updateTasksBatch, showToast,
+  ]);
+
+  /* ── Arrastar barra ───────────────────────────────────────────
+     O deslocamento é contado em MINUTOS ÚTEIS do calendário da tarefa,
+     não em dias corridos. Somar dias corridos deixava a barra parar no
+     sábado ou num feriado — uma data que o motor jamais produziria
+     sozinho, e que o próximo recálculo corrigia sozinho, dando a
+     impressão de que o arrasto "não pegou". */
   const beginBarDrag = useCallback((e, task, mode) => {
     if (e.button !== 0) return;
     e.preventDefault();
@@ -363,20 +447,35 @@ export default function GanttView() {
     setSelectedIds(new Set([task.id]));
     setTooltip(null);
 
+    const cal = calendarFor(task);
+    const perDay = minutesPerDay(cal);
+    const subday = zoom.dayWidth >= SUBDAY_MIN_DAY_W;
     const startX = e.clientX;
     const origStart = task.startDate;
     const origEnd = task.endDate;
+    const duration = workingMinutesBetween(cal, origStart, origEnd);
     let delta = 0;
 
+    const deltaAt = (clientX) => {
+      const days = (clientX - startX) / zoom.dayWidth;
+      return subday
+        ? Math.round((days * perDay) / DRAG_SNAP_MINUTES) * DRAG_SNAP_MINUTES
+        : Math.round(days) * perDay;
+    };
+
+    const previewFor = (minutes) => {
+      if (mode === 'move') {
+        const start = addWorkingMinutes(cal, origStart, minutes);
+        return { taskId: task.id, startDate: start, endDate: addWorkingMinutes(cal, start, duration) };
+      }
+      return { taskId: task.id, startDate: origStart, endDate: addWorkingMinutes(cal, origEnd, minutes) };
+    };
+
     const onMove = (ev) => {
-      const next = Math.round((ev.clientX - startX) / zoom.dayWidth);
-      if (next === delta) return; // só re-renderiza ao virar o dia
+      const next = deltaAt(ev.clientX);
+      if (next === delta) return; // só re-renderiza quando o valor muda
       delta = next;
-      setDragPreview(
-        mode === 'move'
-          ? { taskId: task.id, startDate: addDays(origStart, delta), endDate: addDays(origEnd, delta) }
-          : { taskId: task.id, startDate: origStart, endDate: addDays(origEnd, delta) }
-      );
+      setDragPreview(previewFor(delta));
     };
 
     const onUp = async () => {
@@ -385,17 +484,25 @@ export default function GanttView() {
       setDragPreview(null);
       if (delta === 0) return;
 
-      const newStart = mode === 'move' ? addDays(origStart, delta) : origStart;
-      const newEnd = addDays(origEnd, delta);
-      if (newEnd < newStart) return; // resize não pode inverter a barra
+      const { startDate, endDate } = previewFor(delta);
+      if (endDate < startDate) return; // resize não pode inverter a barra
 
-      const modified = { ...task, startDate: newStart, endDate: newEnd };
+      const modified = { ...task, startDate, endDate };
+      let becameManual = false;
+      if (mode === 'move' && !isManual(task) && readDependencies(task.dependsOn).length) {
+        modified.scheduleMode = SCHEDULE_MODES.MANUAL;
+        becameManual = true;
+      }
+
       await saveTasks(applyAutoScheduling(modified, tasks));
+      if (becameManual) {
+        showToast('Tarefa agendada manualmente — não será movida pelas predecessoras', 'info');
+      }
     };
 
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
-  }, [zoom.dayWidth, tasks, applyAutoScheduling, updateTasksBatch]);
+  }, [zoom.dayWidth, tasks, calendarFor, applyAutoScheduling, updateTasksBatch, showToast]);
 
   const handleBarMouseDown = useCallback((e, task) => {
     if (task.isSummary) return; // resumo é calculado, não arrastável
@@ -467,13 +574,16 @@ export default function GanttView() {
   /* ── Ações ──────────────────────────────────────────────────── */
   const handleAddTask = useCallback(async (e) => {
     if (e.key !== 'Enter' || !newTaskName.trim()) return;
-    const start = today();
+    /* Nasce AUTOMÁTICA e com jornada: começa na abertura do próximo
+       dia útil e dura 5 dias do calendário padrão do projeto. */
+    const start = workdayStart(projectCalendar, today());
     await addTask({
       id: generateId(),
       projectId: state.activeProjectId,
       name: newTaskName.trim(),
       startDate: start,
-      endDate: addDays(start, 4),
+      endDate: addWorkingMinutes(projectCalendar, start, 5 * minutesPerDay(projectCalendar)),
+      scheduleMode: SCHEDULE_MODES.AUTO,
       status: 'Não Iniciada',
       progress: 0,
       dependsOn: [],
@@ -482,7 +592,7 @@ export default function GanttView() {
     });
     setNewTaskName('');
     setTimeout(() => newTaskRef.current?.focus(), 40);
-  }, [newTaskName, state.activeProjectId, tasks.length, addTask]);
+  }, [newTaskName, state.activeProjectId, tasks.length, addTask, projectCalendar]);
 
   const handleSaveBaseline = () => setConfirmAction({
     title: 'Salvar linha de base',
@@ -497,13 +607,16 @@ export default function GanttView() {
   });
 
   const exportToExcel = () => {
-    const header = ['#', 'Tarefa', 'Duração (d)', 'Início', 'Término', '% Concluída',
-      '% Planejada', 'Início Baseline', 'Término Baseline', 'Recursos', 'Grupo', 'Predecessoras'];
+    const header = ['#', 'Tarefa', 'Duração', 'Início', 'Término', 'Modo', 'Calendário',
+      '% Concluída', '% Planejada', 'Início Baseline', 'Término Baseline',
+      'Recursos', 'Grupo', 'Predecessoras'];
     const rows = tasks.map((t, i) => [
-      i + 1, t.name, durationDays(t.startDate, t.endDate),
-      t.startDate || '', t.endDate || '', clampProgress(t.progress),
+      i + 1, t.name, durationLabel(t),
+      formatDateTimeShort(t.startDate), formatDateTimeShort(t.endDate),
+      isManual(t) ? 'Manual' : 'Automática', calendarFor(t).name,
+      clampProgress(t.progress),
       calculateTaskPlannedProgress(t.baselineStart, t.baselineEnd),
-      t.baselineStart || '', t.baselineEnd || '',
+      formatDateTimeShort(t.baselineStart), formatDateTimeShort(t.baselineEnd),
       t.resources || '', t.resourceGroup || '', predecessorLabel(t.dependsOn),
     ]);
     const wb = XLSX.utils.book_new();
@@ -623,20 +736,6 @@ export default function GanttView() {
     });
   }, [targetTasks, removeTasks]);
 
-  /* ── Ligação por arrasto ────────────────────────────────────── */
-  const handleLink = useCallback(async (predecessor, successor) => {
-    const result = linkTasks(predecessor, successor, tasks);
-    if (!result.ok) {
-      showToast(result.reason, 'error');
-      return;
-    }
-    await saveTasks(applyAutoScheduling(result.task, tasks), 'Criar dependência');
-  }, [tasks, applyAutoScheduling, updateTasksBatch, showToast]);
-
-  const { linkDrag, beginLink } = useGanttLinking({
-    tasks, scrollerRef, onLink: handleLink,
-  });
-
   /* ── Arrastar progresso ─────────────────────────────────────── */
   const handleProgressDrag = useCallback((e, task) => {
     e.preventDefault();
@@ -696,12 +795,12 @@ export default function GanttView() {
   const ctx = {
     columns, gridWidth, layout, selectedIds, editingCell, collapsedIds,
     criticalIds, showCriticalPath, showBarLabels, dragPreview, dragOverIndex,
-    editValue, editInputRef, formatDuration, workingDurationOf, predecessorLabel,
+    editValue, editInputRef, predecessorLabel,
+    durationLabel, calendarLabel, calendarFor, formatMinutes,
+    calendars, projectCalendarName: projectCalendar.name,
     analysis,
     showSlack,
     activeCell,
-    linkTargetId: linkDrag?.targetId || null,
-    onBeginLink: beginLink,
     onProgressDrag: handleProgressDrag,
     onContextMenu: handleContextMenu,
     onRowMouseDown: handleRowMouseDown,
@@ -769,7 +868,7 @@ export default function GanttView() {
 
         <GanttCalendarMenu
           project={activeProject}
-          onChange={(calendar) => updateProject({ ...activeProject, calendar })}
+          onChange={(patch) => updateProject({ ...activeProject, ...patch })}
         />
 
         <ViewBarButton
@@ -865,20 +964,6 @@ export default function GanttView() {
 
               {vRows.padBottom > 0 && <div style={{ height: vRows.padBottom }} aria-hidden="true" />}
 
-              {/* Linha elástica do arrasto de ligação */}
-              {linkDrag && (
-                <svg className="gantt-link-layer" aria-hidden="true">
-                  <line
-                    className="gantt-link-line"
-                    x1={linkDrag.from.x}
-                    y1={linkDrag.from.y}
-                    x2={linkDrag.to.x}
-                    y2={linkDrag.to.y}
-                  />
-                  <circle className="gantt-link-origin" cx={linkDrag.from.x} cy={linkDrag.from.y} r="4" />
-                </svg>
-              )}
-
               {/* Linha de entrada rápida */}
               <div className="gantt-row is-new">
                 <div className="gantt-row-grid" style={{ width: gridWidth }}>
@@ -912,7 +997,7 @@ export default function GanttView() {
           title="Arraste para redimensionar a planilha"
         />
 
-        <GanttTooltip data={tooltip} />
+        <GanttTooltip data={tooltip} ctx={ctx} />
       </div>
 
       <GanttMinimap

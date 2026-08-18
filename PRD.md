@@ -80,7 +80,7 @@ Funde o antigo Dashboard com a lista de Projetos. Faixa de métricas (projetos, 
 O bloco estratégico do produto. Um **único scroller** para os dois eixos: o cabeçalho gruda no topo e a planilha à esquerda, sem sincronização em JS.
 
 **Estrutura e visual**
-- Hover atravessando planilha e timeline na mesma linha
+- Seleção atravessando planilha e timeline na mesma linha (sem realce de hover: o ponteiro cruza dezenas de linhas a caminho da barra que interessa)
 - Tarefas-resumo como colchete, colapsáveis
 - Progresso como faixa interna mais escura; rótulo sai da barra quando não cabe
 - Marcos em losango, linha e pílula "Hoje", fins de semana e feriados sombreados
@@ -88,17 +88,34 @@ O bloco estratégico do produto. Um **único scroller** para os dois eixos: o ca
 
 **Interação**
 - Teclado completo: setas navegam, `F2`/`Enter` edita, `Tab`/`Shift+Tab` indenta, `Del` remove
-- Arrastar barras, redimensionar, arrastar o progresso pela alça
-- **Drag-to-connect**: ponto conector nas pontas, linha elástica, recusa ciclos e duplicatas
+- Arrastar barras, redimensionar, arrastar o progresso pela alça. O arrasto anda em
+  **tempo útil**: nenhuma barra para em fim de semana, feriado ou fora do turno
+- Predecessora se define pela coluna **Pred.** (`2FS+3`, notação do MS Project) ou pelo
+  Inspetor. Não existe ligação por arrasto na barra — ela custava dois alvos de clique de
+  11px em cada barra e disputava o gesto de mover, que é o que se faz o tempo todo
 - Desfazer/refazer (`⌘Z` / `⇧⌘Z`) em toda edição de tarefa, válido em qualquer tela
 - Menu de contexto, copiar/colar/duplicar
 - Seleção simples e múltipla
 
 **Rigor de cronograma**
-- Dependências **FS, SS, FF, SF** com defasagem em dias úteis
-- **Calendário de trabalho por projeto**: dias úteis e feriados. Uma tarefa que termina na sexta libera a sucessora na segunda
-- **CPM completo**: forward pass (ES/EF), backward pass (LS/LF), folga total e folga livre
-- Duração contada em **dias úteis**
+- **Instantes, não datas**: início e término carregam hora (`13/08/26 08:00`). O término é o
+  instante em que o trabalho para, e a parte-data dele continua sendo o último dia inclusivo
+- **Biblioteca de calendários por projeto**, atribuível por tarefa — as *base calendars* do
+  MS Project. Cada calendário tem dias úteis, **jornada** (turnos, com intervalo) e feriados.
+  Uma tarefa que termina sexta 17:00 libera a sucessora segunda 08:00; uma tarefa num
+  calendário 24 Horas libera a sucessora no mesmo instante
+- **Modo de agendamento por tarefa**: *automática* segue as predecessoras; *manual* fica
+  onde o planejador fixou e não é movida — as setas continuam desenhadas e o Gantt avisa
+  quando a data fixada desrespeita a dependência, mas não corrige
+- Dependências **FS, SS, FF, SF** com defasagem em dias úteis do calendário da sucessora
+- **CPM completo**: forward pass (ES/EF), backward pass (LS/LF), folga total e folga livre —
+  tudo em minutos úteis, no calendário de cada tarefa
+- **Rollup de tarefa-resumo na regra do MS Project**: `%Concluída = Σ(Duração Real) / Σ(Duração)`,
+  com duração em tempo útil do calendário de cada filho. Marco (duração zero) não carrega peso —
+  concluí-lo não move a porcentagem do pai. A duração do resumo é o **vão** início→término, não
+  a soma dos filhos
+- Duração em minutos úteis, exibida em dias e digitável como `3d`, `4h` ou `90m`.
+  "3 dias" são 24h no calendário Padrão e 72h no 24 Horas
 - Restrição "não iniciar antes de"
 - Detecção de dependência circular
 
@@ -139,12 +156,19 @@ Pré-visualização A4 real — folha branca com sombra sobre mesa recuada. Stat
 
 ### 5.9 Persistência
 
-IndexedDB **versão 3**, stores `projects`, `tasks`, `anomalies`.
+IndexedDB **versão 4**, stores `projects`, `tasks`, `anomalies`.
 
+- Datas são **instantes** `'YYYY-MM-DDTHH:mm'`, local-ingênuos: string ordenável, sem fuso
 - `task.dependsOn` é uma lista de `{ id, type, lag }`
-- `project.calendar` guarda `{ workdays, holidays }`
-- Migração v2→v3 converte o formato antigo e **preserva o original** em `dependsOnLegacy`
-- Backup JSON exporta tudo menos fotos; a importação aceita backups v2 e v3
+- `task.scheduleMode` é `'auto' | 'manual'`; ausente significa automática
+- `task.calendarId` aponta um calendário da biblioteca; vazio herda o padrão do projeto
+- `project.calendars` é a biblioteca `[{ id, name, workdays, shifts, holidays }]`, com
+  `project.defaultCalendarId`
+- Migração v2→v3 converte `dependsOn` e v3→v4 converte datas e calendário. As duas
+  **preservam o original** (`dependsOnLegacy`, `datesLegacy`, `calendarLegacy`), e nenhuma data
+  anda: o dia é o mesmo, ganhando a abertura no início e o fechamento no término
+- Backup JSON exporta tudo menos fotos; a importação aceita v2, v3 e v4, passando pelas mesmas
+  funções de migração — backup antigo não segue caminho diferente de banco antigo
 
 ---
 

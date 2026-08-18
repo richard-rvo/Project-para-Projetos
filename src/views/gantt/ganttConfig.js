@@ -11,9 +11,9 @@
    ═══════════════════════════════════════════════════════════════ */
 
 import {
-  formatDateShort,
-  durationDays,
-  clampProgress,
+  formatDateTimeShort,
+  scheduleModeOf,
+  SCHEDULE_MODES,
 } from '../../utils/schedule';
 import { calculateTaskPlannedProgress } from '../../utils/progress';
 import { viewStart, viewEnd, viewProgress } from './useGanttTasks';
@@ -35,10 +35,27 @@ export const MAX_DAY_W = 90;
  * produzem larguras que nenhum preset teria.
  */
 export function tickForDayWidth(dayWidth) {
-  if (dayWidth >= 18) return 'day';
+  if (dayWidth >= SUBDAY_MIN_DAY_W) return 'day';
   if (dayWidth >= 7) return 'week';
   return 'month';
 }
+
+/**
+ * A partir desta largura de dia a barra passa a mostrar a HORA: uma
+ * tarefa das 13:00 às 17:00 ocupa a parte direita da célula do dia, e
+ * o arrasto encaixa em 15 minutos.
+ *
+ * Abaixo dela a barra volta a ocupar dias inteiros — a fração de um
+ * dia com 6px de largura seria um traço invisível, não informação.
+ */
+export const SUBDAY_MIN_DAY_W = 18;
+
+/** Encaixe do arrasto quando a barra está em modo sub-dia. */
+export const DRAG_SNAP_MINUTES = 15;
+
+/** Nenhuma barra fica mais fina que isto, para marco e tarefa de
+ *  poucas horas continuarem clicáveis. */
+export const MIN_BAR_W = 5;
 
 /** Preset mais próximo, para o segmented control acender o certo. */
 export function nearestZoomId(dayWidth) {
@@ -80,20 +97,21 @@ export const STATUS_MODIFIER = {
   'Atrasada': 'is-late',
 };
 
-export const DURATION_UNITS = [
-  { id: 'days', label: 'Dias' },
-  { id: 'hours', label: 'Horas' },
-  { id: 'minutes', label: 'Minutos' },
+export const SCHEDULE_MODE_OPTIONS = [
+  { value: SCHEDULE_MODES.AUTO, label: 'Automática' },
+  { value: SCHEDULE_MODES.MANUAL, label: 'Manual' },
 ];
 
 /* ── Colunas ───────────────────────────────────────────────────────
    Fonte única para o cabeçalho e para as células. A view Tabela
-   consome a mesma lista na Fase 8, o que elimina a divergência atual
-   entre o Gantt e a lista de tarefas.
+   consome a mesma lista, o que elimina a divergência que havia entre
+   o Gantt e a lista de tarefas.
 
    · field    — propriedade da tarefa
    · render   — texto exibido
    · editable — aceita edição inline
+   · type     — text | number | datetime | select
+   · options  — (ctx) => [{ value, label }], só para select
    · summaryLocked — calculado em tarefa-resumo, não editável
    ─────────────────────────────────────────────────────────────── */
 
@@ -114,34 +132,37 @@ export const COLUMNS = [
     id: 'duration',
     label: 'Duração',
     field: 'duration',
-    width: 68,
+    width: 72,
     align: 'center',
     editable: true,
-    type: 'number',
+    /* Texto, não número: a duração aceita `3d`, `4h` e `90m`. Um
+       <input type="number"> descarta a unidade em silêncio — digitar
+       "4h" chega ao commit como string vazia e nada acontece. */
+    type: 'text',
     summaryLocked: true,
-    render: (t, ctx) => ctx.formatDuration(ctx.workingDurationOf(t)),
+    render: (t, ctx) => ctx.durationLabel(t),
   },
   {
     id: 'start',
     label: 'Início',
     field: 'startDate',
-    width: 82,
+    width: 118,
     align: 'center',
     editable: true,
-    type: 'date',
+    type: 'datetime',
     summaryLocked: true,
-    render: (t) => formatDateShort(viewStart(t)),
+    render: (t) => formatDateTimeShort(viewStart(t)),
   },
   {
     id: 'end',
     label: 'Término',
     field: 'endDate',
-    width: 82,
+    width: 118,
     align: 'center',
     editable: true,
-    type: 'date',
+    type: 'datetime',
     summaryLocked: true,
-    render: (t) => formatDateShort(viewEnd(t)),
+    render: (t) => formatDateTimeShort(viewEnd(t)),
   },
   {
     id: 'progress',
@@ -175,6 +196,35 @@ export const COLUMNS = [
     render: (t, ctx) => ctx.predecessorLabel(t.dependsOn),
   },
   {
+    id: 'mode',
+    label: 'Modo',
+    field: 'scheduleMode',
+    width: 96,
+    align: 'left',
+    editable: true,
+    type: 'select',
+    summaryLocked: true,
+    options: () => SCHEDULE_MODE_OPTIONS,
+    render: (t) =>
+      scheduleModeOf(t) === SCHEDULE_MODES.MANUAL ? 'Manual' : 'Automática',
+  },
+  {
+    id: 'calendar',
+    label: 'Calendário',
+    field: 'calendarId',
+    width: 118,
+    align: 'left',
+    editable: true,
+    type: 'select',
+    /* Vazio herda o do projeto — que é o caso da esmagadora maioria
+       das tarefas, e o motivo de a opção em branco vir primeiro. */
+    options: (ctx) => [
+      { value: '', label: `Do projeto (${ctx.projectCalendarName})` },
+      ...ctx.calendars.map((c) => ({ value: c.id, label: c.name })),
+    ],
+    render: (t, ctx) => ctx.calendarLabel(t),
+  },
+  {
     id: 'resources',
     label: 'Recursos',
     field: 'resources',
@@ -198,21 +248,21 @@ export const COLUMNS = [
     id: 'baselineStart',
     label: 'Início base',
     field: 'baselineStart',
-    width: 92,
+    width: 118,
     align: 'center',
     editable: true,
-    type: 'date',
-    render: (t) => formatDateShort(t.baselineStart),
+    type: 'datetime',
+    render: (t) => formatDateTimeShort(t.baselineStart),
   },
   {
     id: 'baselineEnd',
     label: 'Fim base',
     field: 'baselineEnd',
-    width: 92,
+    width: 118,
     align: 'center',
     editable: true,
-    type: 'date',
-    render: (t) => formatDateShort(t.baselineEnd),
+    type: 'datetime',
+    render: (t) => formatDateTimeShort(t.baselineEnd),
   },
 ];
 

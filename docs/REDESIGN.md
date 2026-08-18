@@ -84,7 +84,7 @@ De 5 barras de chrome para **2** (52px + 44px = 96px, contra ~330px).
 
 Verificado com 300 tarefas: desvio 0 em todas as linhas, sticky segurando nos dois eixos após scroll profundo.
 
-Também: hover atravessando as duas metades, colchete de resumo, progresso como faixa interna, rótulo fora da barra quando não cabe, pílula "Hoje", tooltip próprio, fim de semana por gradiente (365 nós de DOM → zero).
+Também: seleção atravessando as duas metades (o realce de *hover* existiu até a Fase 10, quando saiu por ruído), colchete de resumo, progresso como faixa interna, rótulo fora da barra quando não cabe, pílula "Hoje", tooltip próprio, fim de semana por gradiente (365 nós de DOM → zero).
 
 ## ✅ Fase 3 — Gantt · Onda B
 
@@ -172,6 +172,110 @@ O `DESIGN.md` agora termina com **regras para código novo**, para que a próxim
 
 ---
 
+## ✅ Fase 10 — Horário, calendários e agendamento manual
+
+Três pedidos que, juntos, substituíram o núcleo de datas.
+
+**1. A ligação por arrasto saiu.** Os dois pontos conectores nas pontas da barra
+(`useGanttLinking.js`, deletado) custavam dois alvos de 11px em cada barra e disputavam o
+gesto de mover — que é o que se faz o tempo todo. Predecessora agora se define pela coluna
+**Pred.** (`2FS+3`) ou pelo Inspetor, que ganhou o seletor de adicionar que nunca teve: ele
+sabia editar e remover, mas o texto vazio mandava o usuário "arrastar do ponto na ponta da
+barra", o único caminho que estava sendo removido.
+
+**2. Datas viraram INSTANTES.** `'YYYY-MM-DD'` → `'YYYY-MM-DDTHH:mm'`, local-ingênuo.
+
+A hora entrou como sufixo em vez de virar `Date` justamente para manter a invariante que
+sempre protegeu este app: data continua string **ordenável**, então todo `a < b`, todo
+`.sort()` e todo `maxDate/minDate` do código seguem corretos sem revisão; e nenhum objeto
+`Date` atravessa fronteira de módulo, então fuso não viaja com o dado.
+
+O **término não mudou de sentido**: é o instante em que o trabalho para, e `dateOf(término)`
+continua sendo o último dia inclusivo. Segunda a sexta é `…-10T08:00 → …-14T17:00`. Por isso
+toda a geometria por dia e toda a formatação anterior sobreviveram.
+
+Efeito colateral: o `+1 dia` do TI sumiu dos dois motores. Encaixar o término da predecessora
+para frente no calendário da sucessora já entrega segunda 08:00.
+
+**3. Calendário virou biblioteca, atribuível por tarefa** — as *base calendars* do MS Project.
+Cada um tem dias úteis, **jornada** (turnos, com intervalo) e feriados. Numa parada de
+manutenção a equipe administrativa roda 8h/dia e o turno de campo roda 24h; com um calendário
+só, qualquer soma entre as duas estava errada.
+
+Isso forçou o motor a andar em **minutos úteis** (`utils/worktime.js`). "3 dias" deixou de ser
+uma quantidade de tempo e virou `3 × minutesPerDay(calendário)` — 24h no Padrão, 72h no
+24 Horas. O calendário é resolvido **por tarefa dentro do laço**, não uma vez por projeto.
+
+**4. Modo de agendamento por tarefa.** `scheduleMode: 'auto' | 'manual'`; ausente é `auto`,
+então nenhum dado migrou. Manual fica onde o planejador fixou e o forward pass não a move —
+mas **a cadeia atravessa**: as sucessoras dela continuam sendo calculadas a partir das datas
+fixadas, senão metade do cronograma deixava de recalcular. Quando a data fixada desrespeita a
+predecessora, o Gantt marca a barra e mede o desrespeito. Não corrige: corrigir seria desfazer
+em silêncio a decisão que o modo manual representa.
+
+Digitar um Início à mão numa tarefa **com predecessora** troca o modo para manual e avisa por
+toast — sem isso, o próximo recálculo apagaria a digitação sem dizer nada.
+
+**Migração IndexedDB v3 → v4.** Nenhuma data anda: o dia é o mesmo, ganhando a abertura no
+início e o fechamento no término. `calendar` vira `calendars` + `defaultCalendarId`, com o
+original em `calendarLegacy` e as datas antigas em `datesLegacy`. `importDB` roda as mesmas
+funções, para backup antigo não seguir caminho diferente do banco antigo.
+
+> ⚠️ O caso que exigia cuidado era o **marco**: marco é `start === end`. Se o início ganhasse a
+> abertura e o término o fechamento, todo marco do banco viraria uma tarefa de um dia — uma
+> perda que passaria despercebida por semanas. A igualdade é detectada antes e vira igualdade
+> de instante.
+
+**Geometria sub-dia.** A partir de `dayWidth ≥ 18` a barra mostra a hora dentro da célula do
+dia. A fração é medida sobre a **jornada** (abertura → fechamento), não sobre as 24h: sobre
+24h, uma tarefa de um dia inteiro ocuparia um terço da célula e o Gantt pareceria quebrado.
+Abaixo do limiar tudo volta a dia inteiro — a fração de um dia com 6px é um traço invisível.
+
+**Testes automatizados, pela primeira vez.** Vitest sobre o que é puro: `worktime`,
+`duration`, forward pass, CPM e migração. 66 casos. Para um motor de tempo útil com
+calendários concorrentes, verificar só à mão era risco grande demais — e a lista de bugs
+abaixo mostra que estava certo.
+
+**Bugs corrigidos** (os quatro primeiros já existiam; os dois últimos foram encontrados pelos
+próprios testes desta fase):
+
+1. **Duração abria em dias corridos e gravava dias úteis.** Abrir a célula de uma tarefa
+   seg–sex e apertar Enter sem digitar nada a empurrava para a semana seguinte. Havia três
+   conversões concorrentes (Gantt, Inspetor, Tabela); agora há `utils/duration.js`.
+2. **Arraste da barra somava dias corridos**, então parava em sábado ou feriado — data que o
+   motor jamais produziria, e que o recálculo seguinte corrigia sozinho, dando a impressão de
+   que o arrasto "não pegou". Agora anda em minutos úteis.
+3. **Setas ignoravam o tipo do vínculo**: II, TT e TS eram desenhados como TI. O desenho
+   contradizia o cálculo, que sempre entendeu os quatro.
+4. **Editar o Início mudava a duração** em vez de deslocar a tarefa — gravava só o campo e
+   deixava o término onde estava.
+5. **Duração perdia um minuto por reabertura.** A exibição arredonda (480 min num calendário
+   de 6h/dia são "1,33d") e reler o texto devolvia 479. `resolveDuration` mantém o valor
+   quando o texto ainda é o rótulo dele — só rótulo diferente conta como edição.
+6. **A coluna Duração ficou `type: 'number'`** depois de passar a aceitar `4h` e `90m`: o input
+   nativo descartava a unidade em silêncio e o commit recebia string vazia. Encontrado ao
+   dirigir o app real com Puppeteer, não pelo build.
+7. **O rollup de tarefa-resumo pesava por dia CORRIDO.** Dois filhos com o mesmo trabalho
+   pesavam diferente se um atravessasse o fim de semana — sex→seg contava 4, ter→qua contava 2 —
+   e o marco concluído ainda entrava com peso 1, porque `durationDays` é inclusiva. Num bloco
+   com esses três filhos o resumo mostrava **43%** onde o certo era **50%**. Agora segue a regra
+   do MS Project: `Σ(Duração Real) / Σ(Duração)` com duração em tempo útil do calendário de cada
+   filho, e duração zero sem peso nenhum.
+8. **O botão da ViewBar não encaminhava `ref`.** Ele é usado como `<DropdownMenuTrigger asChild>`,
+   e sem a ref o Radix não tinha nó para ancorar: o menu abria em **x=0, y=−925** — fora da tela —
+   e o Escape jogava o foco no `<body>`. Atingia os menus Calendários, Filtros e o de status da
+   Tabela. Um `forwardRef` resolve; o que faltava era abrir um menu na verificação.
+9. **Cabeçalho desalinhado das células.** O `gridWidth` é o mesmo para as duas metades, mas só o
+   cabeçalho tem a célula do "+" de adicionar coluna. Como `name` é a única coluna que cresce, ela
+   absorvia os 34px e tudo depois dela aparecia deslocado. O corpo passa a reservar a mesma faixa
+   (`--gantt-add-col-w`). Medido: desvio 0px nas sete colunas.
+
+**Também nesta fase:** o realce de *hover* na linha saiu. Num cronograma o ponteiro cruza dezenas
+de linhas a caminho da barra que interessa, e acender cada uma no caminho é ruído; o que precisa
+estar visível é a seleção.
+
+---
+
 ## Resultado
 
 | Medida | Antes | Depois |
@@ -185,6 +289,10 @@ O `DESIGN.md` agora termina com **regras para código novo**, para que a próxim
 | CPM | meio (só late finish) | **forward + backward, com folga** |
 | Cópias do cálculo da Curva S | 2 divergentes | **1** |
 | Cópias dos helpers de data | 4 divergentes | **1** |
+| Cópias da conversão de duração | 3 divergentes | **1** |
+| Granularidade do cronograma | dia | **minuto útil** |
+| Calendários | 1 por projeto, sem jornada | **biblioteca, por tarefa, com turnos** |
+| Testes automatizados | 0 | **66** |
 
 ### Bugs de dados encontrados no caminho
 
@@ -202,9 +310,16 @@ Nenhum destes foi procurado — todos apareceram ao reescrever ou ao verificar:
 
 Cada fase é verificada rodando o app de verdade com Puppeteer e dados semeados — não só `npm run build`. O padrão:
 
-1. `npm run build` sem erro
-2. Percorrer as rotas críticas: Portfólio → projeto → Gantt; criar tarefa → indentar → ligar dependência → mover predecessora
-3. Alternar claro/escuro e Confortável/Compacto
-4. Zero erros de console
+1. `npm test` e `npm run build` sem erro
+2. Percorrer as rotas críticas: Portfólio → projeto → Gantt; criar tarefa → indentar → ligar dependência pela coluna Pred. → mover predecessora
+3. Abrir um projeto com dados **anteriores à migração** e conferir que nenhuma data andou e que os marcos continuam marcos
+4. Alternar claro/escuro e Confortável/Compacto
+5. Zero erros de console
+
+A partir da Fase 10, o que é puro (`utils/worktime`, `utils/duration`, forward pass, CPM,
+migração) também tem teste automatizado — `npm test`. O teste não substitui dirigir o app:
+dos seis bugs da Fase 10, um só apareceu no navegador (a coluna Duração declarada como
+`number` engolindo `4h`), porque o build e os testes de unidade não sabem o que um
+`<input type="number">` faz com uma unidade.
 
 Verificações específicas ficam registradas nas mensagens de commit de cada fase.

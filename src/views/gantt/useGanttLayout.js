@@ -3,12 +3,14 @@ import { viewStart, viewEnd } from './useGanttTasks';
 import {
   addDays,
   daysBetween,
-  durationDays,
+  dateOf,
   getMonthLabel,
   getMonthLabelShort,
   isWeekend,
   today,
 } from '../../utils/schedule';
+import { dayFraction } from '../../utils/worktime';
+import { SUBDAY_MIN_DAY_W, MIN_BAR_W } from './ganttConfig';
 
 /* ═══════════════════════════════════════════════════════════════
    Geometria da linha do tempo: converte datas em pixels.
@@ -23,15 +25,15 @@ const PAD_BEFORE = 7;
 const PAD_AFTER = 21;
 const MIN_SPAN_DAYS = 120;
 
-export function useGanttLayout(tasks, dayWidth, tick) {
+export function useGanttLayout(tasks, dayWidth, tick, calendarFor) {
   return useMemo(() => {
     const todayStr = today();
 
     const starts = tasks.map((t) => viewStart(t)).filter(Boolean).sort();
     const ends = tasks.map((t) => viewEnd(t)).filter(Boolean).sort();
 
-    const firstDate = starts[0] || todayStr;
-    const lastDate = ends[ends.length - 1] || addDays(todayStr, 30);
+    const firstDate = dateOf(starts[0]) || todayStr;
+    const lastDate = dateOf(ends[ends.length - 1]) || addDays(todayStr, 30);
 
     const rangeStart = addDays(firstDate, -PAD_BEFORE);
     let totalDays = daysBetween(rangeStart, addDays(lastDate, PAD_AFTER));
@@ -95,10 +97,34 @@ export function useGanttLayout(tasks, dayWidth, tick) {
     const totalWidth = totalDays * dayWidth;
     const todayIndex = daysBetween(rangeStart, todayStr);
 
-    /* Conversores — as únicas fórmulas data→pixel do Gantt */
-    const xOf = (date) => daysBetween(rangeStart, date) * dayWidth;
-    const widthOf = (start, end) =>
-      Math.max(durationDays(start, end) * dayWidth, dayWidth);
+    /* ── Conversores — as únicas fórmulas data→pixel do Gantt ───────
+       Com o dia largo o bastante, o instante posiciona a barra DENTRO
+       da célula do dia: das 13:00 às 17:00 ocupa a parte direita.
+
+       A fração é medida sobre a jornada do calendário (abertura →
+       fechamento), não sobre as 24 horas do relógio. Sobre 24h, uma
+       tarefa de um dia inteiro ocuparia um terço da célula e o Gantt
+       pareceria quebrado.
+
+       Abaixo do limiar tudo volta a ser dia inteiro: a fração de um
+       dia com 6px de largura é um traço invisível, não informação. */
+    const subday = dayWidth >= SUBDAY_MIN_DAY_W;
+
+    const fractionOf = (instant, task) => {
+      if (!subday || !calendarFor) return 0;
+      return dayFraction(calendarFor(task), instant);
+    };
+
+    const xOf = (instant, task) =>
+      (daysBetween(rangeStart, instant) + fractionOf(instant, task)) * dayWidth;
+
+    const widthOf = (start, end, task) => {
+      const raw = xOf(end, task) - xOf(start, task);
+      /* Dia inteiro quando não há sub-dia: o término é o ÚLTIMO dia
+         inclusive, então a barra precisa cobrir a célula dele. */
+      const span = subday ? raw : raw + dayWidth;
+      return Math.max(span, MIN_BAR_W);
+    };
 
     return {
       rangeStart,
@@ -111,10 +137,11 @@ export function useGanttLayout(tasks, dayWidth, tick) {
       todayVisible: todayIndex >= 0 && todayIndex < totalDays,
       todayX: todayIndex * dayWidth + dayWidth / 2,
       dayWidth,
+      subday,
       xOf,
       widthOf,
-      /** Pixel → data, para arrastar e soltar. */
+      /** Pixel → dia, para arrastar e soltar. */
       dateAtX: (x) => addDays(rangeStart, Math.floor(x / dayWidth)),
     };
-  }, [tasks, dayWidth, tick]);
+  }, [tasks, dayWidth, tick, calendarFor]);
 }

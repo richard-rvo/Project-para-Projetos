@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
-import { parseDependencies, viewStart, viewEnd } from './useGanttTasks';
+import { viewStart, viewEnd } from './useGanttTasks';
 import { isMilestone } from '../../utils/schedule';
+import { readDependencies } from '../../utils/dependencies';
 
 /* ═══════════════════════════════════════════════════════════════
    Camada de setas de dependência.
@@ -9,6 +10,12 @@ import { isMilestone } from '../../utils/schedule';
    As bordas de cada tarefa vêm de `edgesOf`, então a geometria do
    marco (losango) fica definida num lugar só, em vez de aparecer
    como "+13" e "−17" soltos no meio do path.
+
+   A seta sai e entra pela ponta que o TIPO do vínculo determina.
+   Antes toda seta era desenhada da direita da predecessora para a
+   esquerda da sucessora: um vínculo II ou TT aparecia exatamente como
+   um TI, e o desenho contradizia o cálculo — que sempre entendeu os
+   quatro tipos.
    ═══════════════════════════════════════════════════════════════ */
 
 /** Meia-diagonal do losango de marco, em px. Casa com o CSS. */
@@ -18,59 +25,74 @@ const ELBOW = 11;
 /** Raio dos cantos arredondados. */
 const R = 5;
 
+/** De qual ponta cada tipo sai (predecessora) e entra (sucessora). */
+const ANCHORS = {
+  FS: { from: 'right', to: 'left' },
+  SS: { from: 'left', to: 'left' },
+  FF: { from: 'right', to: 'right' },
+  SF: { from: 'left', to: 'right' },
+};
+
 function edgesOf(task, layout) {
   const start = viewStart(task);
   const end = viewEnd(task);
   if (isMilestone({ startDate: start, endDate: end })) {
-    const center = layout.xOf(start) + layout.dayWidth / 2;
+    const center = layout.xOf(start, task) + (layout.subday ? 0 : layout.dayWidth / 2);
     return { left: center - MILESTONE_HALF, right: center + MILESTONE_HALF };
   }
-  const left = layout.xOf(start);
-  return { left, right: left + layout.widthOf(start, end) };
+  const left = layout.xOf(start, task);
+  return { left, right: left + layout.widthOf(start, end, task) };
 }
 
 /**
- * Rota ortogonal com cantos arredondados.
- * Quando há espaço à frente, faz um cotovelo simples; quando a
- * sucessora começa antes do fim da predecessora, contorna por baixo
- * (ou por cima) para não atravessar as barras.
+ * Rota ortogonal com cantos arredondados entre duas pontas.
+ *
+ * O cotovelo simples só serve quando a seta sai pela direita e entra
+ * pela esquerda com espaço à frente — o caso TI comum. Todos os
+ * outros (II, TT, TS, ou TI apertado) precisam do contorno, que passa
+ * pela faixa entre as linhas e por isso funciona para qualquer
+ * combinação de pontas.
  */
-function buildPath(fromX, fromY, toX, toY, rowH) {
-  const gap = toX - fromX;
+function buildPath(from, to, rowH) {
+  const outX = from.x + (from.side === 'right' ? ELBOW : -ELBOW);
+  const inX = to.x + (to.side === 'left' ? -ELBOW : ELBOW);
 
-  if (gap >= ELBOW * 2) {
-    if (fromY === toY) return `M ${fromX} ${fromY} L ${toX} ${toY}`;
-    const midX = fromX + ELBOW;
-    const dir = toY > fromY ? 1 : -1;
+  const straightShot =
+    from.side === 'right' && to.side === 'left' && to.x - from.x >= ELBOW * 2;
+
+  if (straightShot) {
+    if (from.y === to.y) return `M ${from.x} ${from.y} L ${to.x} ${to.y}`;
+    const dir = to.y > from.y ? 1 : -1;
     return [
-      `M ${fromX} ${fromY}`,
-      `L ${midX - R} ${fromY}`,
-      `Q ${midX} ${fromY} ${midX} ${fromY + R * dir}`,
-      `L ${midX} ${toY - R * dir}`,
-      `Q ${midX} ${toY} ${midX + R} ${toY}`,
-      `L ${toX} ${toY}`,
+      `M ${from.x} ${from.y}`,
+      `L ${outX - R} ${from.y}`,
+      `Q ${outX} ${from.y} ${outX} ${from.y + R * dir}`,
+      `L ${outX} ${to.y - R * dir}`,
+      `Q ${outX} ${to.y} ${outX + R} ${to.y}`,
+      `L ${to.x} ${to.y}`,
     ].join(' ');
   }
 
-  /* Contorno: sai à direita, desce até a faixa entre as linhas,
-     volta à esquerda e entra pela esquerda da sucessora. */
-  const outX = fromX + ELBOW;
-  const inX = toX - ELBOW;
-  const midY = toY > fromY ? fromY + rowH / 2 : fromY - rowH / 2;
-  const d1 = midY > fromY ? 1 : -1;
-  const d2 = toY > midY ? 1 : -1;
+  /* Contorno: sai pela ponta de origem, vai até a faixa entre as
+     linhas, atravessa e entra pela ponta de destino. */
+  const midY = to.y > from.y ? from.y + rowH / 2 : from.y - rowH / 2;
+  const sOut = from.side === 'right' ? 1 : -1;   // sentido da saída
+  const sIn = to.side === 'left' ? 1 : -1;       // sentido da entrada
+  const sMid = inX > outX ? 1 : -1;              // sentido da travessia
+  const d1 = midY > from.y ? 1 : -1;
+  const d2 = to.y > midY ? 1 : -1;
 
   return [
-    `M ${fromX} ${fromY}`,
-    `L ${outX - R} ${fromY}`,
-    `Q ${outX} ${fromY} ${outX} ${fromY + R * d1}`,
+    `M ${from.x} ${from.y}`,
+    `L ${outX - R * sOut} ${from.y}`,
+    `Q ${outX} ${from.y} ${outX} ${from.y + R * d1}`,
     `L ${outX} ${midY - R * d1}`,
-    `Q ${outX} ${midY} ${outX - R} ${midY}`,
-    `L ${inX + R} ${midY}`,
+    `Q ${outX} ${midY} ${outX + R * sMid} ${midY}`,
+    `L ${inX - R * sMid} ${midY}`,
     `Q ${inX} ${midY} ${inX} ${midY + R * d2}`,
-    `L ${inX} ${toY - R * d2}`,
-    `Q ${inX} ${toY} ${inX + R} ${toY}`,
-    `L ${toX} ${toY}`,
+    `L ${inX} ${to.y - R * d2}`,
+    `Q ${inX} ${to.y} ${inX + R * sIn} ${to.y}`,
+    `L ${to.x} ${to.y}`,
   ].join(' ');
 }
 
@@ -100,7 +122,8 @@ export default function GanttDependencies({
       if (rowIndex === undefined) return; // filtrada para fora
       if (!viewStart(task) || !viewEnd(task)) return;
 
-      parseDependencies(task.dependsOn).forEach((depId) => {
+      readDependencies(task.dependsOn).forEach((link) => {
+        const depId = link.id;
         if (depId === task.id) return;
         const depIndex = indexById.get(depId);
         if (depIndex === undefined) return;
@@ -113,6 +136,7 @@ export default function GanttDependencies({
         const hi = Math.max(depIndex, rowIndex);
         if (hi < rangeFrom || lo > rangeTo) return;
 
+        const anchors = ANCHORS[link.type] || ANCHORS.FS;
         const from = edgesOf(dep, layout);
         const to = edgesOf(task, layout);
 
@@ -123,10 +147,8 @@ export default function GanttDependencies({
         result.push({
           key: `${depId}->${task.id}`,
           d: buildPath(
-            from.right,
-            depIndex * rowH + rowH / 2,
-            to.left,
-            rowIndex * rowH + rowH / 2,
+            { x: from[anchors.from], y: depIndex * rowH + rowH / 2, side: anchors.from },
+            { x: to[anchors.to], y: rowIndex * rowH + rowH / 2, side: anchors.to },
             rowH
           ),
           isCritical,

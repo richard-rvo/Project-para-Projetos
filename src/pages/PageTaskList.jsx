@@ -12,7 +12,12 @@ import {
 } from 'lucide-react';
 import { COLUMNS, STATUS_OPTIONS } from '../views/gantt/ganttConfig';
 import { viewStart, viewEnd, viewProgress } from '../views/gantt/useGanttTasks';
-import { today, addDays, durationDays } from '../utils/schedule';
+import { today, SCHEDULE_MODES } from '../utils/schedule';
+import {
+  calendarOf, calendarsOf, defaultCalendarOf, workdayStart,
+} from '../utils/calendar';
+import { addWorkingMinutes, workingMinutesBetween, minutesPerDay } from '../utils/worktime';
+import { formatDuration } from '../utils/duration';
 
 /* ═══════════════════════════════════════════════════════════════
    TABELA DE TAREFAS
@@ -39,17 +44,33 @@ const SORTABLE = {
   start: (t) => viewStart(t) || '',
   end: (t) => viewEnd(t) || '',
   progress: (t) => viewProgress(t),
-  duration: (t) => durationDays(viewStart(t), viewEnd(t)),
+  duration: (t) => t.__durationMinutes ?? 0,
   status: (t) => String(t.status || ''),
   resources: (t) => String(t.resources || '').toLowerCase(),
 };
 
-/* As colunas do Gantt recebem um contexto; nesta tela só a duração o usa. */
-const CELL_CTX = {
-  formatDuration: (d) => `${d}d`,
-  workingDurationOf: (t) => durationDays(viewStart(t), viewEnd(t)),
-  predecessorLabel: () => '',
-};
+/**
+ * Contexto das colunas do Gantt, com as MESMAS funções que o Gantt usa.
+ *
+ * Antes esta tela tinha um esboço próprio que contava dias corridos
+ * enquanto o Gantt contava dias úteis: a mesma tarefa aparecia com
+ * "16d" aqui e "12d" lá, e não havia como saber qual estava certa.
+ */
+function cellCtx(project) {
+  const calendarFor = (t) => calendarOf(project, t);
+  return {
+    calendars: calendarsOf(project),
+    projectCalendarName: defaultCalendarOf(project).name,
+    calendarFor,
+    calendarLabel: (t) => (t.calendarId ? calendarFor(t).name : ''),
+    durationLabel: (t) =>
+      formatDuration(
+        workingMinutesBetween(calendarFor(t), viewStart(t), viewEnd(t)),
+        calendarFor(t)
+      ),
+    predecessorLabel: () => '',
+  };
+}
 
 function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -79,14 +100,25 @@ export default function PageTaskList() {
     [state.tasks, projectId]
   );
 
+  const ctx = useMemo(() => cellCtx(project), [project]);
+
   const rows = useMemo(() => {
     const term = query.trim().toLowerCase();
-    const list = state.tasks.filter((t) => {
-      if (t.projectId !== projectId) return false;
-      if (term && !String(t.name || '').toLowerCase().includes(term)) return false;
-      if (statuses.length && !statuses.includes(t.status)) return false;
-      return true;
-    });
+    const list = state.tasks
+      .filter((t) => {
+        if (t.projectId !== projectId) return false;
+        if (term && !String(t.name || '').toLowerCase().includes(term)) return false;
+        if (statuses.length && !statuses.includes(t.status)) return false;
+        return true;
+      })
+      /* Ordenar por duração exige compará-las na mesma unidade, e
+         "dias" não é a mesma unidade em calendários diferentes. */
+      .map((t) => ({
+        ...t,
+        __durationMinutes: workingMinutesBetween(
+          ctx.calendarFor(t), viewStart(t), viewEnd(t)
+        ),
+      }));
 
     const read = SORTABLE[sort.key] || SORTABLE.start;
     const factor = sort.dir === 'asc' ? 1 : -1;
@@ -96,7 +128,7 @@ export default function PageTaskList() {
       if (av === bv) return (a.order ?? 0) - (b.order ?? 0);
       return (av > bv ? 1 : -1) * factor;
     });
-  }, [state.tasks, projectId, query, statuses, sort]);
+  }, [state.tasks, projectId, query, statuses, sort, ctx]);
 
   const toggleSort = (key) => setSort((prev) =>
     prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }
@@ -111,10 +143,13 @@ export default function PageTaskList() {
   const allSelected = rows.length > 0 && rows.every((t) => selected.has(t.id));
 
   const addQuick = async () => {
-    const start = today();
+    const cal = defaultCalendarOf(project);
+    const start = workdayStart(cal, today());
     const task = {
       id: generateId(), projectId, name: 'Nova tarefa',
-      startDate: start, endDate: addDays(start, 4),
+      startDate: start,
+      endDate: addWorkingMinutes(cal, start, 5 * minutesPerDay(cal)),
+      scheduleMode: SCHEDULE_MODES.AUTO,
       status: 'Não Iniciada', progress: 0, dependsOn: [],
       indentLevel: 0, order: total,
     };
@@ -248,7 +283,7 @@ export default function PageTaskList() {
                         col.id === 'name' && 'max-w-0 truncate font-medium'
                       )}
                     >
-                      {col.id === 'name' ? task.name : col.render(task, CELL_CTX)}
+                      {col.id === 'name' ? task.name : col.render(task, ctx)}
                     </td>
                   ))}
 

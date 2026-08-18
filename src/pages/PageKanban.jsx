@@ -5,7 +5,9 @@ import ViewBar, { ViewBarButton } from '../components/shell/ViewBar';
 import { Plus, Columns3, CalendarDays, Users } from 'lucide-react';
 import { STATUS_OPTIONS } from '../views/gantt/ganttConfig';
 import { viewProgress } from '../views/gantt/useGanttTasks';
-import { today, addDays, formatDateShort, durationDays } from '../utils/schedule';
+import { today, dateOf, formatDateShort, durationDays, SCHEDULE_MODES } from '../utils/schedule';
+import { defaultCalendarOf, workdayStart } from '../utils/calendar';
+import { addWorkingMinutes, minutesPerDay } from '../utils/worktime';
 
 /* ═══════════════════════════════════════════════════════════════
    QUADRO
@@ -60,10 +62,15 @@ export default function PageKanban() {
   };
 
   const addTo = async (status) => {
-    const start = today();
+    /* Nasce com jornada e no calendário padrão do projeto — as três
+       telas que criam tarefa precisam concordar no formato. */
+    const cal = defaultCalendarOf(state.projects.find((p) => p.id === projectId));
+    const start = workdayStart(cal, today());
     const task = {
       id: generateId(), projectId, name: 'Nova tarefa',
-      startDate: start, endDate: addDays(start, 4),
+      startDate: start,
+      endDate: addWorkingMinutes(cal, start, 5 * minutesPerDay(cal)),
+      scheduleMode: SCHEDULE_MODES.AUTO,
       status, progress: status === 'Concluída' ? 100 : 0,
       dependsOn: [], indentLevel: 0, order: tasks.length,
     };
@@ -145,7 +152,7 @@ export default function PageKanban() {
 function Card({ task, dragging, onDragStart, onDragEnd, onOpen }) {
   const progress = viewProgress(task);
   const todayStr = today();
-  const overdue = task.endDate && task.endDate < todayStr && task.status !== 'Concluída';
+  const overdue = task.endDate && dateOf(task.endDate) < todayStr && task.status !== 'Concluída';
   const days = task.endDate ? durationDays(todayStr, task.endDate) - 1 : null;
 
   return (

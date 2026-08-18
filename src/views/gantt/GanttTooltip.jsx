@@ -1,5 +1,5 @@
 import React from 'react';
-import { formatDateShort, durationDays } from '../../utils/schedule';
+import { formatDateTimeShort, isManual } from '../../utils/schedule';
 import { viewStart, viewEnd, viewProgress } from './useGanttTasks';
 
 /* ═══════════════════════════════════════════════════════════════
@@ -13,7 +13,7 @@ import { viewStart, viewEnd, viewProgress } from './useGanttTasks';
 
 const OFFSET = 14;
 
-export default function GanttTooltip({ data }) {
+export default function GanttTooltip({ data, ctx }) {
   if (!data) return null;
 
   const { task, x, y, flipX } = data;
@@ -21,7 +21,8 @@ export default function GanttTooltip({ data }) {
   const planned = task.baselineStart && task.baselineEnd;
   const start = viewStart(task);
   const end = viewEnd(task);
-  const duration = durationDays(start, end);
+  const manual = isManual(task);
+  const violation = ctx?.analysis?.byId?.get(task.id)?.violationMinutes ?? 0;
 
   return (
     <div
@@ -36,13 +37,24 @@ export default function GanttTooltip({ data }) {
       <div className="gantt-tooltip-title">{task.name}</div>
 
       <dl className="gantt-tooltip-grid">
-        <dt>Período</dt>
-        <dd className="tabular">
-          {formatDateShort(start)} → {formatDateShort(end)}
-        </dd>
+        <dt>Início</dt>
+        <dd className="tabular">{formatDateTimeShort(start)}</dd>
+
+        <dt>Término</dt>
+        <dd className="tabular">{formatDateTimeShort(end)}</dd>
 
         <dt>Duração</dt>
-        <dd className="tabular">{duration}d</dd>
+        <dd className="tabular">{ctx?.durationLabel?.(task) ?? ''}</dd>
+
+        <dt>Agendamento</dt>
+        <dd>{manual ? 'Manual' : 'Automática'}</dd>
+
+        {task.calendarId && ctx?.calendarFor && (
+          <>
+            <dt>Calendário</dt>
+            <dd>{ctx.calendarFor(task).name}</dd>
+          </>
+        )}
 
         <dt>Progresso</dt>
         <dd className="tabular">{progress}%</dd>
@@ -65,11 +77,18 @@ export default function GanttTooltip({ data }) {
           <>
             <dt>Baseline</dt>
             <dd className="tabular">
-              {formatDateShort(task.baselineStart)} → {formatDateShort(task.baselineEnd)}
+              {formatDateTimeShort(task.baselineStart)} → {formatDateTimeShort(task.baselineEnd)}
             </dd>
           </>
         )}
       </dl>
+
+      {violation > 0 && (
+        <div className="gantt-tooltip-flag">
+          Começa {ctx.formatMinutes(violation)} antes do que a predecessora
+          permite. Por ser manual, não será movida.
+        </div>
+      )}
 
       {task.isBlocked && (
         <div className="gantt-tooltip-flag">

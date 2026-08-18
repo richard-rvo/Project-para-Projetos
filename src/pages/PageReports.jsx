@@ -5,7 +5,12 @@ import ViewBar, { ViewBarSegments, ViewBarButton } from '../components/shell/Vie
 import CurveChart from '../components/CurveChart';
 import { calculateProjectMetrics } from '../utils/progress';
 import { computeSCurve } from '../utils/scurve';
-import { today, formatDateLong, formatDateShort, durationDays } from '../utils/schedule';
+import {
+  today, formatDateLong, formatDateTimeShort,
+} from '../utils/schedule';
+import { calendarOf } from '../utils/calendar';
+import { workingMinutesBetween } from '../utils/worktime';
+import { formatDuration } from '../utils/duration';
 import { formatDatetime } from '../components/anomalies/anomalyConfig';
 import { Printer, FileBarChart } from 'lucide-react';
 
@@ -147,9 +152,16 @@ export default function PageReports() {
                       <tr key={t.id} className="border-b border-[#eee]">
                         <td className="px-1.5 py-1 tabular-nums text-[#888]">{i + 1}</td>
                         <td className="px-1.5 py-1">{t.name}</td>
-                        <td className="px-1.5 py-1 tabular-nums">{formatDateShort(t.startDate)}</td>
-                        <td className="px-1.5 py-1 tabular-nums">{formatDateShort(t.endDate)}</td>
-                        <td className="px-1.5 py-1 tabular-nums">{durationDays(t.startDate, t.endDate)}d</td>
+                        <td className="px-1.5 py-1 tabular-nums">{formatDateTimeShort(t.startDate)}</td>
+                        <td className="px-1.5 py-1 tabular-nums">{formatDateTimeShort(t.endDate)}</td>
+                        {/* Dias ÚTEIS do calendário da tarefa, como no Gantt. Com dias
+                            corridos o relatório dizia 16d onde a tela dizia 12d. */}
+                        <td className="px-1.5 py-1 tabular-nums">
+                          {formatDuration(
+                            workingMinutesBetween(calendarOf(project, t), t.startDate, t.endDate),
+                            calendarOf(project, t)
+                          )}
+                        </td>
                         <td className="px-1.5 py-1 tabular-nums">{t.progress || 0}%</td>
                         <td className={cn('px-1.5 py-1', t.status === 'Atrasada' && 'font-semibold text-[#b4331f]')}>
                           {t.status}

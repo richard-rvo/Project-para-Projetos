@@ -6,7 +6,7 @@
    ponderar progresso.
    ═══════════════════════════════════════════════════════════════ */
 
-import { durationDays, today } from './schedule';
+import { dateOf, durationDays, today } from './schedule';
 
 /**
  * Quanto a tarefa DEVERIA estar concluída hoje, segundo sua linha
@@ -15,9 +15,11 @@ import { durationDays, today } from './schedule';
 export function calculateTaskPlannedProgress(baselineStart, baselineEnd) {
   if (!baselineStart || !baselineEnd) return 0;
 
+  /* `today()` é uma data-só; a baseline é um instante. Comparar as
+     duas cruas erraria o dia de início e o de término por um dia. */
   const todayStr = today();
-  if (todayStr < baselineStart) return 0;
-  if (todayStr > baselineEnd) return 100;
+  if (todayStr < dateOf(baselineStart)) return 0;
+  if (todayStr > dateOf(baselineEnd)) return 100;
 
   const totalDays = durationDays(baselineStart, baselineEnd);
   if (totalDays <= 0) return 0;
@@ -59,7 +61,7 @@ export function calculateProjectMetrics(projectTasks) {
     if (!t.startDate) return;
 
     if (!t.endDate) {
-      if (t.startDate <= todayStr) plannedProgressSum += dur * 100;
+      if (dateOf(t.startDate) <= todayStr) plannedProgressSum += dur * 100;
       return;
     }
 

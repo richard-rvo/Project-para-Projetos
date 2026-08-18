@@ -115,7 +115,11 @@ Vidro (`backdrop-filter`) é para **overlays sobre conteúdo**, nunca para super
 
 **Um scroller para os dois eixos.** O cabeçalho gruda com `position: sticky; top: 0`; a planilha com `left: 0`. Scroll vertical e horizontal ficam alinhados nativamente, sem uma linha de JS.
 
-Uma linha é **um elemento** contendo as células e a barra. É isso que faz o hover atravessar as duas metades — a sensação de MS Project.
+Uma linha é **um elemento** contendo as células e a barra. É isso que faz a seleção atravessar as duas metades.
+
+Não há realce de **hover** na linha: o ponteiro cruza dezenas de linhas a caminho da barra que interessa, e acender cada uma no caminho é ruído. O que precisa estar visível é a seleção — ela diz onde o usuário está, o hover só dizia por onde o mouse passou.
+
+As duas metades dividem o mesmo `gridWidth`, mas só o cabeçalho tem o botão "+" de adicionar coluna. O corpo reserva a mesma faixa (`--gantt-add-col-w`); sem isso a coluna que cresce absorve a diferença e o cabeçalho sai do lugar em relação às células.
 
 ### Barras
 
@@ -124,6 +128,14 @@ Uma linha é **um elemento** contendo as células e a barra. É isso que faz o h
 - Rótulo dentro quando cabe, **fora quando não cabe** — nunca some
 - Tarefa-resumo é um **colchete**, não uma barra: comunica agrupamento, não trabalho
 - Marco em losango; baseline tracejada; folga pontilhada após o término
+- **Agendada manualmente** tem pontas em colchete (a convenção do MS Project): "esta tarefa
+  não vai andar sozinha" precisa ser legível na barra, sem abrir a coluna Modo
+- **Violação de dependência** — manual com data que desrespeita a predecessora — é contorno
+  tracejado em `--sched-late` mais um ícone à direita da barra. Só marca; corrigir seria
+  desfazer a decisão que o modo manual representa
+- A barra mostra a **hora** a partir de `dayWidth ≥ 18`, medida sobre a jornada do calendário
+  (abertura → fechamento), não sobre as 24h do relógio: sobre 24h uma tarefa de um dia inteiro
+  ocuparia um terço da célula e o Gantt pareceria quebrado
 
 ### Timeline
 
@@ -154,3 +166,13 @@ Por **spacers**, não `transform` — transform criaria bloco de contenção e p
 4. Overlays sempre sobre Radix — não escreva Dialog, Popover ou Menu à mão.
 5. Data e número sempre com `tabular-nums`.
 6. Uma instância de tooltip e de menu de contexto, posicionada por estado — nunca uma por linha.
+7. **Nunca** faça aritmética de calendário fora de `utils/worktime.js`, e **nunca** resolva o
+   calendário pelo projeto quando existe uma tarefa: use `calendarOf(project, task)`. Duas
+   tarefas da mesma cadeia podem rodar em jornadas diferentes, e é o motivo de o motor contar
+   em minutos úteis.
+8. Datas são strings ordenáveis — `'YYYY-MM-DD'` ou `'YYYY-MM-DDTHH:mm'`. Nenhum objeto `Date`
+   atravessa fronteira de módulo. Ao comparar um instante com uma data-só, reduza os dois com
+   `dateOf()`: `'…T08:00'` é maior que a data-só do mesmo dia, e a diferença silenciosa é de
+   um dia inteiro.
+9. Duração se lê e se escreve por `utils/duration.js`. O editor abre com a mesma unidade que o
+   commit grava — abrir e gravar em unidades diferentes já custou uma semana de cronograma.

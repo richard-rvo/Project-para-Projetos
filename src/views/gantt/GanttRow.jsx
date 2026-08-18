@@ -1,6 +1,6 @@
 import React from 'react';
-import { ChevronRight, GripVertical } from 'lucide-react';
-import { isMilestone } from '../../utils/schedule';
+import { ChevronRight, GripVertical, AlertTriangle } from 'lucide-react';
+import { isMilestone, isManual } from '../../utils/schedule';
 import { viewStart, viewEnd, viewProgress } from './useGanttTasks';
 import { STATUS_MODIFIER } from './ganttConfig';
 
@@ -8,9 +8,13 @@ import { STATUS_MODIFIER } from './ganttConfig';
    Uma linha do Gantt = células da planilha + barra, no MESMO
    elemento.
 
-   É essa unidade que faz o hover atravessar as duas metades, e é o
-   que dá a sensação de MS Project. Enquanto planilha e timeline eram
-   árvores separadas, era impossível destacar a linha inteira.
+   É essa unidade que faz a SELEÇÃO atravessar as duas metades.
+   Enquanto planilha e timeline eram árvores separadas, era impossível
+   destacar a linha inteira.
+
+   O realce de hover foi removido: num cronograma o ponteiro cruza
+   dezenas de linhas a caminho da barra que interessa, e acender cada
+   uma no caminho é ruído. Quem precisa estar visível é a seleção.
    ═══════════════════════════════════════════════════════════════ */
 
 export default function GanttRow({ task, index, ctx }) {
@@ -41,11 +45,9 @@ export default function GanttRow({ task, index, ctx }) {
     onRowDragOver,
     onRowDrop,
     onRowDragEnd,
-    onBeginLink,
     onProgressDrag,
     onContextMenu,
     activeCell,
-    linkTargetId,
     analysis,
     showSlack,
     dragOverIndex,
@@ -64,8 +66,14 @@ export default function GanttRow({ task, index, ctx }) {
   const endDate = preview?.endDate ?? viewEnd(task);
 
   const milestone = isMilestone({ ...task, startDate, endDate });
-  const slackDays = analysis?.byId?.get(task.id)?.totalSlack ?? 0;
+  const slackDays = analysis?.byId?.get(task.id)?.totalSlackDays ?? 0;
   const hasDates = Boolean(startDate && endDate);
+
+  /* Manual: o planejador fixou as datas e o auto-agendamento não a
+     move. Quando a data fixada desrespeita a predecessora, o Gantt
+     avisa — e só avisa: corrigir seria desfazer a decisão dele. */
+  const manual = isManual(task);
+  const violation = analysis?.byId?.get(task.id)?.violationMinutes ?? 0;
 
   const rowClass = [
     'gantt-row',
@@ -73,7 +81,6 @@ export default function GanttRow({ task, index, ctx }) {
     task.isSummary ? 'is-summary' : '',
     dragOverIndex === index ? 'is-drop-target' : '',
     preview ? 'is-dragging' : '',
-    linkTargetId === task.id ? 'is-link-target' : '',
   ]
     .filter(Boolean)
     .join(' ');
@@ -128,18 +135,14 @@ export default function GanttRow({ task, index, ctx }) {
               }}
             >
               {editing ? (
-                <input
-                  ref={editInputRef}
-                  className="gantt-cell-input"
-                  type={col.type === 'date' ? 'date' : col.type === 'number' ? 'number' : 'text'}
+                <CellEditor
+                  col={col}
+                  ctx={ctx}
                   value={editValue}
-                  onChange={(e) => onEditChange(e.target.value)}
-                  onBlur={onCommitEdit}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') onCommitEdit();
-                    if (e.key === 'Escape') onCancelEdit();
-                  }}
-                  autoFocus
+                  inputRef={editInputRef}
+                  onChange={onEditChange}
+                  onCommit={onCommitEdit}
+                  onCancel={onCancelEdit}
                 />
               ) : col.id === 'name' ? (
                 <span
@@ -172,13 +175,7 @@ export default function GanttRow({ task, index, ctx }) {
       </div>
 
       {/* ── Timeline ─────────────────────────────────────────── */}
-      {/* data-task-id é o alvo que o arrasto de ligação procura via
-          elementFromPoint — evita montar um listener por barra. */}
-      <div
-        className="gantt-row-time"
-        style={{ width: layout.totalWidth }}
-        data-task-id={task.id}
-      >
+      <div className="gantt-row-time" style={{ width: layout.totalWidth }}>
         {/* Folga: quanto a tarefa pode escorregar sem empurrar o
             projeto. Fantasma logo após o término, para o atraso
             aceitável ser visível sem precisar abrir nada. */}
@@ -186,7 +183,9 @@ export default function GanttRow({ task, index, ctx }) {
           <div
             className="gantt-slack"
             style={{
-              left: layout.xOf(endDate) + layout.dayWidth,
+              /* Em sub-dia a folga começa no instante exato do término;
+                 em dia inteiro, na célula seguinte. */
+              left: layout.xOf(endDate, task) + (layout.subday ? 0 : layout.dayWidth),
               width: slackDays * layout.dayWidth,
             }}
             title={'Folga total: ' + slackDays + ' dia(s) úteis'}
@@ -197,8 +196,8 @@ export default function GanttRow({ task, index, ctx }) {
           <div
             className="gantt-baseline"
             style={{
-              left: layout.xOf(task.baselineStart),
-              width: layout.widthOf(task.baselineStart, task.baselineEnd),
+              left: layout.xOf(task.baselineStart, task),
+              width: layout.widthOf(task.baselineStart, task.baselineEnd, task),
             }}
           />
         )}
@@ -206,7 +205,10 @@ export default function GanttRow({ task, index, ctx }) {
         {hasDates && milestone && (
           <div
             className={`gantt-milestone ${critical ? 'is-critical' : ''} ${dimmed ? 'is-dimmed' : ''}`}
-            style={{ left: layout.xOf(startDate) + layout.dayWidth / 2 }}
+            style={{
+              left: layout.xOf(startDate, task)
+                + (layout.subday ? 0 : layout.dayWidth / 2),
+            }}
             onMouseDown={(e) => onBarMouseDown(e, task)}
             onMouseEnter={(e) => onBarEnter(e, task)}
             onMouseMove={onBarMove}
@@ -225,12 +227,14 @@ export default function GanttRow({ task, index, ctx }) {
               critical ? 'is-critical' : '',
               dimmed ? 'is-dimmed' : '',
               task.isBlocked ? 'is-blocked' : '',
+              manual && !task.isSummary ? 'is-manual' : '',
+              violation > 0 ? 'is-violating' : '',
             ]
               .filter(Boolean)
               .join(' ')}
             style={{
-              left: layout.xOf(startDate),
-              width: layout.widthOf(startDate, endDate),
+              left: layout.xOf(startDate, task),
+              width: layout.widthOf(startDate, endDate, task),
             }}
             onMouseDown={(e) => onBarMouseDown(e, task)}
             onMouseEnter={(e) => onBarEnter(e, task)}
@@ -241,7 +245,9 @@ export default function GanttRow({ task, index, ctx }) {
               className="gantt-bar-fill"
               style={{ width: `${viewProgress(task)}%` }}
             />
-            {showBarLabels && <BarLabel task={task} layout={layout} start={startDate} end={endDate} />}
+            {showBarLabels && (
+              <BarLabel task={task} layout={layout} start={startDate} end={endDate} />
+            )}
 
             {!task.isSummary && (
               <>
@@ -258,17 +264,16 @@ export default function GanttRow({ task, index, ctx }) {
                   onMouseDown={(e) => onResizeMouseDown(e, task)}
                   title="Arrastar para ajustar o término"
                 />
-                <span
-                  className="gantt-link-dot is-left"
-                  onMouseDown={(e) => onBeginLink(e, task, 'left')}
-                  title="Arraste para criar uma dependência"
-                />
-                <span
-                  className="gantt-link-dot is-right"
-                  onMouseDown={(e) => onBeginLink(e, task, 'right')}
-                  title="Arraste para criar uma dependência"
-                />
               </>
+            )}
+
+            {violation > 0 && (
+              <span
+                className="gantt-violation"
+                title={`Agendada manualmente antes do que a predecessora permite (${ctx.formatMinutes(violation)}).`}
+              >
+                <AlertTriangle size={11} strokeWidth={2.2} />
+              </span>
             )}
           </div>
         )}
@@ -278,11 +283,61 @@ export default function GanttRow({ task, index, ctx }) {
 }
 
 /**
+ * Editor da célula, escolhido pelo tipo declarado na coluna.
+ *
+ * `datetime-local` devolve exatamente 'YYYY-MM-DDTHH:mm' — a mesma
+ * string que o modelo guarda. É a razão de o instante ter esse
+ * formato: o editor de data grava sem nenhuma conversão, como o
+ * `type="date"` fazia antes de existir hora.
+ */
+function CellEditor({ col, ctx, value, inputRef, onChange, onCommit, onCancel }) {
+  const onKeyDown = (e) => {
+    if (e.key === 'Enter') onCommit();
+    if (e.key === 'Escape') onCancel();
+  };
+
+  if (col.type === 'select') {
+    return (
+      <select
+        ref={inputRef}
+        className="gantt-cell-input is-select"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={onCommit}
+        onKeyDown={onKeyDown}
+        autoFocus
+      >
+        {col.options(ctx).map((opt) => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        ))}
+      </select>
+    );
+  }
+
+  return (
+    <input
+      ref={inputRef}
+      className="gantt-cell-input"
+      type={
+        col.type === 'datetime' ? 'datetime-local'
+          : col.type === 'number' ? 'number'
+            : 'text'
+      }
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      onBlur={onCommit}
+      onKeyDown={onKeyDown}
+      autoFocus
+    />
+  );
+}
+
+/**
  * O rótulo vai DENTRO da barra quando cabe, e do lado de fora quando
  * não cabe. Antes ele simplesmente sumia em barras curtas.
  */
 function BarLabel({ task, layout, start, end }) {
-  const width = layout.widthOf(start, end);
+  const width = layout.widthOf(start, end, task);
   const fits = width > task.name.length * 6.2 + 20;
 
   return fits ? (

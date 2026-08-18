@@ -5,7 +5,7 @@ import MiniTimeline from '../components/MiniTimeline';
 import CurveChart from '../components/CurveChart';
 import { calculateProjectMetrics } from '../utils/progress';
 import { computeSCurve } from '../utils/scurve';
-import { today, addDays, formatDateLong, durationDays, isMilestone } from '../utils/schedule';
+import { today, addDays, dateOf, formatDateLong, durationDays, isMilestone } from '../utils/schedule';
 import { Calendar, Clock, AlertTriangle, ChevronRight, Flag } from 'lucide-react';
 
 /* ═══════════════════════════════════════════════════════════════
@@ -64,7 +64,11 @@ export default function PageProjectOverview() {
 
   /* Janela de 30 dias: o que está em curso ou começa em breve. */
   const inHorizon = tasks
-    .filter((t) => t.startDate && t.endDate && t.startDate <= horizonEnd && t.endDate >= todayStr)
+    /* dateOf nos dois lados: 'T08:00' é maior que a data-só do mesmo
+       dia, e sem isso a tarefa que começa no último dia da janela
+       ficava de fora. */
+    .filter((t) => t.startDate && t.endDate
+      && dateOf(t.startDate) <= horizonEnd && dateOf(t.endDate) >= todayStr)
     .sort((a, b) => a.startDate.localeCompare(b.startDate))
     .slice(0, 12)
     .map((t) => ({
@@ -78,12 +82,12 @@ export default function PageProjectOverview() {
     }));
 
   const upcoming = tasks
-    .filter((t) => t.endDate && t.endDate >= todayStr && t.status !== 'Concluída')
+    .filter((t) => t.endDate && dateOf(t.endDate) >= todayStr && t.status !== 'Concluída')
     .sort((a, b) => a.endDate.localeCompare(b.endDate))
     .slice(0, 6);
 
   const milestones = tasks
-    .filter((t) => isMilestone(t) && t.startDate >= todayStr)
+    .filter((t) => isMilestone(t) && dateOf(t.startDate) >= todayStr)
     .sort((a, b) => a.startDate.localeCompare(b.startDate))
     .slice(0, 4);
 

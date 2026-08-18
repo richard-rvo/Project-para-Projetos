@@ -66,7 +66,16 @@ npm install
 ```bash
 npm run dev
 ```
-4. Acesse no navegador: `http://localhost:5173`
+4. Acesse no navegador: `http://localhost:5174`
+
+> ⚠️ **A porta é 5174 e não deve mudar.** O app é local-first: todo cronograma
+> vive no IndexedDB do navegador, que é isolado por **origem** — e a porta faz
+> parte da origem. Abrir em outra porta mostra um banco vazio, como se os dados
+> tivessem sumido (eles continuam intactos na porta original).
+>
+> Por isso `vite.config.js` usa `strictPort: true`: se a 5174 estiver ocupada, o
+> Vite falha avisando em vez de subir noutra porta e trocar de banco. Se der esse
+> erro, é um `npm run dev` esquecido — derrube com `lsof -ti:5174 | xargs kill`.
 
 ---
 

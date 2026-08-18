@@ -67,8 +67,16 @@ export function ViewBarSegments({ options, value, onChange, className }) {
   );
 }
 
-/** Botão de ação da barra: ghost por padrão, sólido quando primário. */
-export function ViewBarButton({
+/**
+ * Botão de ação da barra: ghost por padrão, sólido quando primário.
+ *
+ * `forwardRef` não é enfeite: este botão é usado como
+ * `<DropdownMenuTrigger asChild>`, e o Radix precisa do nó DOM para
+ * ancorar o menu e devolver o foco ao fechar. Sem ele o React
+ * descartava a ref, e o menu abria fora da tela (medido: gatilho em
+ * x=1404, menu em x=0 / y=−925) com o Escape jogando o foco no body.
+ */
+export const ViewBarButton = React.forwardRef(function ViewBarButton({
   icon: Icon,
   children,
   active,
@@ -76,9 +84,10 @@ export function ViewBarButton({
   disabled,
   className,
   ...props
-}) {
+}, ref) {
   return (
     <button
+      ref={ref}
       type="button"
       disabled={disabled}
       className={cn(
@@ -102,4 +111,4 @@ export function ViewBarButton({
       {children}
     </button>
   );
-}
+});

@@ -1,19 +1,35 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuLabel,
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { ViewBarButton } from '../../components/shell/ViewBar';
-import { Calendar, X, Plus } from 'lucide-react';
-import { calendarOf, isValidISODate } from '../../utils/calendar';
+import { Calendar, X, Plus, Check, Copy } from 'lucide-react';
+import {
+  calendarsOf, defaultCalendarOf, CALENDAR_PRESETS,
+  isValidISODate, isValidTime,
+} from '../../utils/calendar';
+import { minutesPerDay } from '../../utils/worktime';
 import { formatDateLong } from '../../utils/schedule';
 
 /* ═══════════════════════════════════════════════════════════════
-   Calendário de trabalho do projeto.
+   BIBLIOTECA DE CALENDÁRIOS DO PROJETO
+   ═══════════════════════════════════════════════════════════════
 
-   Dias úteis e feriados definem onde o auto-agendamento pode pousar
-   uma tarefa. Antes o motor somava dias corridos, então uma tarefa
-   que terminava na sexta liberava a sucessora no sábado.
+   Antes esta tela editava UM calendário: dias úteis e feriados, sem
+   hora. Duas coisas faltavam para o cronograma bater com a realidade
+   de uma parada de manutenção.
+
+   · JORNADA — sem hora de abertura e fechamento não existe tarefa de
+     quatro horas, e o encadeamento só sabia dizer "no dia seguinte".
+
+   · MAIS DE UM CALENDÁRIO — a equipe administrativa roda 8h/dia e o
+     turno de campo roda 24h. Com um calendário só, qualquer soma
+     entre as duas estava errada, e o planejador corrigia à mão.
+
+   A tarefa escolhe o calendário dela na coluna Calendário ou no
+   Inspetor; vazio herda o padrão do projeto, que é o caso da
+   esmagadora maioria.
    ═══════════════════════════════════════════════════════════════ */
 
 const WEEKDAYS = [
@@ -26,9 +42,32 @@ const WEEKDAYS = [
   { id: 0, label: 'D', full: 'Domingo' },
 ];
 
+function newId(existing) {
+  let i = existing.length + 1;
+  while (existing.some((c) => c.id === `cal-${i}`)) i++;
+  return `cal-${i}`;
+}
+
 export default function GanttCalendarMenu({ project, onChange }) {
-  const cal = calendarOf(project);
+  const calendars = calendarsOf(project);
+  const defaultId = defaultCalendarOf(project).id;
+
+  const [editingId, setEditingId] = useState(defaultId);
   const [newHoliday, setNewHoliday] = useState('');
+
+  /* Trocar de projeto pode apagar o calendário que estava aberto. */
+  useEffect(() => {
+    if (!calendars.some((c) => c.id === editingId)) setEditingId(defaultId);
+  }, [calendars, editingId, defaultId]);
+
+  const cal = calendars.find((c) => c.id === editingId) || calendars[0];
+
+  /** Grava a biblioteca inteira — é ela que o projeto guarda. */
+  const commit = (nextCalendars, nextDefaultId = project?.defaultCalendarId || defaultId) =>
+    onChange({ calendars: nextCalendars, defaultCalendarId: nextDefaultId });
+
+  const patch = (changes) =>
+    commit(calendars.map((c) => (c.id === cal.id ? { ...c, ...changes } : c)));
 
   const toggleWeekday = (day) => {
     const next = cal.workdays.includes(day)
@@ -36,21 +75,125 @@ export default function GanttCalendarMenu({ project, onChange }) {
       : [...cal.workdays, day].sort();
     /* Um calendário sem nenhum dia útil travaria o agendador. */
     if (!next.length) return;
-    onChange({ ...cal, workdays: next });
+    patch({ workdays: next });
+  };
+
+  const setShift = (index, key, value) => {
+    const shifts = cal.shifts.map((s, i) => (i === index ? { ...s, [key]: value } : s));
+    /* Turno inválido ou invertido zeraria a jornada e faria toda
+       tarefa deste calendário perder a duração. */
+    if (!isValidTime(value)) return;
+    if (shifts.some((s) => !(s.to > s.from))) return;
+    patch({ shifts });
+  };
+
+  const addShift = () => patch({ shifts: [...cal.shifts, { from: '18:00', to: '20:00' }] });
+
+  const removeShift = (index) => {
+    if (cal.shifts.length <= 1) return; // mesma razão do dia útil
+    patch({ shifts: cal.shifts.filter((_, i) => i !== index) });
   };
 
   const addHoliday = () => {
     if (!isValidISODate(newHoliday) || cal.holidays.includes(newHoliday)) return;
-    onChange({ ...cal, holidays: [...cal.holidays, newHoliday].sort() });
+    patch({ holidays: [...cal.holidays, newHoliday].sort() });
     setNewHoliday('');
   };
+
+  const addFromPreset = (preset) => {
+    const id = newId(calendars);
+    const copy = { ...preset, id, name: uniqueName(calendars, preset.name) };
+    commit([...calendars, copy]);
+    setEditingId(id);
+  };
+
+  const removeCalendar = () => {
+    /* O projeto precisa de pelo menos um, e o padrão não pode sumir
+       debaixo das tarefas que o herdam. */
+    if (calendars.length <= 1 || cal.id === defaultId) return;
+    commit(calendars.filter((c) => c.id !== cal.id));
+    setEditingId(defaultId);
+  };
+
+  const hoursPerDay = Math.round((minutesPerDay(cal) / 60) * 10) / 10;
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <ViewBarButton icon={Calendar}>Calendário</ViewBarButton>
+        <ViewBarButton icon={Calendar}>Calendários</ViewBarButton>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-72">
+      <DropdownMenuContent align="end" className="w-80">
+        {/* ── Biblioteca ─────────────────────────────────────── */}
+        <DropdownMenuLabel className="text-micro uppercase tracking-wide text-text-3">
+          Calendários do projeto
+        </DropdownMenuLabel>
+
+        <div className="flex flex-col gap-0.5 px-2 pb-2">
+          {calendars.map((c) => (
+            <div
+              key={c.id}
+              className={
+                'flex items-center gap-1.5 rounded-[6px] px-1.5 py-1 transition-colors '
+                + (c.id === cal.id ? 'bg-surface-3' : 'hover:bg-surface-2')
+              }
+            >
+              <button
+                type="button"
+                onClick={() => setEditingId(c.id)}
+                className="min-w-0 flex-1 truncate text-left text-small text-text-1"
+              >
+                {c.name}
+              </button>
+              <button
+                type="button"
+                title={c.id === defaultId ? 'Padrão do projeto' : 'Tornar padrão do projeto'}
+                onClick={() => commit(calendars, c.id)}
+                className={
+                  'grid size-5 shrink-0 place-items-center rounded-[4px] '
+                  + (c.id === defaultId ? 'text-brand' : 'text-text-3 hover:text-text-1')
+                }
+              >
+                <Check size={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap gap-1 px-2 pb-2">
+          {CALENDAR_PRESETS.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => addFromPreset(p)}
+              title={`Criar a partir de "${p.name}"`}
+              className="flex items-center gap-1 rounded-[5px] bg-surface-3 px-1.5 py-1 text-micro text-text-2 transition-colors hover:text-text-1"
+            >
+              <Copy size={10} /> {p.name}
+            </button>
+          ))}
+        </div>
+
+        <DropdownMenuSeparator />
+
+        {/* ── Calendário aberto ──────────────────────────────── */}
+        <div className="flex items-center gap-1.5 px-2 py-1.5">
+          <input
+            value={cal.name}
+            onChange={(e) => patch({ name: e.target.value })}
+            className="h-7 min-w-0 flex-1 rounded-[5px] border border-line bg-surface-0 px-1.5 text-small font-medium text-text-1"
+          />
+          <span className="shrink-0 text-micro tabular-nums text-text-3">{hoursPerDay}h/dia</span>
+          <button
+            type="button"
+            onClick={removeCalendar}
+            disabled={calendars.length <= 1 || cal.id === defaultId}
+            title={cal.id === defaultId ? 'O padrão do projeto não pode ser excluído' : 'Excluir calendário'}
+            className="grid size-6 shrink-0 place-items-center rounded-[5px] text-text-3 transition-colors hover:bg-sched-late-soft hover:text-sched-late disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-text-3"
+          >
+            <X size={12} />
+          </button>
+        </div>
+
         <DropdownMenuLabel className="text-micro uppercase tracking-wide text-text-3">
           Dias úteis
         </DropdownMenuLabel>
@@ -64,8 +207,8 @@ export default function GanttCalendarMenu({ project, onChange }) {
                 title={d.full}
                 onClick={() => toggleWeekday(d.id)}
                 className={
-                  'size-7 rounded-[6px] text-micro font-semibold transition-colors ' +
-                  (on
+                  'size-7 rounded-[6px] text-micro font-semibold transition-colors '
+                  + (on
                     ? 'bg-brand-soft text-brand'
                     : 'bg-surface-3 text-text-3 hover:text-text-2')
                 }
@@ -76,13 +219,49 @@ export default function GanttCalendarMenu({ project, onChange }) {
           })}
         </div>
 
-        <DropdownMenuSeparator />
+        <DropdownMenuLabel className="text-micro uppercase tracking-wide text-text-3">
+          Jornada
+        </DropdownMenuLabel>
+        <div className="flex flex-col gap-1 px-2 pb-2">
+          {cal.shifts.map((s, i) => (
+            <div key={i} className="flex items-center gap-1.5">
+              <input
+                type="time"
+                defaultValue={s.from}
+                onBlur={(e) => setShift(i, 'from', e.target.value)}
+                className="h-7 flex-1 rounded-[5px] border border-line bg-surface-0 px-1.5 text-micro tabular-nums text-text-1"
+              />
+              <span className="text-micro text-text-3">às</span>
+              <input
+                type="time"
+                defaultValue={s.to}
+                onBlur={(e) => setShift(i, 'to', e.target.value)}
+                className="h-7 flex-1 rounded-[5px] border border-line bg-surface-0 px-1.5 text-micro tabular-nums text-text-1"
+              />
+              <button
+                type="button"
+                onClick={() => removeShift(i)}
+                disabled={cal.shifts.length <= 1}
+                className="grid size-6 shrink-0 place-items-center rounded-[4px] text-text-3 transition-colors hover:bg-sched-late-soft hover:text-sched-late disabled:opacity-30"
+              >
+                <X size={11} />
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={addShift}
+            className="flex items-center justify-center gap-1 rounded-[5px] bg-surface-3 py-1 text-micro text-text-2 transition-colors hover:text-text-1"
+          >
+            <Plus size={11} /> Adicionar turno
+          </button>
+        </div>
 
         <DropdownMenuLabel className="text-micro uppercase tracking-wide text-text-3">
           Feriados ({cal.holidays.length})
         </DropdownMenuLabel>
 
-        <div className="max-h-40 overflow-auto px-2">
+        <div className="max-h-32 overflow-auto px-2">
           {cal.holidays.length === 0 ? (
             <p className="px-1 pb-2 text-micro text-text-3">Nenhum cadastrado.</p>
           ) : (
@@ -94,7 +273,7 @@ export default function GanttCalendarMenu({ project, onChange }) {
                   </span>
                   <button
                     type="button"
-                    onClick={() => onChange({ ...cal, holidays: cal.holidays.filter((x) => x !== h) })}
+                    onClick={() => patch({ holidays: cal.holidays.filter((x) => x !== h) })}
                     className="grid size-5 place-items-center rounded-[4px] text-text-3 hover:bg-sched-late-soft hover:text-sched-late"
                   >
                     <X size={11} />
@@ -125,4 +304,11 @@ export default function GanttCalendarMenu({ project, onChange }) {
       </DropdownMenuContent>
     </DropdownMenu>
   );
+}
+
+function uniqueName(calendars, base) {
+  if (!calendars.some((c) => c.name === base)) return base;
+  let i = 2;
+  while (calendars.some((c) => c.name === `${base} ${i}`)) i++;
+  return `${base} ${i}`;
 }
