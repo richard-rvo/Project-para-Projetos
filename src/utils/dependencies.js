@@ -83,26 +83,32 @@ export function formatDependency(dep, rowNumber) {
  * @param {string} selfId id da própria tarefa, para recusar auto-referência
  */
 export function parseDependencyInput(text, rows, selfId) {
-  if (!text?.trim()) return [];
+  const deps = [];
+  const invalid = [];
+  if (!text?.trim()) return { deps, invalid };
 
-  return String(text)
-    .split(',')
-    .map((raw) => {
-      const token = raw.trim();
-      if (!token) return null;
-      const match = token.match(/^(\d+)\s*(FS|SS|FF|SF)?\s*([+-]\s*\d+)?$/i);
-      if (!match) return null;
+  String(text).split(',').forEach((raw) => {
+    const token = raw.trim();
+    if (!token) return;
 
-      const task = rows[parseInt(match[1], 10) - 1];
-      if (!task || task.id === selfId) return null;
+    const match = token.match(/^(\d+)\s*(FS|SS|FF|SF)?\s*([+-]\s*\d+)?$/i);
+    if (!match) { invalid.push(token); return; }
 
-      return {
-        id: task.id,
-        type: match[2] ? match[2].toUpperCase() : 'FS',
-        lag: match[3] ? parseInt(match[3].replace(/\s/g, ''), 10) : 0,
-      };
-    })
-    .filter(Boolean);
+    /* Linha fora do projeto, ou a própria tarefa: o texto está bem
+       formado mas não aponta para nada aproveitável. Entra em
+       `invalid` do mesmo jeito — antes sumia sem deixar rastro, e a
+       célula voltava vazia como se o campo não funcionasse. */
+    const task = rows[parseInt(match[1], 10) - 1];
+    if (!task || task.id === selfId) { invalid.push(token); return; }
+
+    deps.push({
+      id: task.id,
+      type: match[2] ? match[2].toUpperCase() : 'FS',
+      lag: match[3] ? parseInt(match[3].replace(/\s/g, ''), 10) : 0,
+    });
+  });
+
+  return { deps, invalid };
 }
 
 /**

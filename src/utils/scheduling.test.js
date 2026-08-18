@@ -100,13 +100,28 @@ describe('forward pass — encadeamento', () => {
     expect(r.get('C').startDate).toBe('2026-08-12T08:00');
   });
 
-  it('só empurra para frente — folga existente é preservada', () => {
+  /* Este teste afirmava o contrário até o Movimento 2: que a folga
+     entre A e B era preservada. Não era folga — era deriva. Uma
+     sucessora TI encosta na predecessora, e quem quiser afastá-la de
+     propósito usa uma restrição SNET ou o modo manual, que são as
+     duas formas de dizer "a distância aqui é intencional". */
+  it('folga sem motivo é fechada — TI encosta na predecessora', () => {
     const tasks = [
       task('A', `${SEG}T08:00`, `${SEG}T17:00`),
       task('B', '2026-08-20T08:00', '2026-08-20T17:00', { dependsOn: link('A') }),
     ];
     const r = schedule(tasks, 'A');
-    expect(r.get('B')).toBeUndefined(); // não foi tocada
+    expect(r.get('B').startDate).toBe(`${TER}T08:00`);
+  });
+
+  it('folga declarada por lag é respeitada', () => {
+    const tasks = [
+      task('A', `${SEG}T08:00`, `${SEG}T17:00`),
+      task('B', '2026-08-20T08:00', '2026-08-20T17:00', { dependsOn: link('A', 'FS', 2) }),
+    ];
+    const r = schedule(tasks, 'A');
+    /* 2 dias úteis de defasagem depois de segunda → quinta. */
+    expect(r.get('B').startDate).toBe('2026-08-13T08:00');
   });
 
   it('tarefa-resumo não é movida — ela é derivada dos filhos', () => {
@@ -356,5 +371,206 @@ describe('rollup do resumo — %Concluída', () => {
     const out = buildProjectTasks(tasks, 1, null, project);
     expect(out.find((t) => t.id === 'SUB').rollup.progress).toBe(50);
     expect(out.find((t) => t.id === 'RAIZ').rollup.progress).toBe(50);
+  });
+});
+
+/* ═══════════════════════════════════════════════════════════════
+   MOVIMENTO 2 — o cronograma tem que saber ENCURTAR
+
+   Até aqui o forward pass tinha `if (start <= base.startDate) continue`:
+   só empurrava. Antecipar uma predecessora deixava um buraco que nunca
+   fechava, e a folga que o CPM media não era folga, era sobra deixada
+   para trás — com o caminho crítico apoiado nela.
+   ═══════════════════════════════════════════════════════════════ */
+
+const QUA = '2026-08-12';
+const SEG2 = '2026-08-17';
+
+describe('encurtar a cadeia', () => {
+  it('antecipar a predecessora PUXA a sucessora de volta', () => {
+    const tasks = [
+      /* A vai de segunda a sexta; B, na semana seguinte. */
+      task('A', `${SEG}T08:00`, `${TER}T17:00`),
+      task('B', `${SEG2}T08:00`, `${SEG2}T17:00`, { dependsOn: link('A') }),
+    ];
+    const r = schedule(tasks, 'A');
+    /* A agora termina terça → B deve cair para quarta, não ficar na
+       segunda seguinte. */
+    expect(r.get('B').startDate).toBe(`${QUA}T08:00`);
+  });
+
+  it('puxa a cadeia inteira, não só o primeiro elo', () => {
+    const tasks = [
+      task('A', `${SEG}T08:00`, `${SEG}T17:00`),
+      task('B', '2026-08-24T08:00', '2026-08-24T17:00', { dependsOn: link('A') }),
+      task('C', '2026-08-31T08:00', '2026-08-31T17:00', { dependsOn: link('B') }),
+    ];
+    const r = schedule(tasks, 'A');
+    expect(r.get('B').startDate).toBe(`${TER}T08:00`);
+    expect(r.get('C').startDate).toBe(`${QUA}T08:00`);
+  });
+
+  it('preserva a duração ao puxar de volta', () => {
+    const tasks = [
+      task('A', `${SEG}T08:00`, `${SEG}T17:00`),
+      task('B', '2026-08-24T08:00', '2026-08-26T17:00', { dependsOn: link('A') }), // 3d
+    ];
+    const r = schedule(tasks, 'A');
+    expect(r.get('B').startDate).toBe(`${TER}T08:00`);
+    expect(r.get('B').endDate).toBe('2026-08-13T17:00'); // ter+qua+qui
+  });
+
+  it('tarefa SEM predecessora fica onde o planejador a colocou', () => {
+    const tasks = [
+      task('A', `${SEG}T08:00`, `${SEG}T17:00`),
+      task('Solta', '2026-09-14T08:00', '2026-09-15T17:00'),
+    ];
+    const r = schedule(tasks, 'A');
+    expect(r.get('Solta')).toBeUndefined(); // não foi tocada
+  });
+});
+
+/* ── O bug que a trava de mão única escondia ────────────────────
+   Ao propagar de A para C, o motor buscava SÓ o vínculo vindo de A e
+   ignorava B. Como C nunca voltava, o cálculo errado era descartado
+   pela própria trava. Removê-la sem consertar isto puxaria C para uma
+   data que desrespeita B.                                          */
+
+describe('duas predecessoras (losango)', () => {
+  const diamond = () => [
+    task('A', `${SEG}T08:00`, `${SEG}T17:00`),      // termina segunda
+    task('B', `${SEG}T08:00`, `${SEX}T17:00`),      // termina sexta
+    task('C', `${SEG2}T08:00`, `${SEG2}T17:00`, {
+      dependsOn: [{ id: 'A', type: 'FS', lag: 0 }, { id: 'B', type: 'FS', lag: 0 }],
+    }),
+  ];
+
+  it('C respeita a predecessora MAIS TARDIA, venha de onde vier o gatilho', () => {
+    /* Disparando por A, que é a mais cedo: C não pode cair para terça. */
+    const r = schedule(diamond(), 'A');
+    expect(r.get('C')?.startDate ?? `${SEG2}T08:00`).toBe(`${SEG2}T08:00`);
+  });
+
+  it('encurtar a predecessora tardia puxa C até a outra, e não além', () => {
+    const tasks = diamond();
+    /* B passa a terminar na terça; A continua na segunda. C deve ir
+       para quarta — limitado por B, não por A. */
+    tasks[1] = task('B', `${SEG}T08:00`, `${TER}T17:00`);
+    const r = schedule(tasks, 'B');
+    expect(r.get('C').startDate).toBe(`${QUA}T08:00`);
+  });
+});
+
+/* ── Restrições de data ─────────────────────────────────────────
+   `constraintStart` era lido em dois lugares e escrito em ZERO: não
+   havia UI nenhuma. Vira `constraintType` + `constraintDate`.      */
+
+describe('restrições', () => {
+  it('SNET impede a tarefa de ser puxada antes da data', () => {
+    const tasks = [
+      task('A', `${SEG}T08:00`, `${SEG}T17:00`),
+      task('B', '2026-08-24T08:00', '2026-08-24T17:00', {
+        dependsOn: link('A'),
+        constraintType: 'snet',
+        constraintDate: '2026-08-19T08:00',
+      }),
+    ];
+    const r = schedule(tasks, 'A');
+    /* Sem a restrição cairia na terça; com ela, para na quarta 19. */
+    expect(r.get('B').startDate).toBe('2026-08-19T08:00');
+  });
+
+  it('SNET no passado não muda nada — a rede já manda depois dela', () => {
+    const tasks = [
+      task('A', `${SEG}T08:00`, `${SEX}T17:00`),
+      task('B', `${SEG2}T08:00`, `${SEG2}T17:00`, {
+        dependsOn: link('A'),
+        constraintType: 'snet',
+        constraintDate: `${TER}T08:00`,
+      }),
+    ];
+    const r = schedule(tasks, 'A');
+    /* Já está na data que a predecessora exige: nada a gravar. */
+    expect(r.get('B')).toBeUndefined();
+  });
+
+  it('MSO prende a tarefa na data, mesmo contra a predecessora', () => {
+    const tasks = [
+      task('A', `${SEG}T08:00`, `${SEX}T17:00`),
+      task('B', '2026-09-01T08:00', '2026-09-01T17:00', {
+        dependsOn: link('A'),
+        constraintType: 'mso',
+        constraintDate: '2026-08-26T08:00',
+      }),
+    ];
+    const r = schedule(tasks, 'A');
+    expect(r.get('B').startDate).toBe('2026-08-26T08:00');
+  });
+
+  it('FNLT não move a tarefa — mede o estouro do prazo', () => {
+    const tasks = [
+      task('A', `${SEG}T08:00`, `${SEX}T17:00`),
+      task('B', `${SEG2}T08:00`, '2026-08-21T17:00', {
+        dependsOn: link('A'),
+        constraintType: 'fnlt',
+        constraintDate: '2026-08-19T17:00',
+      }),
+    ];
+    const analysis = analyseSchedule(tasks, project);
+    const node = analysis.byId.get('B');
+    expect(node.deadlineMinutes).toBeGreaterThan(0);
+    expect(analysis.deadlineIds.has('B')).toBe(true);
+  });
+});
+
+describe('manual continua imóvel, e a cadeia atravessa', () => {
+  it('não é puxada de volta, mas as sucessoras dela são recalculadas', () => {
+    const tasks = [
+      task('A', `${SEG}T08:00`, `${SEG}T17:00`),
+      task('M', '2026-08-24T08:00', '2026-08-24T17:00', {
+        dependsOn: link('A'), scheduleMode: SCHEDULE_MODES.MANUAL,
+      }),
+      task('C', '2026-09-07T08:00', '2026-09-07T17:00', { dependsOn: link('M') }),
+    ];
+    const r = schedule(tasks, 'A');
+    expect(r.get('M')).toBeUndefined();               // fixa
+    expect(r.get('C').startDate).toBe('2026-08-25T08:00'); // recalculada a partir dela
+  });
+});
+
+/* ── Coerência da tarefa alterada ───────────────────────────────
+   Ela era gravada com o valor cru que o usuário digitou, enquanto as
+   sucessoras eram calculadas a partir do valor que a REDE deu a ela.
+   Quando os dois divergiam — porque a própria tarefa alterada também
+   tinha predecessora e agora pode ser puxada — a sucessora ia parar
+   ANTES do término da predecessora. Encontrado dirigindo o app: a
+   Coqueria mostrou 08/08 terminando e 07/08 começando.             */
+
+describe('a tarefa alterada também obedece a rede', () => {
+  const chain = () => [
+    task('A', `${SEG}T08:00`, `${SEG}T17:00`),
+    task('B', '2026-08-20T08:00', '2026-08-20T17:00', { dependsOn: link('A') }),
+    task('C', '2026-09-01T08:00', '2026-09-01T17:00', { dependsOn: link('B') }),
+  ];
+
+  it('mudar a duração de B reposiciona B e mantém TI em C', () => {
+    const tasks = chain();
+    /* Duração de B vira 2 dias, sem mexer no início. */
+    const changed = { ...tasks[1], endDate: '2026-08-21T17:00' };
+    const r = new Map(applyForwardPass(changed, tasks, project).map((t) => [t.id, t]));
+
+    /* B é puxada para junto de A, com a duração nova. */
+    expect(r.get('B').startDate).toBe(`${TER}T08:00`);
+    expect(r.get('B').endDate).toBe('2026-08-12T17:00');
+    /* E C encosta em B — nunca antes dela. */
+    expect(r.get('C').startDate).toBe('2026-08-13T08:00');
+    expect(r.get('C').startDate >= r.get('B').endDate).toBe(true);
+  });
+
+  it('edição que não é de data continua sendo gravada', () => {
+    const tasks = chain();
+    const changed = { ...tasks[1], resources: '3 Mecânicos' };
+    const r = new Map(applyForwardPass(changed, tasks, project).map((t) => [t.id, t]));
+    expect(r.get('B').resources).toBe('3 Mecânicos');
   });
 });

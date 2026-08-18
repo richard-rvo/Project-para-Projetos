@@ -30,6 +30,7 @@ export default function GanttRow({ task, index, ctx }) {
     criticalIds,
     showCriticalPath,
     showBarLabels,
+    showBaseline,
     dragPreview,
     onRowMouseDown,
     onToggleCollapse,
@@ -195,7 +196,7 @@ export default function GanttRow({ task, index, ctx }) {
           />
         )}
 
-        {task.baselineStart && task.baselineEnd && (
+        {showBaseline && task.baselineStart && task.baselineEnd && (
           <div
             className="gantt-baseline"
             style={{

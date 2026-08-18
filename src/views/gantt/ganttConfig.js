@@ -14,6 +14,8 @@ import {
   formatDateTimeShort,
   scheduleModeOf,
   SCHEDULE_MODES,
+  CONSTRAINT_TYPES,
+  CONSTRAINT_NONE,
 } from '../../utils/schedule';
 import { calculateTaskPlannedProgress } from '../../utils/progress';
 import {
@@ -100,6 +102,11 @@ export const SCHEDULE_MODE_OPTIONS = [
   { value: SCHEDULE_MODES.AUTO, label: 'Automática' },
   { value: SCHEDULE_MODES.MANUAL, label: 'Manual' },
 ];
+
+export const CONSTRAINT_OPTIONS = CONSTRAINT_TYPES.map((c) => ({
+  value: c.id,
+  label: c.label,
+}));
 
 /* ── Colunas ───────────────────────────────────────────────────────
    Fonte única para o cabeçalho e para as células. A view Tabela
@@ -234,6 +241,36 @@ export const COLUMNS = [
       ...ctx.calendars.map((c) => ({ value: c.id, label: c.name })),
     ],
     render: (t, ctx) => ctx.calendarLabel(t),
+  },
+  {
+    /* Tipo e data em colunas separadas, como no MS Project: uma célula
+       só não representa os dois, e o tipo sozinho já é a informação que
+       o planejador varre a coluna procurando. */
+    id: 'constraintType',
+    label: 'Restrição',
+    field: 'constraintType',
+    width: 150,
+    align: 'left',
+    editable: true,
+    type: 'select',
+    summaryLocked: true,
+    options: () => CONSTRAINT_OPTIONS,
+    render: (t) => (CONSTRAINT_TYPES.find(
+      (c) => c.id === (t.constraintType || CONSTRAINT_NONE)
+    )?.label ?? ''),
+  },
+  {
+    id: 'constraintDate',
+    label: 'Data da restrição',
+    field: 'constraintDate',
+    width: 130,
+    align: 'center',
+    editable: true,
+    type: 'datetime',
+    summaryLocked: true,
+    render: (t) => (t.constraintType && t.constraintType !== CONSTRAINT_NONE
+      ? formatDateTimeShort(t.constraintDate)
+      : ''),
   },
   {
     id: 'resources',

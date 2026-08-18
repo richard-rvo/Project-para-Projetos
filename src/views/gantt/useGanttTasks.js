@@ -1,9 +1,9 @@
 import { useMemo, useCallback } from 'react';
 import { isManual } from '../../utils/schedule';
-import { dependencyIds, readDependencies } from '../../utils/dependencies';
+import { dependencyIds } from '../../utils/dependencies';
 import { calendarOf } from '../../utils/calendar';
-import { addWorkingMinutes, workingMinutesBetween, snapForward } from '../../utils/worktime';
-import { analyseSchedule, requiredStart } from '../../utils/cpm';
+import { workingMinutesBetween } from '../../utils/worktime';
+import { analyseSchedule } from '../../utils/cpm';
 import { viewStart, viewEnd, viewProgress } from '../../utils/taskState';
 
 /* ═══════════════════════════════════════════════════════════════
@@ -159,18 +159,6 @@ export function useProjectTasks(allTasks, projectId, collapsedIds, project) {
   );
 }
 
-/** Mapa predecessora → lista de sucessoras. */
-function buildSuccessorMap(tasks) {
-  const map = new Map();
-  tasks.forEach((t) => {
-    dependencyIds(t.dependsOn).forEach((depId) => {
-      if (!map.has(depId)) map.set(depId, []);
-      map.get(depId).push(t.id);
-    });
-  });
-  return map;
-}
-
 /**
  * Auto-agendamento (forward pass) respeitando tipo de dependência,
  * defasagem, MODO da tarefa e o calendário DE CADA TAREFA.
@@ -182,63 +170,61 @@ function buildSuccessorMap(tasks) {
  * equipes consegue cumprir.
  */
 export function applyForwardPass(changedTask, allTasks, project) {
-  const updates = new Map([[changedTask.id, changedTask]]);
-  const successors = buildSuccessorMap(allTasks);
-  const queue = [changedTask];
-  const visited = new Set();
+  /* A tarefa alterada entra na rede ANTES do cálculo, senão o pass
+     recalcularia a partir do valor antigo dela. */
+  let found = false;
+  const network = allTasks.map((t) => {
+    if (t.id !== changedTask.id) return t;
+    found = true;
+    return changedTask;
+  });
+  if (!found) network.push(changedTask);
 
-  const current = (id) => updates.get(id) || allTasks.find((t) => t.id === id);
+  /* Uma implementação só de agendamento, compartilhada com a análise.
+     Havia duas: esta propagava a partir da tarefa alterada, seguindo
+     UM vínculo de cada vez, e por isso ignorava as demais
+     predecessoras da sucessora. Numa tarefa com duas predecessoras,
+     mover uma calculava a data desprezando a outra.
 
-  while (queue.length) {
-    const task = queue.shift();
-    if (visited.has(task.id)) continue;
-    visited.add(task.id);
+     O erro ficava escondido atrás da trava de mão única: como nada
+     voltava para trás, o resultado errado — sempre mais cedo — era
+     descartado. Remover a trava sem unificar o cálculo teria
+     transformado um cronograma preguiçoso num cronograma incorreto. */
+  const { byId } = analyseSchedule(network, project);
 
-    for (const succId of successors.get(task.id) || []) {
-      const base = current(succId);
-      if (!base || !base.startDate || !base.endDate) continue;
-      /* Resumo é derivado dos filhos: empurrá-lo gravaria um valor
-         calculado como se fosse do usuário. */
-      if (base.hasChildren) continue;
+  const out = [];
 
-      const link = readDependencies(base.dependsOn).find((d) => d.id === task.id);
-      if (!link) continue;
+  for (const task of network) {
+    const isChanged = task.id === changedTask.id;
 
-      /* Tarefa manual não se move — mas a cadeia ATRAVESSA ela: as
-         sucessoras dela continuam sendo calculadas a partir das datas
-         que o planejador fixou. Parar aqui deixaria metade do
-         cronograma sem recalcular. */
-      if (isManual(base)) {
-        queue.push(base);
-        continue;
-      }
+    /* A tarefa alterada SEMPRE sai daqui: a edição pode não ter sido de
+       data — recursos, predecessora, calendário — e mesmo assim precisa
+       ser gravada.
 
-      const cal = calendarOf(project, base);
-      const pred = current(task.id);
-      const duration = workingMinutesBetween(cal, base.startDate, base.endDate);
+       Mas ela não é exceção ao cálculo. Antes ela era gravada com o
+       valor cru digitado enquanto as SUCESSORAS eram derivadas do valor
+       que a rede deu a ela; quando os dois divergiam, porque ela também
+       tem predecessora e agora pode ser puxada, a sucessora ia parar
+       antes do término da predecessora. */
+    const keep = () => { if (isChanged) out.push(task); };
 
-      let start = requiredStart(link, pred, cal, duration);
-      if (!start) continue;
+    /* Resumo é derivado dos filhos: gravar nele seria persistir um
+       valor calculado como se fosse do usuário. */
+    if (task.hasChildren) { keep(); continue; }
 
-      if (base.constraintStart && start < base.constraintStart) {
-        start = snapForward(cal, base.constraintStart);
-      }
+    /* Manual fica onde o planejador fixou. A cadeia ATRAVESSA: as
+       sucessoras dela são calculadas a partir dessas datas — é o que
+       a análise já faz, então basta não escrever nela. */
+    if (isManual(task)) { keep(); continue; }
 
-      /* Só empurra para frente. Puxar de volta exigiria saber se a
-         folga é intencional — é o que o modo manual resolve. */
-      if (start <= base.startDate) continue;
+    const node = byId.get(task.id);
+    if (!node?.es || !node?.ef) { keep(); continue; }
+    if (node.es === task.startDate && node.ef === task.endDate) { keep(); continue; }
 
-      const moved = {
-        ...base,
-        startDate: start,
-        endDate: addWorkingMinutes(cal, start, duration),
-      };
-      updates.set(moved.id, moved);
-      queue.push(moved);
-    }
+    out.push({ ...task, startDate: node.es, endDate: node.ef });
   }
 
-  return Array.from(updates.values());
+  return out;
 }
 
 export function useAutoScheduling(project) {

@@ -3,18 +3,18 @@ import { AppContext } from '../context/AppContext';
 import { cn } from '@/lib/utils';
 import ConfirmDialog from './ConfirmDialog';
 import {
-  X, Calendar, Clock, Users, Link2, FileText, Trash2,
-  AlertTriangle, Indent, Outdent, Target, TrendingUp,
+  X, Calendar, CalendarClock, Users, Link2, FileText, Trash2,
+  AlertTriangle, Indent, Outdent, Target,
 } from 'lucide-react';
 import {
   formatDateShort, formatDateTimeShort, clampProgress, isMilestone, daysBetween,
-  isManual, SCHEDULE_MODES,
+  isManual, SCHEDULE_MODES, CONSTRAINT_TYPES, CONSTRAINT_NONE, constraintOf,
 } from '../utils/schedule';
 import { calculateTaskPlannedProgress } from '../utils/progress';
 import { stateOf, viewProgress } from '../utils/taskState';
 import { calendarOf, calendarsOf, defaultCalendarOf } from '../utils/calendar';
 import {
-  addWorkingMinutes, workingMinutesBetween, snapForward, minutesPerDay,
+  addWorkingMinutes, workingMinutesBetween, snapForward, snapBackward, minutesPerDay,
 } from '../utils/worktime';
 import { formatDuration, resolveDuration } from '../utils/duration';
 import { applyForwardPass, stripComputed } from '../views/gantt/useGanttTasks';
@@ -136,6 +136,19 @@ export default function TaskInspectorDrawer() {
     }
   }, [task, project, commit, showToast]);
 
+  /** O término encaixa no calendário e recusa avisando — as mesmas
+   *  duas regras da grade. Antes gravava cru: dava para terminar
+   *  domingo 03:00 num calendário Seg–Sex. */
+  const commitEnd = useCallback(async (value) => {
+    if (!task || !value) return;
+    if (value <= task.startDate) {
+      showToast('O término tem que ser depois do início.', 'error');
+      return;
+    }
+    const cal = calendarOf(project, task);
+    await commit({ endDate: snapBackward(cal, value) }, 'Alterar término');
+  }, [task, project, commit, showToast]);
+
   /** Trocar de calendário mantém o início e a duração EM DIAS, e
    *  recalcula o término: 3 dias num calendário 24h acabam antes de
    *  3 dias num de 8h. */
@@ -153,12 +166,19 @@ export default function TaskInspectorDrawer() {
     }, 'Alterar calendário');
   }, [task, project, commit]);
 
-  /* Aviso de violação: só existe em tarefa manual, e é medido pela
-     MESMA análise que o Gantt usa — dois cálculos discordariam. */
-  const violation = useMemo(() => {
-    if (!task || !isManual(task)) return 0;
-    return analyseSchedule(siblings, project).byId.get(task.id)?.violationMinutes || 0;
-  }, [task, siblings, project]);
+  /* Violação e prazo vêm da MESMA análise que o Gantt usa — dois
+     cálculos discordariam. */
+  const analysis = useMemo(
+    () => analyseSchedule(siblings, project),
+    [siblings, project]
+  );
+  const violation = task && isManual(task)
+    ? (analysis.byId.get(task.id)?.violationMinutes || 0)
+    : 0;
+  const deadlineMinutes = task
+    ? (analysis.byId.get(task.id)?.deadlineMinutes || 0)
+    : 0;
+  const constraint = constraintOf(task);
 
   if (!inspectorTaskId || !draft || !task) return null;
 
@@ -330,7 +350,7 @@ export default function TaskInspectorDrawer() {
                   value={draft.endDate || ''}
                   disabled={task.isSummary}
                   onChange={(e) => setDraft({ ...draft, endDate: e.target.value })}
-                  onBlur={(e) => e.target.value !== task.endDate && commit({ endDate: e.target.value }, 'Alterar término')}
+                  onBlur={(e) => e.target.value !== task.endDate && commitEnd(e.target.value)}
                   className={inputCls}
                 />
               </Field>
@@ -372,6 +392,58 @@ export default function TaskInspectorDrawer() {
                 </select>
               </Field>
             </div>
+          </Section>
+
+          {/* `constraintStart` era lido pelo motor e escrito por
+              ninguém: não havia UI. Quem precisasse prender uma data só
+              tinha o modo manual, que é caro — tira a tarefa do
+              agendamento automático inteiro. */}
+          <Section label="Restrição de data" icon={CalendarClock}>
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="Tipo">
+                <select
+                  value={draft.constraintType || CONSTRAINT_NONE}
+                  disabled={task.isSummary}
+                  onChange={(e) => {
+                    const type = e.target.value;
+                    const patch = { constraintType: type };
+                    if (type === CONSTRAINT_NONE) patch.constraintDate = undefined;
+                    else if (!task.constraintDate) patch.constraintDate = task.startDate;
+                    commit(patch, 'Alterar restrição');
+                  }}
+                  className={inputCls}
+                >
+                  {CONSTRAINT_TYPES.map((c) => (
+                    <option key={c.id} value={c.id}>{c.label}</option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Data">
+                <input
+                  type="datetime-local"
+                  value={draft.constraintDate || ''}
+                  disabled={task.isSummary || !constraint}
+                  onChange={(e) => setDraft({ ...draft, constraintDate: e.target.value })}
+                  onBlur={(e) => e.target.value !== task.constraintDate
+                    && commit({ constraintDate: e.target.value }, 'Alterar data da restrição')}
+                  className={inputCls}
+                />
+              </Field>
+            </div>
+            {constraint && (
+              <p className="mt-1.5 text-micro leading-relaxed text-text-3">
+                {CONSTRAINT_TYPES.find((c) => c.id === constraint.type)?.hint}
+              </p>
+            )}
+            {deadlineMinutes > 0 && (
+              <p className="mt-1.5 flex items-start gap-1.5 rounded-[6px] bg-sched-late-soft px-2 py-1.5 text-micro text-sched-late">
+                <AlertTriangle size={12} className="mt-px shrink-0" />
+                <span>
+                  Termina {formatDuration(deadlineMinutes, calendar)} depois do
+                  prazo. O cronograma não foi alterado — o prazo é um aviso.
+                </span>
+              </p>
+            )}
           </Section>
 
           <Section label="Predecessoras" icon={Link2}>

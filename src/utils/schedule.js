@@ -254,6 +254,59 @@ export function scheduleModeOf(task) {
   return isManual(task) ? SCHEDULE_MODES.MANUAL : SCHEDULE_MODES.AUTO;
 }
 
+/* ── Restrições de data ────────────────────────────────────────────
+   As constraints do MS Project. Antes existia um campo
+   `constraintStart` LIDO em dois lugares — no CPM e no forward pass —
+   e escrito em nenhum: não havia UI para defini-lo. O planejador que
+   precisasse prender uma data só tinha o modo manual, que é caro,
+   porque tira a tarefa do agendamento automático inteiro.
+
+   As três primeiras movem a tarefa. FNLT não move: é um PRAZO, e
+   estourá-lo vira aviso — mexer nas datas para caber num prazo seria
+   inventar um plano que ninguém decidiu.                            */
+
+export const CONSTRAINT_TYPES = [
+  {
+    id: 'none',
+    label: 'O mais breve possível',
+    hint: 'Segue as predecessoras, sem data fixa',
+    needsDate: false,
+  },
+  {
+    id: 'snet',
+    label: 'Não iniciar antes de',
+    hint: 'Piso: a tarefa pode atrasar, mas não pode adiantar além desta data',
+    needsDate: true,
+  },
+  {
+    id: 'mso',
+    label: 'Deve iniciar em',
+    hint: 'Data fixa, mesmo que a predecessora permita outra',
+    needsDate: true,
+  },
+  {
+    id: 'fnlt',
+    label: 'Não terminar depois de',
+    hint: 'Prazo: não move a tarefa, mas avisa quando é estourado',
+    needsDate: true,
+  },
+];
+
+export const CONSTRAINT_NONE = 'none';
+
+export function constraintOf(task) {
+  const type = task?.constraintType;
+  if (!type || type === CONSTRAINT_NONE) return null;
+  if (!task.constraintDate) return null;
+  return { type, date: task.constraintDate };
+}
+
+export function constraintLabel(task) {
+  const c = constraintOf(task);
+  if (!c) return '';
+  return CONSTRAINT_TYPES.find((t) => t.id === c.type)?.label || '';
+}
+
 /* ── Utilidades ────────────────────────────────────────────────── */
 
 /** Garante progresso inteiro dentro de 0–100. */

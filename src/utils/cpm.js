@@ -1,4 +1,4 @@
-import { isManual } from './schedule';
+import { isManual, constraintOf } from './schedule';
 import { calendarOf } from './calendar';
 import {
   addWorkingMinutes, workingMinutesBetween, snapForward, snapBackward,
@@ -150,6 +150,7 @@ export function analyseSchedule(tasks, project) {
       byId: new Map(),
       criticalIds: new Set(),
       violatingIds: new Set(),
+      deadlineIds: new Set(),
       projectStart: null,
       projectFinish: null,
       cycles: [],
@@ -178,6 +179,8 @@ export function analyseSchedule(tasks, project) {
       /* Quanto a data fixada de uma tarefa manual desrespeita as
          predecessoras. Zero em tudo que é automático. */
       violationMinutes: 0,
+      /* Quanto o término passa de um prazo FNLT. Zero sem prazo. */
+      deadlineMinutes: 0,
     });
   });
 
@@ -188,15 +191,28 @@ export function analyseSchedule(tasks, project) {
     if (!node || !task) continue;
     const cal = node.calendar;
 
-    /* Restrição explícita do usuário tem precedência sobre o cedo
-       natural da tarefa. */
-    let earliest = task.constraintStart
-      ? maxDate(task.startDate, task.constraintStart)
-      : task.startDate;
+    /* Predecessoras que existem NESTA rede. As de outro projeto, ou
+       sem data, não entram — e nesse caso a tarefa é tratada como se
+       não tivesse predecessora nenhuma. */
+    const links = readDependencies(task.dependsOn).filter((d) => byId.has(d.id));
 
-    readDependencies(task.dependsOn).forEach((dep) => {
+    /* ── A mudança que faz o cronograma encurtar ─────────────────
+       COM predecessora, a data sai INTEIRAMENTE da rede. Antes o
+       cedo-possível começava em `task.startDate`, o que funcionava
+       como um "não iniciar antes de" implícito em toda tarefa: o
+       cronograma só sabia esticar. Antecipar uma predecessora deixava
+       um buraco que nunca fechava, e a folga que sai daqui — a mesma
+       que define o caminho crítico — não era folga, era sobra
+       deixada para trás.
+
+       SEM predecessora não há de onde derivar, e a tarefa fica onde o
+       planejador a colocou. Ancorá-la no início do projeto colapsaria
+       todo cronograma existente ao ser aberto; quem quiser prender uma
+       data usa uma restrição, que é o caminho do MS Project. */
+    let earliest = links.length ? null : task.startDate;
+
+    links.forEach((dep) => {
       const pred = byId.get(dep.id);
-      if (!pred) return;
       const req = requiredStart(
         dep,
         { startDate: pred.es, endDate: pred.ef },
@@ -205,6 +221,8 @@ export function analyseSchedule(tasks, project) {
       );
       earliest = maxDate(earliest, req);
     });
+
+    earliest = applyConstraint(task, earliest, cal) || task.startDate;
 
     if (isManual(task)) {
       /* Manual fica onde o planejador colocou. O que a análise faz é
@@ -215,11 +233,13 @@ export function analyseSchedule(tasks, project) {
       if (earliest && earliest > task.startDate) {
         node.violationMinutes = workingMinutesBetween(cal, task.startDate, earliest);
       }
+      node.deadlineMinutes = deadlineOverrun(task, node.ef, cal);
       continue;
     }
 
     node.es = snapForward(cal, earliest);
     node.ef = addWorkingMinutes(cal, node.es, node.duration);
+    node.deadlineMinutes = deadlineOverrun(task, node.ef, cal);
   }
 
   const projectStart = [...byId.values()].map((n) => n.es).sort()[0];
@@ -245,6 +265,7 @@ export function analyseSchedule(tasks, project) {
   /* ── Folgas ────────────────────────────────────────────────── */
   const criticalIds = new Set();
   const violatingIds = new Set();
+  const deadlineIds = new Set();
 
   for (const node of byId.values()) {
     const cal = node.calendar;
@@ -279,9 +300,34 @@ export function analyseSchedule(tasks, project) {
 
     if (node.totalSlack <= 0) criticalIds.add(node.id);
     if (node.violationMinutes > 0) violatingIds.add(node.id);
+    if (node.deadlineMinutes > 0) deadlineIds.add(node.id);
   }
 
-  return { byId, criticalIds, violatingIds, projectStart, projectFinish, cycles: inCycle };
+  return {
+    byId, criticalIds, violatingIds, deadlineIds,
+    projectStart, projectFinish, cycles: inCycle,
+  };
+}
+
+/* ── Restrições ────────────────────────────────────────────────────
+   SNET é piso, MSO é data fixa. FNLT NÃO entra aqui: prazo não move
+   tarefa — mexer nas datas para caber num prazo seria inventar um
+   plano que ninguém decidiu. Ele vira medida, em deadlineOverrun. */
+
+function applyConstraint(task, earliest, cal) {
+  const c = constraintOf(task);
+  if (!c) return earliest;
+  if (c.type === 'mso') return snapForward(cal, c.date);
+  if (c.type === 'snet') return maxDate(earliest, snapForward(cal, c.date));
+  return earliest;
+}
+
+/** Quanto o término passa do prazo FNLT, em tempo útil. */
+function deadlineOverrun(task, finish, cal) {
+  const c = constraintOf(task);
+  if (!c || c.type !== 'fnlt' || !finish) return 0;
+  if (finish <= c.date) return 0;
+  return workingMinutesBetween(cal, c.date, finish);
 }
 
 /* ── Auxiliares ────────────────────────────────────────────────── */

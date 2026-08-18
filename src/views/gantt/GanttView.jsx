@@ -6,7 +6,7 @@ import ViewBar, {
   ViewBarButton, ViewBarDivider, ViewBarSegments,
 } from '../../components/shell/ViewBar';
 import {
-  DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent,
+  DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import ConfirmDialog from '../../components/ConfirmDialog';
@@ -17,13 +17,13 @@ import {
 
 import {
   addDays, daysBetween, durationDays, today, formatDateShort,
-  formatDateTimeShort, clampProgress, isManual, SCHEDULE_MODES,
+  formatDateTimeShort, clampProgress, isManual, SCHEDULE_MODES, CONSTRAINT_NONE,
 } from '../../utils/schedule';
 import {
   calendarOf, calendarsOf, defaultCalendarOf, workdayStart, workdayEnd,
 } from '../../utils/calendar';
 import {
-  addWorkingMinutes, workingMinutesBetween, snapForward, minutesPerDay,
+  addWorkingMinutes, workingMinutesBetween, snapForward, snapBackward, minutesPerDay,
 } from '../../utils/worktime';
 import { formatDuration, resolveDuration } from '../../utils/duration';
 import { calculateTaskPlannedProgress } from '../../utils/progress';
@@ -79,6 +79,10 @@ export default function GanttView() {
   const [layoutCols, setLayoutCols] = useState(() => loadColumnLayout(null));
   const [columnMenu, setColumnMenu] = useState(null);
   const [showBarLabels, setShowBarLabels] = useState(true);
+  /* A barra fantasma só aparece quando pedida. Antes ela era desenhada
+     sempre que houvesse dados, e o interruptor existia no AppContext
+     sem nenhum consumidor — meia feature dos dois lados. */
+  const [showBaseline, setShowBaseline] = useState(true);
   const [showCriticalPath, setShowCriticalPath] = useState(false);
   const [showSlack, setShowSlack] = useState(false);
   const [filters, setFilters] = useState(EMPTY_FILTERS);
@@ -237,11 +241,19 @@ export default function GanttView() {
       .join(', ');
   }, [tasks]);
 
-  const predecessorFromLabel = useCallback(
-    (label, selfId) => parseDependencyInput(label, tasks, selfId)
-      .filter((dep) => !wouldCreateCycle(dep.id, selfId, tasks)),
-    [tasks]
-  );
+  /* Devolve o que ACEITOU e o que recusou, para a UI poder dizer.
+     Recusar em silêncio é o que fazia a coluna Pred. parecer quebrada. */
+  const predecessorFromLabel = useCallback((label, selfId) => {
+    const { deps, invalid } = parseDependencyInput(label, tasks, selfId);
+    const cyclic = [];
+    const accepted = deps.filter((dep) => {
+      if (!wouldCreateCycle(dep.id, selfId, tasks)) return true;
+      const row = tasks.findIndex((t) => t.id === dep.id);
+      cyclic.push(String(row + 1));
+      return false;
+    });
+    return { deps: accepted, invalid, cyclic };
+  }, [tasks]);
 
   /* ── Scroll inicial até hoje ──────────────────────────────────
      Só depois que as tarefas chegam. As tarefas vêm do IndexedDB de
@@ -351,6 +363,7 @@ export default function GanttView() {
     const duration = workingMinutesBetween(cal, task.startDate, task.endDate);
     let modified;
     let becameManual = false;
+    let rejected = null;
 
     switch (editingCell.colId) {
       case 'duration': {
@@ -379,17 +392,58 @@ export default function GanttView() {
       }
 
       case 'end': {
-        /* O término muda a DURAÇÃO, mantendo o início. */
-        const finish = editValue;
-        modified = finish && finish > task.startDate
-          ? { ...task, endDate: finish }
-          : task;
+        /* O término muda a DURAÇÃO, mantendo o início.
+
+           Duas correções: encaixa no calendário — antes o Início
+           passava por snapForward e o Término gravava cru, então dava
+           para terminar domingo 03:00 num calendário Seg–Sex, uma data
+           que o motor jamais produziria; e AVISA ao recusar, em vez de
+           limpar a célula sem dizer nada. */
+        if (!editValue) { modified = task; break; }
+        if (editValue <= task.startDate) {
+          modified = task;
+          rejected = 'O término tem que ser depois do início.';
+          break;
+        }
+        modified = { ...task, endDate: snapBackward(cal, editValue) };
         break;
       }
 
-      case 'dependencies':
-        modified = { ...task, dependsOn: predecessorFromLabel(editValue, task.id) };
+      case 'constraintType': {
+        const type = editValue || CONSTRAINT_NONE;
+        modified = { ...task, constraintType: type };
+        /* Uma restrição sem data não restringe nada: semeia com o
+           início atual para o efeito ser imediato e visível. */
+        if (type !== CONSTRAINT_NONE && !task.constraintDate) {
+          modified.constraintDate = task.startDate;
+        }
+        if (type === CONSTRAINT_NONE) delete modified.constraintDate;
         break;
+      }
+
+      case 'constraintDate': {
+        if (!task.constraintType || task.constraintType === CONSTRAINT_NONE) {
+          modified = task;
+          rejected = 'Escolha primeiro o tipo de restrição na coluna ao lado.';
+          break;
+        }
+        modified = { ...task, constraintDate: snapForward(cal, editValue) };
+        break;
+      }
+
+      case 'dependencies': {
+        /* Antes o parser descartava em silêncio o que não casava e o
+           que fecharia ciclo: a célula voltava vazia e parecia um campo
+           quebrado. Agora ele conta o que recusou e por quê. */
+        const { deps, invalid, cyclic } = predecessorFromLabel(editValue, task.id);
+        modified = { ...task, dependsOn: deps };
+        if (cyclic.length) {
+          rejected = `Ignorado: ${cyclic.join(', ')} criaria dependência circular.`;
+        } else if (invalid.length) {
+          rejected = `Não reconhecido: ${invalid.join(', ')}. Use o número da linha, ex.: 2FS+3`;
+        }
+        break;
+      }
 
       case 'progress':
         modified = { ...task, progress: clampProgress(editValue) };
@@ -421,11 +475,14 @@ export default function GanttView() {
     }
 
     /* Só o que mexe no cronograma dispara o forward pass. */
-    const reschedules = ['duration', 'start', 'end', 'dependencies', 'mode', 'calendar']
-      .includes(editingCell.colId);
+    const reschedules = [
+      'duration', 'start', 'end', 'dependencies', 'mode', 'calendar',
+      'constraintType', 'constraintDate',
+    ].includes(editingCell.colId);
     await saveTasks(reschedules ? applyAutoScheduling(modified, tasks) : [modified]);
     setEditingCell(null);
 
+    if (rejected) showToast(rejected, 'error');
     if (becameManual) {
       showToast('Tarefa agendada manualmente — não será movida pelas predecessoras', 'info');
     }
@@ -593,15 +650,45 @@ export default function GanttView() {
     setTimeout(() => newTaskRef.current?.focus(), 40);
   }, [newTaskName, state.activeProjectId, tasks.length, addTask, projectCalendar]);
 
-  const handleSaveBaseline = () => setConfirmAction({
-    title: 'Salvar linha de base',
-    message: 'Grava as datas atuais como linha de base de todas as tarefas deste projeto, substituindo qualquer baseline anterior.',
+  /* Gravar a linha de base era um tiro só: carimbava o projeto inteiro,
+     sem como limpar, sem como restringir à seleção e sem como ocultar.
+     Uma vez gravada, cada linha ganhava uma barra fantasma permanente. */
+  const baselineCount = useMemo(
+    () => tasks.filter((t) => t.baselineStart && t.baselineEnd).length,
+    [tasks]
+  );
+
+  const saveBaseline = (scope) => {
+    const target = scope === 'selection'
+      ? tasks.filter((t) => selectedIds.has(t.id))
+      : tasks;
+    const updates = target
+      .filter((t) => viewStart(t) && viewEnd(t))
+      .map((t) => ({ ...t, baselineStart: viewStart(t), baselineEnd: viewEnd(t) }));
+    if (!updates.length) return;
+
+    setConfirmAction({
+      title: scope === 'selection' ? 'Gravar da seleção' : 'Gravar do projeto',
+      message: `Grava as datas atuais como linha de base de ${updates.length} tarefa(s), `
+        + 'substituindo a anterior. ⌘Z desfaz.',
+      onConfirm: async () => {
+        await saveTasks(updates, 'Gravar linha de base');
+        setShowBaseline(true);
+        showToast(`Linha de base gravada em ${updates.length} tarefa(s)`, 'success');
+      },
+    });
+  };
+
+  const clearBaseline = () => setConfirmAction({
+    title: 'Limpar linha de base',
+    message: `Remove a linha de base de ${baselineCount} tarefa(s). `
+      + 'A Curva S e o desvio voltam a ficar indisponíveis. ⌘Z desfaz.',
     onConfirm: async () => {
       const updates = tasks
-        .filter((t) => t.startDate && t.endDate)
-        .map((t) => ({ ...t, baselineStart: t.startDate, baselineEnd: t.endDate }));
-      await saveTasks(updates);
-      showToast('Linha de base salva', 'success');
+        .filter((t) => t.baselineStart || t.baselineEnd)
+        .map(({ baselineStart, baselineEnd, ...rest }) => rest);
+      await saveTasks(updates, 'Limpar linha de base');
+      showToast('Linha de base removida', 'info');
     },
   });
 
@@ -793,7 +880,8 @@ export default function GanttView() {
 
   const ctx = {
     columns, gridWidth, layout, selectedIds, editingCell, collapsedIds,
-    criticalIds, showCriticalPath, showBarLabels, dragPreview, dragOverIndex,
+    criticalIds, showCriticalPath, showBarLabels, showBaseline,
+    dragPreview, dragOverIndex,
     editValue, editInputRef, predecessorLabel,
     durationLabel, calendarLabel, calendarFor, formatMinutes,
     calendars, projectCalendarName: projectCalendar.name,
@@ -853,9 +941,46 @@ export default function GanttView() {
         >
           Folga
         </ViewBarButton>
-        <ViewBarButton icon={Target} onClick={handleSaveBaseline} title="Gravar as datas atuais">
-          Baseline
-        </ViewBarButton>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <ViewBarButton icon={Target} active={baselineCount > 0 && showBaseline}>
+              Linha de base
+            </ViewBarButton>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-64">
+            <DropdownMenuLabel className="text-micro uppercase tracking-wide text-text-3">
+              {baselineCount > 0
+                ? `Gravada em ${baselineCount} de ${tasks.length}`
+                : 'Nenhuma linha de base gravada'}
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => saveBaseline('project')}>
+              Gravar do projeto inteiro
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={selectedIds.size === 0}
+              onSelect={() => saveBaseline('selection')}
+            >
+              Gravar da seleção ({selectedIds.size})
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuCheckboxItem
+              checked={showBaseline}
+              disabled={baselineCount === 0}
+              onCheckedChange={setShowBaseline}
+              onSelect={(e) => e.preventDefault()}
+            >
+              Mostrar na barra
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuItem
+              disabled={baselineCount === 0}
+              onSelect={clearBaseline}
+              className="text-sched-late"
+            >
+              Limpar linha de base
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <ViewBarDivider />
         <ViewBarButton icon={Undo2} onClick={undo} disabled={!canUndo} title="Desfazer (⌘Z)" />
         <ViewBarButton icon={Redo2} onClick={redo} disabled={!canRedo} title="Refazer (⇧⌘Z)" />
@@ -883,6 +1008,38 @@ export default function GanttView() {
           Tarefa
         </ViewBarButton>
       </ViewBar>
+
+      {/* Ciclo e prazo estourado: a análise já media os dois e nenhum
+          componente lia. Um cronograma com dependência circular não tem
+          ordem topológica — o CPM anexa os nós presos ao fim para não
+          travar, e sem este aviso o usuário via datas estranhas sem
+          nenhuma pista do motivo. */}
+      {(analysis.cycles.length > 0 || analysis.deadlineIds.size > 0) && (
+        <div className="flex shrink-0 flex-col gap-1 border-b border-line bg-sched-late-soft px-3 py-2">
+          {analysis.cycles.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                setFilters({ ...EMPTY_FILTERS, text: '' });
+                setSelectedIds(new Set(analysis.cycles));
+              }}
+              className="flex items-center gap-2 text-left text-small font-medium text-sched-late"
+            >
+              <AlertCircle size={14} strokeWidth={2} />
+              {analysis.cycles.length} tarefa(s) em dependência circular — o
+              cronograma não pode ser calculado até que o laço seja desfeito.
+              <span className="underline underline-offset-2">Selecionar</span>
+            </button>
+          )}
+          {analysis.deadlineIds.size > 0 && (
+            <span className="flex items-center gap-2 text-small text-sched-late">
+              <AlertCircle size={14} strokeWidth={2} />
+              {analysis.deadlineIds.size} tarefa(s) terminam depois do prazo
+              definido na restrição.
+            </span>
+          )}
+        </div>
+      )}
 
       {/* ── Corpo: UM scroller para os dois eixos ───────────────── */}
       <div className="gantt-body">
