@@ -1,8 +1,8 @@
-import { isManual, constraintOf } from './schedule';
+import { isManual, constraintOf, timeOf } from './schedule';
 import { calendarOf } from './calendar';
 import {
   addWorkingMinutes, workingMinutesBetween, snapForward, snapBackward,
-  minutesPerDay,
+  minutesPerDay, minutesOfTime, normalize,
 } from './worktime';
 import { readDependencies } from './dependencies';
 
@@ -50,6 +50,7 @@ import { readDependencies } from './dependencies';
 export function requiredStart(link, pred, succCalendar, durationMinutes) {
   const cal = succCalendar;
   const lag = (link.lag || 0) * minutesPerDay(cal);
+  let exactHandoff = false;
 
   let start = null;
   let finish = null;
@@ -67,16 +68,27 @@ export function requiredStart(link, pred, succCalendar, durationMinutes) {
     case 'FS':
     default:
       /* O término da predecessora é o instante em que o trabalho para.
-         Encaixar esse mesmo instante para frente no calendário da
-         sucessora já entrega segunda 08:00 quando a predecessora
-         terminou sexta 17:00 — o `+1 dia` que existia aqui era a
-         gambiarra que compensava a falta de hora. */
-      start = addWorkingMinutes(cal, snapForward(cal, pred.endDate), lag);
+         Com lag zero, se o relógio já está dentro da jornada diária da
+         sucessora, a ligação nasce exatamente ali: uma entrega às 08:00
+         permite a próxima tarefa às 08:00. Fora da jornada, volta o
+         encaixe normal do calendário. */
+      if (!lag && isWorkingClock(cal, pred.endDate)) {
+        start = pred.endDate;
+        exactHandoff = true;
+      } else {
+        start = addWorkingMinutes(cal, snapForward(cal, pred.endDate), lag);
+      }
       break;
   }
 
   if (finish && !start) start = addWorkingMinutes(cal, finish, -durationMinutes);
-  return start ? snapForward(cal, start) : null;
+  return start ? (exactHandoff ? start : snapForward(cal, start)) : null;
+}
+
+function isWorkingClock(cal, dt) {
+  if (!dt) return false;
+  const min = minutesOfTime(timeOf(dt));
+  return normalize(cal).shifts.some((shift) => min >= shift.from && min < shift.to);
 }
 
 /**
@@ -237,7 +249,9 @@ export function analyseSchedule(tasks, project) {
       continue;
     }
 
-    node.es = snapForward(cal, earliest);
+    node.es = links.length && isWorkingClock(cal, earliest)
+      ? earliest
+      : snapForward(cal, earliest);
     node.ef = addWorkingMinutes(cal, node.es, node.duration);
     node.deadlineMinutes = deadlineOverrun(task, node.ef, cal);
   }

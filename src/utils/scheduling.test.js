@@ -71,6 +71,18 @@ describe('forward pass — encadeamento', () => {
     expect(r.get('B').endDate).toBe(`${TER}T12:00`);
   });
 
+  it('TI sem defasagem preserva o instante de handoff mesmo quando a data cai fora dos dias úteis', () => {
+    const tasks = [
+      task('A', '2026-08-28T08:00', '2026-09-27T08:00', {
+        scheduleMode: SCHEDULE_MODES.MANUAL,
+      }),
+      task('B', '2026-09-28T08:00', '2026-09-28T12:00', { dependsOn: link('A') }),
+    ];
+    const r = schedule(tasks, 'A');
+    expect(r.get('B').startDate).toBe('2026-09-27T08:00');
+    expect(r.get('B').endDate).toBe('2026-09-28T12:00');
+  });
+
   it('II alinha os inícios', () => {
     const tasks = [
       task('A', `${TER}T08:00`, `${TER}T17:00`),
