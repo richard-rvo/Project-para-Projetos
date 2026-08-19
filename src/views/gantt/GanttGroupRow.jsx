@@ -6,7 +6,7 @@ import { formatDateShort } from '../../utils/schedule';
    virtualização não precisar de um caso especial.
    ═══════════════════════════════════════════════════════════════ */
 
-export default function GanttGroupRow({ row, gridWidth, layout }) {
+export default function GanttGroupRow({ row, gridWidth, layout, timelineWidth }) {
   const hasSpan = row.start && row.end;
 
   return (
@@ -19,7 +19,7 @@ export default function GanttGroupRow({ row, gridWidth, layout }) {
         </div>
       </div>
 
-      <div className="gantt-row-time" style={{ width: layout.totalWidth }}>
+      <div className="gantt-row-time" style={{ width: timelineWidth || layout.totalWidth }}>
         {hasSpan && (
           <div
             className="gantt-group-span"

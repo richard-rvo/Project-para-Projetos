@@ -15,7 +15,7 @@ import { MONTH_BAND_H, TICK_BAND_H } from './ganttConfig';
    ═══════════════════════════════════════════════════════════════ */
 
 export default function GanttHeader({
-  columns, gridWidth, layout, zoom, visibleDays,
+  columns, gridWidth, layout, zoom, visibleDays, timelineWidth,
   onResizeColumn, onColumnMenu, onAddColumn, canAddColumn,
 }) {
   /* Ticks só da faixa visível; o resto vira um espaçador. Em zoom de
@@ -24,6 +24,9 @@ export default function GanttHeader({
   const last = visibleDays?.last ?? layout.totalDays;
   const ticks = layout.ticks.filter((t) => t.index + t.span >= first && t.index <= last);
   const padLeft = ticks.length ? ticks[0].index * layout.dayWidth : 0;
+  const headWidth = Math.max(layout.totalWidth, timelineWidth || 0);
+  const upperBands = zoom.tick === 'month' ? layout.years : layout.months;
+  const trailingWidth = Math.max(0, headWidth - layout.totalWidth);
 
   return (
     <div className="gantt-head">
@@ -69,20 +72,25 @@ export default function GanttHeader({
         )}
       </div>
 
-      <div className="gantt-head-time" style={{ width: layout.totalWidth }}>
-        <div className="gantt-band-month" style={{ height: MONTH_BAND_H }}>
-          {layout.months.map((month) => {
-            const width = month.days * layout.dayWidth;
+      <div className="gantt-head-time" style={{ width: headWidth }}>
+        <div
+          className={`gantt-band-month ${zoom.tick === 'month' ? 'is-year-band' : ''}`}
+          style={{ height: MONTH_BAND_H }}
+        >
+          {upperBands.map((band) => {
+            const width = band.days * layout.dayWidth;
             return (
-              <div key={month.key} className="gantt-month" style={{ width }}>
+              <div key={band.key} className="gantt-month" style={{ width }}>
                 {/* Nome inteiro só quando cabe; senão "ago/26"; em faixas
                     muito estreitas, nada — melhor vazio que cortado. */}
-                {width > 110 ? <span>{month.label}</span>
-                  : width > 44 ? <span>{month.shortLabel}</span>
-                    : null}
+                {zoom.tick === 'month'
+                  ? width > 36 ? <span>{band.label}</span> : null
+                  : width > 110 ? <span>{band.label}</span>
+                    : width > 44 ? <span>{band.shortLabel}</span> : null}
               </div>
             );
           })}
+          {trailingWidth > 0 && <div className="gantt-month is-trailing" style={{ width: trailingWidth }} aria-hidden="true" />}
         </div>
 
         <div className="gantt-band-tick" style={{ height: TICK_BAND_H }}>
@@ -100,6 +108,7 @@ export default function GanttHeader({
               <TickLabel tick={tick} zoom={zoom} width={tick.span * layout.dayWidth} />
             </div>
           ))}
+          {trailingWidth > 0 && <div className="gantt-tick is-trailing" style={{ width: trailingWidth }} aria-hidden="true" />}
         </div>
 
         {layout.todayVisible && (
@@ -129,5 +138,6 @@ function TickLabel({ tick, zoom, width }) {
   }
 
   if (width < 44) return null;
-  return <span className="gantt-tick-num">{tick.label}</span>;
+  const monthOnly = tick.label.replace(/\s+de\s+\d{4}$/i, '');
+  return <span className="gantt-tick-num">{monthOnly}</span>;
 }

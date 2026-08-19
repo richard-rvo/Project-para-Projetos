@@ -48,12 +48,13 @@ function newId(existing) {
   return `cal-${i}`;
 }
 
-export default function GanttCalendarMenu({ project, onChange }) {
+export default function GanttCalendarMenu({ project, onChange, triggerLabel = 'Calendários' }) {
   const calendars = calendarsOf(project);
   const defaultId = defaultCalendarOf(project).id;
 
   const [editingId, setEditingId] = useState(defaultId);
   const [newHoliday, setNewHoliday] = useState('');
+  const [shiftDrafts, setShiftDrafts] = useState({});
 
   /* Trocar de projeto pode apagar o calendário que estava aberto. */
   useEffect(() => {
@@ -61,6 +62,10 @@ export default function GanttCalendarMenu({ project, onChange }) {
   }, [calendars, editingId, defaultId]);
 
   const cal = calendars.find((c) => c.id === editingId) || calendars[0];
+
+  useEffect(() => {
+    setShiftDrafts({});
+  }, [project?.id, editingId]);
 
   /** Grava a biblioteca inteira — é ela que o projeto guarda. */
   const commit = (nextCalendars, nextDefaultId = project?.defaultCalendarId || defaultId) =>
@@ -78,20 +83,57 @@ export default function GanttCalendarMenu({ project, onChange }) {
     patch({ workdays: next });
   };
 
+  const shiftFieldKey = (index, key) => `${cal.id}:${index}:${key}`;
+
+  const shiftValue = (shift, index, key) => shiftDrafts[shiftFieldKey(index, key)] ?? shift[key];
+
+  const shiftsWithDraft = (index, key, value) => cal.shifts.map((s, i) => ({
+    from: i === index && key === 'from'
+      ? value.trim()
+      : String(shiftValue(s, i, 'from') || '').trim(),
+    to: i === index && key === 'to'
+      ? value.trim()
+      : String(shiftValue(s, i, 'to') || '').trim(),
+  }));
+
+  const canSaveShifts = (shifts) => shifts.every(
+    (s) => isValidTime(s.from) && isValidTime(s.to) && s.to > s.from,
+  );
+
   const setShift = (index, key, value) => {
-    const shifts = cal.shifts.map((s, i) => (i === index ? { ...s, [key]: value } : s));
+    setShiftDrafts((drafts) => ({ ...drafts, [shiftFieldKey(index, key)]: value }));
+
+    const shifts = shiftsWithDraft(index, key, value);
     /* Turno inválido ou invertido zeraria a jornada e faria toda
-       tarefa deste calendário perder a duração. */
-    if (!isValidTime(value)) return;
-    if (shifts.some((s) => !(s.to > s.from))) return;
+       tarefa deste calendário perder a duração. Enquanto a digitação
+       está incompleta, mantemos só o rascunho em tela. */
+    if (!canSaveShifts(shifts)) return;
     patch({ shifts });
   };
 
-  const addShift = () => patch({ shifts: [...cal.shifts, { from: '18:00', to: '20:00' }] });
+  const settleShift = (index, key, value) => {
+    const shifts = shiftsWithDraft(index, key, value);
+    if (canSaveShifts(shifts)) {
+      patch({ shifts });
+      return;
+    }
+    setShiftDrafts((drafts) => {
+      const next = { ...drafts };
+      delete next[shiftFieldKey(index, key)];
+      return next;
+    });
+  };
+
+  const effectiveShifts = () => cal.shifts.map((s, i) => ({
+    from: String(shiftValue(s, i, 'from') || s.from).trim(),
+    to: String(shiftValue(s, i, 'to') || s.to).trim(),
+  }));
+
+  const addShift = () => patch({ shifts: [...effectiveShifts(), { from: '18:00', to: '20:00' }] });
 
   const removeShift = (index) => {
     if (cal.shifts.length <= 1) return; // mesma razão do dia útil
-    patch({ shifts: cal.shifts.filter((_, i) => i !== index) });
+    patch({ shifts: effectiveShifts().filter((_, i) => i !== index) });
   };
 
   const addHoliday = () => {
@@ -120,7 +162,7 @@ export default function GanttCalendarMenu({ project, onChange }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <ViewBarButton icon={Calendar}>Calendários</ViewBarButton>
+        <ViewBarButton icon={Calendar}>{triggerLabel}</ViewBarButton>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-80">
         {/* ── Biblioteca ─────────────────────────────────────── */}
@@ -226,16 +268,40 @@ export default function GanttCalendarMenu({ project, onChange }) {
           {cal.shifts.map((s, i) => (
             <div key={i} className="flex items-center gap-1.5">
               <input
-                type="time"
-                defaultValue={s.from}
-                onBlur={(e) => setShift(i, 'from', e.target.value)}
+                type="text"
+                inputMode="numeric"
+                maxLength={5}
+                placeholder="08:00"
+                value={shiftValue(s, i, 'from')}
+                onFocus={(e) => e.currentTarget.select()}
+                onChange={(e) => setShift(i, 'from', e.target.value)}
+                onBlur={(e) => settleShift(i, 'from', e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter') return;
+                  e.preventDefault();
+                  settleShift(i, 'from', e.currentTarget.value);
+                  e.currentTarget.blur();
+                }}
+                aria-label={`Início do turno ${i + 1}`}
                 className="h-7 flex-1 rounded-[5px] border border-line bg-surface-0 px-1.5 text-micro tabular-nums text-text-1"
               />
               <span className="text-micro text-text-3">às</span>
               <input
-                type="time"
-                defaultValue={s.to}
-                onBlur={(e) => setShift(i, 'to', e.target.value)}
+                type="text"
+                inputMode="numeric"
+                maxLength={5}
+                placeholder="17:00"
+                value={shiftValue(s, i, 'to')}
+                onFocus={(e) => e.currentTarget.select()}
+                onChange={(e) => setShift(i, 'to', e.target.value)}
+                onBlur={(e) => settleShift(i, 'to', e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter') return;
+                  e.preventDefault();
+                  settleShift(i, 'to', e.currentTarget.value);
+                  e.currentTarget.blur();
+                }}
+                aria-label={`Fim do turno ${i + 1}`}
                 className="h-7 flex-1 rounded-[5px] border border-line bg-surface-0 px-1.5 text-micro tabular-nums text-text-1"
               />
               <button

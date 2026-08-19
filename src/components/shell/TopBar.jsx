@@ -1,6 +1,7 @@
 import React, { useContext, useState } from 'react';
 import { AppContext } from '@/context/AppContext';
 import { cn } from '@/lib/utils';
+import { exportDB } from '@/utils/storage';
 import ProjectDialog from '@/components/ProjectDialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -17,7 +18,13 @@ import {
 import {
   ChevronLeft,
   ChevronsUpDown,
+  CircleAlert,
+  CircleCheck,
+  Download,
+  Loader2,
+  RefreshCw,
   Search,
+  Settings,
   LayoutPanelLeft,
   GanttChartSquare,
   Columns3,
@@ -54,7 +61,7 @@ const GLOBAL_TITLES = {
 export default function TopBar() {
   const {
     state, selectProject, setProjectTab, toggleCommandPalette,
-    updateProject, showToast,
+    updateProject, showToast, navigate, verifyLocalSave,
   } =
     useContext(AppContext);
   const [editOpen, setEditOpen] = useState(false);
@@ -69,6 +76,24 @@ export default function TopBar() {
       updatedAt: new Date().toISOString(),
     });
     showToast('Projeto atualizado', 'success');
+  };
+
+  const verifySave = async () => {
+    try {
+      await verifyLocalSave();
+      showToast('Salvamento local conferido', 'success');
+    } catch (error) {
+      showToast(error?.message || 'Falha ao conferir salvamento', 'error');
+    }
+  };
+
+  const exportBackup = async () => {
+    try {
+      await exportDB();
+      showToast('Backup exportado', 'success');
+    } catch (error) {
+      showToast(`Erro ao exportar: ${error.message}`, 'error');
+    }
   };
 
   return (
@@ -100,6 +125,12 @@ export default function TopBar() {
       )}
 
       <div className="ml-auto flex shrink-0 items-center gap-1.5">
+        <SaveStatus
+          save={state.save}
+          onVerify={verifySave}
+          onExport={exportBackup}
+          onOpenSettings={() => navigate('pageSettings')}
+        />
         <Button
           type="button"
           onClick={() => toggleCommandPalette(true)}
@@ -122,6 +153,105 @@ export default function TopBar() {
         onSave={saveProject}
       />
     </>
+  );
+}
+
+/* ── Salvamento local ─────────────────────────────────────────── */
+
+function formatSavedTime(value) {
+  if (!value) return '';
+  return new Intl.DateTimeFormat('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value));
+}
+
+function SaveStatus({ save, onVerify, onExport, onOpenSettings }) {
+  const status = save?.status || 'saved';
+  const isBusy = status === 'saving' || status === 'checking';
+  const savedTime = formatSavedTime(save?.lastSavedAt);
+
+  const copy = {
+    saving: {
+      label: 'Salvando...',
+      detail: 'Gravando alterações no armazenamento local deste navegador.',
+      Icon: Loader2,
+      tone: 'text-text-2',
+    },
+    checking: {
+      label: 'Verificando...',
+      detail: 'Conferindo os dados em tela com o armazenamento local.',
+      Icon: RefreshCw,
+      tone: 'text-text-2',
+    },
+    error: {
+      label: 'Falha ao salvar',
+      detail: save?.error || 'A última gravação local não foi concluída.',
+      Icon: CircleAlert,
+      tone: 'text-sched-late',
+    },
+    saved: {
+      label: savedTime ? `Salvo ${savedTime}` : 'Salvo localmente',
+      detail: 'As alterações são gravadas automaticamente neste navegador.',
+      Icon: CircleCheck,
+      tone: 'text-sched-done',
+    },
+  }[status] || {
+    label: 'Salvo localmente',
+    detail: 'As alterações são gravadas automaticamente neste navegador.',
+    Icon: CircleCheck,
+    tone: 'text-sched-done',
+  };
+
+  const Icon = copy.Icon;
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant={status === 'error' ? 'destructiveGhost' : 'ghost'}
+          size="sm"
+          className="min-w-8 px-2 md:min-w-[8.75rem] md:justify-start"
+          title={copy.detail}
+          aria-label={copy.label}
+        >
+          <Icon
+            data-icon="inline-start"
+            className={cn(copy.tone, isBusy && 'animate-spin')}
+          />
+          <span className="hidden md:inline">{copy.label}</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-72">
+        <DropdownMenuLabel>
+          <span className="flex items-center gap-2">
+            <Icon className={cn(copy.tone, isBusy && 'animate-spin')} />
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-medium text-text-1">{copy.label}</span>
+              <span className="block text-xs font-normal normal-case leading-snug text-text-2">
+                {copy.detail}
+              </span>
+            </span>
+          </span>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuGroup>
+          <DropdownMenuItem onSelect={() => { void onVerify(); }}>
+            <RefreshCw />
+            Conferir salvamento
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => { void onExport(); }}>
+            <Download />
+            Exportar backup
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={onOpenSettings}>
+            <Settings />
+            Abrir dados e backup
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

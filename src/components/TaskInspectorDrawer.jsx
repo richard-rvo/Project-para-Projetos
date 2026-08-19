@@ -436,10 +436,10 @@ export default function TaskInspectorDrawer() {
 
           <Section label="Predecessoras" icon={Link2}>
             {links.length === 0 ? (
-              <p className="text-small text-text-3">
-                Nenhuma. Escolha uma tarefa abaixo, ou digite na coluna Pred. do
-                Gantt (ex.: <span className="tabular-nums">2FS+3</span>).
-              </p>
+	              <p className="text-small text-text-3">
+	                Nenhuma. Escolha uma tarefa abaixo, ou digite na coluna Pred. do
+	                Gantt (ex.: <span className="tabular-nums">2+3; 4II</span>).
+	              </p>
             ) : (
               <ul className="flex flex-col gap-1.5">
                 {links.map((dep, i) => {
@@ -462,7 +462,9 @@ export default function TaskInspectorDrawer() {
                         size="sm"
                       >
                         {DEPENDENCY_TYPES.map((t) => (
-                          <SelectItem key={t.id} value={t.id}>{t.id}</SelectItem>
+                          <SelectItem key={t.id} value={t.id}>
+                            {t.code} · {t.label}
+                          </SelectItem>
                         ))}
                       </InspectorSelect>
                       <Input
@@ -498,7 +500,7 @@ export default function TaskInspectorDrawer() {
                   if (!value) return;
                   setLinks([...links, { id: value, type: 'FS', lag: 0 }]);
                 }}
-                placeholder="Adicionar predecessora…"
+                placeholder="Adicionar predecessora..."
                 className="mt-2"
               >
                 {candidates.map(({ task: cand, row }) => (

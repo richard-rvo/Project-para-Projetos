@@ -15,6 +15,12 @@ const initialState = {
   activePage: 'pagePortfolio',    // global page when no project workspace is open
   theme: localStorage.getItem('projeta_theme') || 'light',
   toast: null,
+  save: {
+    status: 'saved', // 'saved' | 'saving' | 'checking' | 'error'
+    pending: 0,
+    lastSavedAt: null,
+    error: null,
+  },
 
   /* Shell: o rail fica em 64px e sobrepõe ao passar o mouse. Fixá-lo
      reserva a largura de verdade no layout. */
@@ -53,6 +59,12 @@ export const ACTIONS = {
   REDO: 'REDO',
   SET_INSPECTOR_TASK: 'SET_INSPECTOR_TASK',
   TOGGLE_COMMAND_PALETTE: 'TOGGLE_COMMAND_PALETTE',
+  SAVE_STARTED: 'SAVE_STARTED',
+  SAVE_SUCCEEDED: 'SAVE_SUCCEEDED',
+  SAVE_FAILED: 'SAVE_FAILED',
+  SAVE_CHECK_STARTED: 'SAVE_CHECK_STARTED',
+  SAVE_CHECK_SUCCEEDED: 'SAVE_CHECK_SUCCEEDED',
+  SAVE_CHECK_FAILED: 'SAVE_CHECK_FAILED',
 };
 
 /* ── reducer ────────────────────────────────────────────────── */
@@ -173,6 +185,67 @@ function reducer(state, action) {
       return { ...state, inspectorTaskId: action.payload };
     case ACTIONS.TOGGLE_COMMAND_PALETTE:
       return { ...state, isCommandPaletteOpen: action.payload !== undefined ? action.payload : !state.isCommandPaletteOpen };
+    case ACTIONS.SAVE_STARTED:
+      return {
+        ...state,
+        save: {
+          ...state.save,
+          status: 'saving',
+          pending: state.save.pending + 1,
+          error: null,
+        },
+      };
+    case ACTIONS.SAVE_SUCCEEDED: {
+      const pending = Math.max(0, state.save.pending - 1);
+      return {
+        ...state,
+        save: {
+          status: pending > 0 ? 'saving' : 'saved',
+          pending,
+          lastSavedAt: action.payload.savedAt,
+          error: null,
+        },
+      };
+    }
+    case ACTIONS.SAVE_FAILED:
+      return {
+        ...state,
+        save: {
+          ...state.save,
+          status: 'error',
+          pending: Math.max(0, state.save.pending - 1),
+          error: action.payload.error,
+        },
+      };
+    case ACTIONS.SAVE_CHECK_STARTED:
+      return {
+        ...state,
+        save: {
+          ...state.save,
+          status: 'checking',
+          error: null,
+        },
+      };
+    case ACTIONS.SAVE_CHECK_SUCCEEDED:
+      return {
+        ...state,
+        save: {
+          status: 'saved',
+          pending: 0,
+          lastSavedAt: action.payload.savedAt,
+          error: null,
+        },
+      };
+    case ACTIONS.SAVE_CHECK_FAILED:
+      return {
+        ...state,
+        save: {
+          ...state.save,
+          status: 'error',
+          pending: 0,
+          error: action.payload.error,
+        },
+      };
     default:
       return state;
   }
@@ -180,6 +253,18 @@ function reducer(state, action) {
 
 /* ── context ────────────────────────────────────────────────── */
 export const AppContext = createContext();
+
+function saveErrorMessage(error) {
+  return error?.message || 'Não foi possível gravar no armazenamento local.';
+}
+
+function orderById(list) {
+  return [...list].sort((a, b) => String(a.id).localeCompare(String(b.id)));
+}
+
+function sameCollection(a, b) {
+  return JSON.stringify(orderById(a)) === JSON.stringify(orderById(b));
+}
 
 export function AppProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState);
@@ -225,25 +310,90 @@ export function AppProvider({ children }) {
     }
   }, [state.toast]);
 
+  useEffect(() => {
+    if (state.save.pending <= 0) return undefined;
+    const warnBeforeClosing = (event) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warnBeforeClosing);
+    return () => window.removeEventListener('beforeunload', warnBeforeClosing);
+  }, [state.save.pending]);
+
+  const withPersistence = useCallback(async (operation) => {
+    dispatch({ type: ACTIONS.SAVE_STARTED });
+    try {
+      const result = await operation();
+      dispatch({
+        type: ACTIONS.SAVE_SUCCEEDED,
+        payload: { savedAt: new Date().toISOString() },
+      });
+      return result;
+    } catch (error) {
+      dispatch({
+        type: ACTIONS.SAVE_FAILED,
+        payload: { error: saveErrorMessage(error) },
+      });
+      throw error;
+    }
+  }, []);
+
+  const confirmLocalSave = useCallback(() => {
+    dispatch({
+      type: ACTIONS.SAVE_CHECK_SUCCEEDED,
+      payload: { savedAt: new Date().toISOString() },
+    });
+  }, []);
+
+  const reportLocalSaveError = useCallback((error) => {
+    dispatch({
+      type: ACTIONS.SAVE_CHECK_FAILED,
+      payload: { error: saveErrorMessage(error) },
+    });
+  }, []);
+
+  const verifyLocalSave = useCallback(async () => {
+    dispatch({ type: ACTIONS.SAVE_CHECK_STARTED });
+    try {
+      const [projects, tasks, anomalies] = await Promise.all([
+        getAllProjects(),
+        getAllTasks(),
+        getAllAnomalies(),
+      ]);
+      if (
+        !sameCollection(projects, state.projects) ||
+        !sameCollection(tasks, state.tasks) ||
+        !sameCollection(anomalies, state.anomalies)
+      ) {
+        throw new Error('Os dados em tela e o armazenamento local não conferem.');
+      }
+      confirmLocalSave();
+      return true;
+    } catch (error) {
+      reportLocalSaveError(error);
+      throw error;
+    }
+  }, [confirmLocalSave, reportLocalSaveError, state.anomalies, state.projects, state.tasks]);
+
   /* ── helper actions (persist + dispatch) ─────────────────── */
   const addProject = useCallback(async (project) => {
-    const id = await dbSaveProject(project);
+    const id = await withPersistence(() => dbSaveProject(project));
     const saved = { ...project, id };
     dispatch({ type: ACTIONS.ADD_PROJECT, payload: saved });
     dispatch({ type: ACTIONS.SET_TOAST, payload: { message: 'Projeto criado!', type: 'success' } });
     return saved;
-  }, []);
+  }, [withPersistence]);
 
   const updateProject = useCallback(async (project) => {
-    await dbSaveProject(project);
+    await withPersistence(() => dbSaveProject(project));
     dispatch({ type: ACTIONS.UPDATE_PROJECT, payload: project });
-  }, []);
+  }, [withPersistence]);
 
   const removeProject = useCallback(async (id) => {
-    await dbDeleteProject(id);
+    await withPersistence(() => dbDeleteProject(id));
     dispatch({ type: ACTIONS.REMOVE_PROJECT, payload: id });
     dispatch({ type: ACTIONS.SET_TOAST, payload: { message: 'Projeto removido', type: 'info' } });
-  }, []);
+  }, [withPersistence]);
 
   /* ── Tarefas + histórico de desfazer ──────────────────────────
      O histórico guarda DADOS, não funções: cada entrada carrega o
@@ -256,23 +406,25 @@ export function AppProvider({ children }) {
      undo/redo não entram no próprio histórico.                     */
 
   const commitUpsert = useCallback(async (list) => {
-    for (const t of list) await dbSaveTask(t);
+    await withPersistence(async () => {
+      for (const t of list) await dbSaveTask(t);
+    });
     dispatch({ type: ACTIONS.UPDATE_TASKS_BATCH, payload: list });
-  }, []);
+  }, [withPersistence]);
 
   const commitInsert = useCallback(async (list) => {
-    for (const t of list) {
-      await dbSaveTask(t);
-      dispatch({ type: ACTIONS.ADD_TASK, payload: t });
-    }
-  }, []);
+    await withPersistence(async () => {
+      for (const t of list) await dbSaveTask(t);
+    });
+    for (const t of list) dispatch({ type: ACTIONS.ADD_TASK, payload: t });
+  }, [withPersistence]);
 
   const commitDelete = useCallback(async (ids) => {
-    for (const id of ids) {
-      await dbDeleteTask(id);
-      dispatch({ type: ACTIONS.REMOVE_TASK, payload: id });
-    }
-  }, []);
+    await withPersistence(async () => {
+      for (const id of ids) await dbDeleteTask(id);
+    });
+    for (const id of ids) dispatch({ type: ACTIONS.REMOVE_TASK, payload: id });
+  }, [withPersistence]);
 
   const record = useCallback((entry) => {
     dispatch({ type: ACTIONS.PUSH_HISTORY, payload: entry });
@@ -334,23 +486,23 @@ export function AppProvider({ children }) {
   }, [commitInsert, commitDelete, commitUpsert]);
 
   const addAnomaly = useCallback(async (anomaly) => {
-    const id = await dbSaveAnomaly(anomaly);
+    const id = await withPersistence(() => dbSaveAnomaly(anomaly));
     const saved = { ...anomaly, id };
     dispatch({ type: ACTIONS.ADD_ANOMALY, payload: saved });
     dispatch({ type: ACTIONS.SET_TOAST, payload: { message: 'Anomalia registrada!', type: 'success' } });
     return saved;
-  }, []);
+  }, [withPersistence]);
 
   const updateAnomaly = useCallback(async (anomaly) => {
-    await dbSaveAnomaly(anomaly);
+    await withPersistence(() => dbSaveAnomaly(anomaly));
     dispatch({ type: ACTIONS.UPDATE_ANOMALY, payload: anomaly });
     dispatch({ type: ACTIONS.SET_TOAST, payload: { message: 'Anomalia atualizada!', type: 'success' } });
-  }, []);
+  }, [withPersistence]);
 
   const removeAnomaly = useCallback(async (id) => {
-    await dbDeleteAnomaly(id);
+    await withPersistence(() => dbDeleteAnomaly(id));
     dispatch({ type: ACTIONS.REMOVE_ANOMALY, payload: id });
-  }, []);
+  }, [withPersistence]);
 
   const navigate = useCallback((page) => {
     dispatch({ type: ACTIONS.SET_ACTIVE_PAGE, payload: page });
@@ -417,6 +569,9 @@ export function AppProvider({ children }) {
     toggleCommandPalette,
     toggleRailPinned,
     setTheme,
+    verifyLocalSave,
+    confirmLocalSave,
+    reportLocalSaveError,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

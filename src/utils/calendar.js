@@ -211,5 +211,7 @@ export function isValidISODate(value) {
 
 /** Valida 'HH:mm' digitado no editor de turnos. */
 export function isValidTime(value) {
-  return /^([01]\d|2[0-4]):[0-5]\d$/.test(value);
+  const match = /^([01]\d|2[0-4]):([0-5]\d)$/.exec(String(value || '').trim());
+  if (!match) return false;
+  return match[1] !== '24' || match[2] === '00';
 }

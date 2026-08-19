@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { readDependencies } from '../../utils/dependencies';
 import {
-  Indent, Outdent, Copy, ClipboardPaste, CopyPlus, Trash2, Link2Off, PenLine,
+  Indent, Outdent, Copy, ClipboardPaste, CopyPlus, Trash2, Link2, Link2Off, PenLine,
 } from 'lucide-react';
 
 /* ═══════════════════════════════════════════════════════════════
@@ -50,6 +50,20 @@ export default function GanttContextMenu({ data, onClose, actions, selectionCoun
     { icon: CopyPlus, label: 'Duplicar', hint: '⌘D', onSelect: run(actions.duplicate) },
     { separator: true },
     {
+      icon: Link2,
+      label: 'Vincular selecionadas',
+      onSelect: run(actions.linkSelection),
+      disabled: selectionCount < 2,
+      hidden: !plural,
+    },
+    {
+      icon: Link2Off,
+      label: 'Remover vínculos da seleção',
+      onSelect: run(actions.unlinkSelection),
+      disabled: !actions.selectionLinkCount,
+      hidden: !plural,
+    },
+    {
       icon: Link2Off,
       label: 'Remover predecessoras',
       onSelect: run(() => actions.clearDependencies(data.task)),
@@ -67,7 +81,7 @@ export default function GanttContextMenu({ data, onClose, actions, selectionCoun
 
   /* Vira para dentro da janela quando abre perto da borda. */
   const MENU_W = 232;
-  const MENU_H = 300;
+  const MENU_H = plural ? 360 : 300;
   const left = Math.min(data.x, window.innerWidth - MENU_W - 8);
   const top = Math.min(data.y, window.innerHeight - MENU_H - 8);
 

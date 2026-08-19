@@ -23,10 +23,13 @@ import { SUBDAY_MIN_DAY_W, MIN_BAR_W } from './ganttConfig';
 
 const PAD_BEFORE = 7;
 const PAD_AFTER = 21;
-const MIN_SPAN_DAYS = 120;
+export const GANTT_MIN_SPAN_DAYS = 120;
 
-export function useGanttLayout(tasks, dayWidth, tick, calendarFor) {
+export function useGanttLayout(tasks, dayWidth, tick, calendarFor, options = {}) {
   return useMemo(() => {
+    const padBefore = options.padBefore ?? PAD_BEFORE;
+    const padAfter = options.padAfter ?? PAD_AFTER;
+    const minSpanDays = options.minSpanDays ?? GANTT_MIN_SPAN_DAYS;
     const todayStr = today();
 
     const starts = tasks.map((t) => viewStart(t)).filter(Boolean).sort();
@@ -35,14 +38,16 @@ export function useGanttLayout(tasks, dayWidth, tick, calendarFor) {
     const firstDate = dateOf(starts[0]) || todayStr;
     const lastDate = dateOf(ends[ends.length - 1]) || addDays(todayStr, 30);
 
-    const rangeStart = addDays(firstDate, -PAD_BEFORE);
-    let totalDays = daysBetween(rangeStart, addDays(lastDate, PAD_AFTER));
-    if (totalDays < MIN_SPAN_DAYS) totalDays = MIN_SPAN_DAYS;
+    const rangeStart = addDays(firstDate, -padBefore);
+    let totalDays = daysBetween(rangeStart, addDays(lastDate, padAfter));
+    if (totalDays < minSpanDays) totalDays = minSpanDays;
 
     /* Dias e faixas de mês numa passada só */
     const days = [];
     const months = [];
+    const years = [];
     let currentMonth = null;
+    let currentYear = null;
 
     for (let i = 0; i < totalDays; i++) {
       const date = addDays(rangeStart, i);
@@ -65,6 +70,18 @@ export function useGanttLayout(tasks, dayWidth, tick, calendarFor) {
         months.push(currentMonth);
       }
       currentMonth.days++;
+
+      const yearKey = date.slice(0, 4);
+      if (!currentYear || currentYear.key !== yearKey) {
+        currentYear = {
+          key: yearKey,
+          label: yearKey,
+          startIndex: i,
+          days: 0,
+        };
+        years.push(currentYear);
+      }
+      currentYear.days++;
     }
 
     /* Marcações do eixo conforme o zoom: um tick por dia é ilegível
@@ -132,6 +149,7 @@ export function useGanttLayout(tasks, dayWidth, tick, calendarFor) {
       totalWidth,
       days,
       months,
+      years,
       ticks,
       todayIndex,
       todayVisible: todayIndex >= 0 && todayIndex < totalDays,
@@ -143,5 +161,5 @@ export function useGanttLayout(tasks, dayWidth, tick, calendarFor) {
       /** Pixel → dia, para arrastar e soltar. */
       dateAtX: (x) => addDays(rangeStart, Math.floor(x / dayWidth)),
     };
-  }, [tasks, dayWidth, tick, calendarFor]);
+  }, [tasks, dayWidth, tick, calendarFor, options.padBefore, options.padAfter, options.minSpanDays]);
 }

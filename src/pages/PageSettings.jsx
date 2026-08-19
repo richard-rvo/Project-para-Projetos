@@ -9,6 +9,7 @@ import {
 } from '../utils/storage';
 import {
   Download, Upload, Trash2, Database, Palette, Info, Sun, Moon,
+  RefreshCw,
 } from 'lucide-react';
 
 /* ═══════════════════════════════════════════════════════════════
@@ -26,7 +27,10 @@ const SECTIONS = [
 ];
 
 export default function PageSettings() {
-  const { state, dispatch, ACTIONS, showToast, setTheme } = useContext(AppContext);
+  const {
+    state, dispatch, ACTIONS, showToast, setTheme,
+    verifyLocalSave, confirmLocalSave, reportLocalSaveError,
+  } = useContext(AppContext);
   const [section, setSection] = useState('appearance');
   const [confirmClear, setConfirmClear] = useState(false);
   const fileRef = useRef(null);
@@ -45,8 +49,10 @@ export default function PageSettings() {
       const ok = await importDB(ev.target.result);
       if (ok) {
         await reloadFromDb();
+        confirmLocalSave();
         showToast('Dados restaurados', 'success');
       } else {
+        reportLocalSaveError(new Error('Falha ao importar o backup.'));
         showToast('Falha ao importar o backup', 'error');
       }
     };
@@ -96,6 +102,31 @@ export default function PageSettings() {
 
         {section === 'data' && (
           <>
+            <Panel
+              title="Salvamento"
+              hint="Projetos, tarefas e anomalias são gravados automaticamente neste navegador."
+            >
+              <Row
+                label="Estado local"
+                description="Confere se os dados exibidos estão iguais aos dados guardados no IndexedDB."
+              >
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    try {
+                      await verifyLocalSave();
+                      showToast('Salvamento local conferido', 'success');
+                    } catch (error) {
+                      showToast(error?.message || 'Falha ao conferir salvamento', 'error');
+                    }
+                  }}
+                >
+                  <RefreshCw data-icon="inline-start" />
+                  Conferir
+                </Button>
+              </Row>
+            </Panel>
+
             <Panel
               title="Backup"
               hint="Tudo é gravado apenas neste navegador. Sem backup, limpar os dados do site apaga os projetos."
@@ -153,7 +184,7 @@ export default function PageSettings() {
               <dt className="text-text-3">Produto</dt>
               <dd className="text-text-1">Projeta — gestão de projetos</dd>
               <dt className="text-text-3">Armazenamento</dt>
-              <dd className="text-text-1">IndexedDB local (v3), sem servidor</dd>
+              <dd className="text-text-1">IndexedDB local (v5), sem servidor</dd>
               <dt className="text-text-3">Projetos</dt>
               <dd className="tabular-nums text-text-1">{state.projects.length}</dd>
               <dt className="text-text-3">Tarefas</dt>
@@ -175,6 +206,7 @@ export default function PageSettings() {
         onConfirm={async () => {
           await clearAllData();
           await reloadFromDb();
+          confirmLocalSave();
           setConfirmClear(false);
           showToast('Todos os dados foram removidos', 'info');
         }}

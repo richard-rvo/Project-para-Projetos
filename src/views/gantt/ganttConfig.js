@@ -75,12 +75,47 @@ export const TICK_BAND_H = 28;
 export const HEADER_H = MONTH_BAND_H + TICK_BAND_H;
 
 export const MIN_GRID_W = 280;
-export const MAX_GRID_W = 900;
-export const DEFAULT_GRID_W = 660;
+export const MAX_GRID_W = 1200;
+export const DEFAULT_GRID_W = 920;
 export const SPLITTER_W = 5;
 
-/** Espelha --gantt-row-h de tokens.css. */
+/** Altura padrão da linha do Gantt. Densidades menores derivam dela. */
 export const ROW_H = 40;
+
+export const DEFAULT_GANTT_DENSITY = 'comfortable';
+export const GANTT_DENSITIES = [
+  {
+    id: 'comfortable',
+    label: 'Normal',
+    rowH: 40,
+    textBody: '0.8125rem',
+    textSmall: '0.75rem',
+    textMicro: '0.6875rem',
+    cellPadding: 8,
+  },
+  {
+    id: 'compact',
+    label: 'Compacto',
+    rowH: 32,
+    textBody: '0.75rem',
+    textSmall: '0.6875rem',
+    textMicro: '0.625rem',
+    cellPadding: 6,
+  },
+  {
+    id: 'condensed',
+    label: 'Mini',
+    rowH: 26,
+    textBody: '0.6875rem',
+    textSmall: '0.625rem',
+    textMicro: '0.5625rem',
+    cellPadding: 5,
+  },
+];
+
+export function ganttDensityById(id) {
+  return GANTT_DENSITIES.find((density) => density.id === id) || GANTT_DENSITIES[0];
+}
 
 /* ── Estados ───────────────────────────────────────────────────── */
 
@@ -124,7 +159,7 @@ export const COLUMNS = [
     id: 'name',
     label: 'Nome da tarefa',
     field: 'name',
-    width: 260,
+    width: 380,
     grow: true,
     align: 'left',
     editable: true,
@@ -205,8 +240,8 @@ export const COLUMNS = [
     id: 'dependencies',
     label: 'Pred.',
     field: 'dependsOn',
-    width: 66,
-    align: 'center',
+    width: 116,
+    align: 'left',
     editable: true,
     type: 'text',
     render: (t, ctx) => ctx.predecessorLabel(t.dependsOn),
@@ -350,4 +385,4 @@ export function saveColumnLayout(projectId, layout) {
 }
 
 export const MIN_COL_W = 44;
-export const MAX_COL_W = 420;
+export const MAX_COL_W = 640;

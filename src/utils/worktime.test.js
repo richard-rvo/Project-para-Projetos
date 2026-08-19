@@ -59,16 +59,16 @@ describe('snapBackward — o instante como TÉRMINO', () => {
     expect(snapBackward(PADRAO, `${SEG}T17:00`)).toBe(`${SEG}T17:00`);
   });
 
-  it('a abertura não termina nada: volta ao dia útil anterior', () => {
-    expect(snapBackward(PADRAO, '2026-08-11T08:00')).toBe(`${SEG}T17:00`);
+  it('a abertura também é um término válido', () => {
+    expect(snapBackward(PADRAO, '2026-08-11T08:00')).toBe('2026-08-11T08:00');
   });
 
   it('recua do almoço para o fim do turno da manhã', () => {
     expect(snapBackward(PADRAO, `${SEG}T12:30`)).toBe(`${SEG}T12:00`);
   });
 
-  it('volta por cima do fim de semana', () => {
-    expect(snapBackward(PADRAO, '2026-08-17T08:00')).toBe(`${SEX}T17:00`);
+  it('mantém a abertura da segunda como término válido', () => {
+    expect(snapBackward(PADRAO, '2026-08-17T08:00')).toBe('2026-08-17T08:00');
   });
 });
 

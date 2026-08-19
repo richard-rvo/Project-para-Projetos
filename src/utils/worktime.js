@@ -23,14 +23,16 @@ import { addDays, dateOf, timeOf, joinDateTime, dayOfWeek } from './schedule';
    `a < b` e todo `.sort()` do app seguem valendo, e continua sem
    carregar fuso horário junto do dado.
 
-   Um turno [08:00, 17:00] é meio-aberto conforme o papel do instante:
+   Um turno [08:00, 17:00] é meio-aberto para INÍCIO, e fechado para
+   TÉRMINO:
 
      · INÍCIO é [08:00, 17:00)  — 08:00 inicia; 17:00 já é o dia seguinte
-     · TÉRMINO é (08:00, 17:00] — 17:00 termina; 08:00 é o dia anterior
+     · TÉRMINO é [08:00, 17:00] — 08:00 pode ser entrega; 17:00 também
 
    É essa assimetria que faz o encadeamento TI funcionar sem gambiarra:
-   a predecessora termina sexta 17:00, e snapForward daquele mesmo
-   instante devolve segunda 08:00. O `+1 dia` que existia no FS some.
+   a predecessora termina 08:00, e a sucessora pode pegar 08:00; se
+   termina sexta 17:00, snapForward devolve segunda 08:00. O `+1 dia`
+   que existia no FS some.
    ═══════════════════════════════════════════════════════════════ */
 
 const MAX_DAY_STEPS = 4000; // trava de laço, no espírito de calendar.js
@@ -178,7 +180,7 @@ export function snapBackward(cal, dt) {
     for (let j = shifts.length - 1; j >= 0; j--) {
       const shift = shifts[j];
       if (min > shift.to) return instantAt(date, shift.to);
-      if (min > shift.from) return instantAt(date, min);
+      if (min >= shift.from) return instantAt(date, min);
     }
     date = addDays(date, -1);
     min = 1440;

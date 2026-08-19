@@ -30,6 +30,13 @@ function tickPoints(points, totalDays, count) {
   return selected;
 }
 
+function axisTickPoints(points, totalDays, detailed) {
+  if (!detailed) return tickPoints(points, totalDays, 3);
+  if (totalDays <= 14) return points;
+  if (totalDays <= 45) return tickPoints(points, totalDays, 9);
+  return tickPoints(points, totalDays, 8);
+}
+
 function pathFor(points, key, x, y) {
   return points
     .filter((point) => point[key] !== null)
@@ -61,7 +68,7 @@ export default function CurveChart({
     const plannedPoints = points.filter((point) => point.planned !== null);
     const actualPoints = points.filter((point) => point.actual !== null);
     const comparable = points.filter((point) => point.planned !== null && point.actual !== null);
-    const xTicks = tickPoints(points, curve.totalDays, detailed ? 7 : 3);
+    const xTicks = axisTickPoints(points, curve.totalDays, detailed);
     const markers = tickPoints(points, curve.totalDays, detailed ? 9 : 4);
 
     const band = comparable.length >= 2
@@ -418,7 +425,7 @@ export default function CurveChart({
           {activeDelta !== null && (
             <TooltipRow
               label="Desvio"
-              value={`${activeDelta > 0 ? '+' : ''}${Math.round(activeDelta)} p.p.`}
+              value={`${activeDelta > 0 ? '+' : ''}${Math.round(activeDelta)}%`}
               tone={activeDelta < 0 ? 'late' : 'done'}
             />
           )}
@@ -445,7 +452,7 @@ export default function CurveChart({
         </span>
         {detailed && (
           <span className={cn('ml-auto font-medium tabular-nums', behind ? 'text-sched-late' : 'text-sched-done')}>
-            Desvio atual {curve.deviation > 0 ? '+' : ''}{Math.round(curve.deviation)} p.p.
+            Desvio atual {curve.deviation > 0 ? '+' : ''}{Math.round(curve.deviation)}%
           </span>
         )}
       </div>

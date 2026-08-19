@@ -49,7 +49,7 @@ function edgesOf(task, layout) {
  *
  * O cotovelo simples só serve quando a seta sai pela direita e entra
  * pela esquerda com espaço à frente — o caso TI comum. Todos os
- * outros (II, TT, TS, ou TI apertado) precisam do contorno, que passa
+ * outros (II, TT, IT, ou TI apertado) precisam do contorno, que passa
  * pela faixa entre as linhas e por isso funciona para qualquer
  * combinação de pontas.
  */
@@ -100,11 +100,13 @@ export default function GanttDependencies({
   tasks,
   layout,
   rowH,
+  timelineWidth,
   criticalIds,
   showCriticalPath,
   selectedId,
   visibleRange,
   rowIndexById,
+  rowCount,
 }) {
   const links = useMemo(() => {
     /* Com filtro ou agrupamento, a posição visual da linha deixa de
@@ -165,8 +167,8 @@ export default function GanttDependencies({
   return (
     <svg
       className="gantt-deps"
-      width={layout.totalWidth}
-      height={(rowIndexById ? rowIndexById.size + 1 : tasks.length) * rowH}
+      width={timelineWidth || layout.totalWidth}
+      height={(rowCount || rowIndexById?.size || tasks.length) * rowH}
       aria-hidden="true"
     >
       <defs>

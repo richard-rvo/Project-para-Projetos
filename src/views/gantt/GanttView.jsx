@@ -3,20 +3,22 @@ import React, {
 } from 'react';
 import { AppContext } from '../../context/AppContext';
 import ViewBar, {
-  ViewBarButton, ViewBarDivider, ViewBarSegments,
+  ViewBarButton, ViewBarSegments,
 } from '../../components/shell/ViewBar';
 import {
   DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem,
-  DropdownMenuGroup, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenuGroup, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem,
+  DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import * as XLSX from 'xlsx';
 import {
-  AlertCircle, Download, Plus, Target, Undo2, Redo2, Hourglass, Maximize2, Tag,
+  AlertCircle, Download, FileText, FolderTree, Link2, Link2Off, Plus, Target,
+  Undo2, Redo2, Maximize2,
 } from 'lucide-react';
 
 import {
-  addDays, daysBetween, durationDays, today, formatDateShort,
+  addDays, daysBetween, durationDays, today, dateOf, formatDateShort,
   formatDateTimeShort, clampProgress, isManual, SCHEDULE_MODES, CONSTRAINT_NONE,
 } from '../../utils/schedule';
 import {
@@ -33,7 +35,8 @@ import {
   ROW_H, HEADER_H,
   MIN_DAY_W, MAX_DAY_W, tickForDayWidth, nearestZoomId,
   loadColumnLayout, saveColumnLayout, MIN_COL_W, MAX_COL_W,
-  SUBDAY_MIN_DAY_W, DRAG_SNAP_MINUTES,
+  SUBDAY_MIN_DAY_W, DRAG_SNAP_MINUTES, STAGE_MODIFIER,
+  GANTT_DENSITIES, DEFAULT_GANTT_DENSITY, ganttDensityById,
 } from './ganttConfig';
 import {
   useProjectTasks, useAutoScheduling, useScheduleAnalysis,
@@ -42,7 +45,7 @@ import {
 import {
   readDependencies, parseDependencyInput, formatDependency, wouldCreateCycle,
 } from '../../utils/dependencies';
-import { useGanttLayout } from './useGanttLayout';
+import { GANTT_MIN_SPAN_DAYS, useGanttLayout } from './useGanttLayout';
 import { useGanttKeyboard } from './useGanttKeyboard';
 import {
   useScrollViewport, useVirtualRows, useVirtualDays, useZoomOnWheel,
@@ -60,9 +63,92 @@ import GanttMinimap from './GanttMinimap';
 import { useGanttRows, EMPTY_FILTERS } from './useGanttFilters';
 
 const EMPTY_SET = new Set();
+const PRINT_TIMELINE_TARGET_W = {
+  landscape: 560,
+  portrait: 300,
+};
+const PRINT_TABLE_W = {
+  landscape: 480,
+  portrait: 420,
+};
+const PRINT_MIN_DAY_W = 3.5;
+const PRINT_MAX_DAY_W = 24;
+const PRINT_MIN_SPAN_DAYS = 14;
+const PRINT_PAD_BEFORE = 2;
+const PRINT_PAD_AFTER = 5;
+const MIN_VISIBLE_TIMELINE_PAD_DAYS = 14;
+const SLOW_EDIT_CLICK_DELAY_MS = 450;
+const DOUBLE_CLICK_GUARD_MS = 260;
+const DENSITY_KEY = 'projeta_gantt_density';
+const PROJECT_SUMMARY_KEY = 'projeta_gantt_project_summary';
+const PROJECT_SUMMARY_ID = '__project-summary__';
 
 function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+
+function isPastedMetadataCell(value) {
+  return (
+    /^\d+$/.test(value) ||
+    /^\d+(?:[,.]\d+)?%$/.test(value) ||
+    /^\d+(?:[,.]\d+)?\s*[dhm]$/i.test(value) ||
+    /^\d+\s*(?:TI|II|TT|IT|FS|SS|FF|SF)(?:\s*[+-]\s*\d+(?:[,.]\d+)?\s*[dhm]?)?$/i.test(value) ||
+    /^\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?/.test(value) ||
+    /^\d{4}-\d{2}-\d{2}/.test(value)
+  );
+}
+
+function cleanPastedTaskName(line) {
+  const cells = line.split('\t').map((cell) => cell.trim()).filter(Boolean);
+  const value = cells.length > 1
+    ? cells.find((cell) => !isPastedMetadataCell(cell)) || cells[0]
+    : line.trim();
+  return value.replace(/^(?:[-*]|\d+[.)])\s+/, '').trim();
+}
+
+function taskNamesFromPaste(text) {
+  return String(text || '')
+    .split(/\r?\n/)
+    .map(cleanPastedTaskName)
+    .filter(Boolean);
+}
+
+function buildProjectSummaryTask(project, tasks, calendarFor) {
+  const source = tasks.filter((task) => (task.indentLevel || 0) === 0);
+  const children = source.length ? source : tasks;
+  const starts = children.map((task) => viewStart(task)).filter(Boolean).sort();
+  const ends = children.map((task) => viewEnd(task)).filter(Boolean).sort();
+
+  let totalDuration = 0;
+  let earned = 0;
+  children.forEach((task) => {
+    const duration = workingMinutesBetween(calendarFor(task), viewStart(task), viewEnd(task));
+    totalDuration += duration;
+    earned += duration * viewProgress(task);
+  });
+
+  const progress = totalDuration > 0
+    ? Math.round(earned / totalDuration)
+    : children.length
+      ? Math.round(children.reduce((sum, task) => sum + viewProgress(task), 0) / children.length)
+      : 0;
+  const startDate = starts[0] || null;
+  const endDate = ends[ends.length - 1] || null;
+
+  return {
+    id: PROJECT_SUMMARY_ID,
+    projectId: project?.id,
+    name: project?.name || 'Projeto',
+    startDate,
+    endDate,
+    progress,
+    dependsOn: [],
+    indentLevel: 0,
+    hasChildren: children.length > 0,
+    isSummary: true,
+    isProjectSummary: true,
+    rollup: { startDate, endDate, progress },
+  };
 }
 
 export default function GanttView() {
@@ -71,11 +157,15 @@ export default function GanttView() {
     undo, redo, canUndo, canRedo, openTaskInspector,
   } = useContext(AppContext);
 
-  const rowH = ROW_H;
-
   /* ── Estado da view ─────────────────────────────────────────── */
   const [dayWidth, setDayWidth] = useState(32);
   const [gridWidth, setGridWidth] = useState(DEFAULT_GRID_W);
+  const [densityId, setDensityId] = useState(() => (
+    localStorage.getItem(DENSITY_KEY) || DEFAULT_GANTT_DENSITY
+  ));
+  const [showProjectSummary, setShowProjectSummary] = useState(() => (
+    localStorage.getItem(PROJECT_SUMMARY_KEY) !== 'false'
+  ));
   const [layoutCols, setLayoutCols] = useState(() => loadColumnLayout(null));
   const [columnMenu, setColumnMenu] = useState(null);
   const [showBarLabels, setShowBarLabels] = useState(true);
@@ -85,6 +175,7 @@ export default function GanttView() {
   const [showBaseline, setShowBaseline] = useState(true);
   const [showCriticalPath, setShowCriticalPath] = useState(false);
   const [showSlack, setShowSlack] = useState(false);
+  const [printOrientation, setPrintOrientation] = useState('landscape');
   const [filters, setFilters] = useState(EMPTY_FILTERS);
 
   const [selectedIds, setSelectedIds] = useState(() => new Set());
@@ -93,7 +184,7 @@ export default function GanttView() {
   const [editValue, setEditValue] = useState('');
   const [dragPreview, setDragPreview] = useState(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
-  const [draggedIndex, setDraggedIndex] = useState(null);
+  const [draggedTaskId, setDraggedTaskId] = useState(null);
   const [tooltip, setTooltip] = useState(null);
   const [newTaskName, setNewTaskName] = useState('');
   const [confirmAction, setConfirmAction] = useState(null);
@@ -105,12 +196,25 @@ export default function GanttView() {
   const editInputRef = useRef(null);
   const newTaskRef = useRef(null);
   const didInitialScroll = useRef(false);
+  const selectionAnchorRef = useRef(null);
+  const lastCellClickRef = useRef({ taskId: null, colId: null, time: 0 });
+  const pendingCellEditRef = useRef(null);
 
   const zoom = useMemo(
     () => ({ dayWidth, tick: tickForDayWidth(dayWidth), id: nearestZoomId(dayWidth) }),
     [dayWidth]
   );
+  const density = useMemo(() => ganttDensityById(densityId), [densityId]);
+  const rowH = density.rowH || ROW_H;
   const activeProject = state.projects.find((p) => p.id === state.activeProjectId);
+
+  useEffect(() => {
+    localStorage.setItem(DENSITY_KEY, density.id);
+  }, [density.id]);
+
+  useEffect(() => {
+    localStorage.setItem(PROJECT_SUMMARY_KEY, showProjectSummary ? 'true' : 'false');
+  }, [showProjectSummary]);
 
   /* ── Calendário ─────────────────────────────────────────────────
      Cada tarefa pode ter o seu, então tudo que fala de tempo passa
@@ -126,19 +230,71 @@ export default function GanttView() {
 
   const tasks = useProjectTasks(state.tasks, state.activeProjectId, collapsedIds, activeProject);
   const applyAutoScheduling = useAutoScheduling(activeProject);
+  const viewport = useScrollViewport(scrollerRef);
 
   /* Análise CPM completa: sempre calculada, porque a folga alimenta a
      barra fantasma mesmo com o caminho crítico desligado. */
   const analysis = useScheduleAnalysis(tasks, activeProject);
   const criticalIds = showCriticalPath ? analysis.criticalIds : EMPTY_SET;
-  const layout = useGanttLayout(tasks, zoom.dayWidth, zoom.tick, calendarFor);
+  const mainMinSpanDays = useMemo(() => {
+    const visibleTimelineWidth = Math.max(0, viewport.width - gridWidth);
+    if (!visibleTimelineWidth || !zoom.dayWidth) return GANTT_MIN_SPAN_DAYS;
+    return Math.max(
+      GANTT_MIN_SPAN_DAYS,
+      Math.ceil(visibleTimelineWidth / zoom.dayWidth) + MIN_VISIBLE_TIMELINE_PAD_DAYS
+    );
+  }, [gridWidth, viewport.width, zoom.dayWidth]);
+  const layout = useGanttLayout(
+    tasks,
+    zoom.dayWidth,
+    zoom.tick,
+    calendarFor,
+    { minSpanDays: mainMinSpanDays }
+  );
+  const printSpanDays = useMemo(() => {
+    const starts = tasks.map((task) => viewStart(task)).filter(Boolean).sort();
+    const ends = tasks.map((task) => viewEnd(task)).filter(Boolean).sort();
+    const firstDate = dateOf(starts[0]) || today();
+    const lastDate = dateOf(ends[ends.length - 1]) || firstDate;
+    return Math.max(
+      PRINT_MIN_SPAN_DAYS,
+      daysBetween(addDays(firstDate, -PRINT_PAD_BEFORE), addDays(lastDate, PRINT_PAD_AFTER))
+    );
+  }, [tasks]);
+  const printDayWidth = useMemo(() => {
+    return Math.max(
+      PRINT_MIN_DAY_W,
+      Math.min(PRINT_MAX_DAY_W, PRINT_TIMELINE_TARGET_W[printOrientation] / printSpanDays)
+    );
+  }, [printOrientation, printSpanDays]);
+  const printLayout = useGanttLayout(
+    tasks,
+    printDayWidth,
+    tickForDayWidth(printDayWidth),
+    calendarFor,
+    {
+      padBefore: PRINT_PAD_BEFORE,
+      padAfter: PRINT_PAD_AFTER,
+      minSpanDays: PRINT_MIN_SPAN_DAYS,
+    }
+  );
 
   /* ── Virtualização ──────────────────────────────────────────
      Sem isto, 1.000 tarefas montam ~30.000 nós e o scroll morre. */
   /* As linhas exibidas vêm do filtro; cabeçalho de grupo é uma linha
      como outra qualquer, então a virtualização não precisa saber que
      ele existe. */
-  const { rows, filteredOut } = useGanttRows(tasks, filters, analysis.criticalIds);
+  const { rows: baseRows, filteredOut } = useGanttRows(tasks, filters, analysis.criticalIds);
+  const projectSummaryTask = useMemo(
+    () => buildProjectSummaryTask(activeProject, tasks, calendarFor),
+    [activeProject, calendarFor, tasks]
+  );
+  const rows = useMemo(
+    () => (showProjectSummary && activeProject
+      ? [{ kind: 'project-summary', id: PROJECT_SUMMARY_ID, task: projectSummaryTask }, ...baseRows]
+      : baseRows),
+    [activeProject, baseRows, projectSummaryTask, showProjectSummary]
+  );
 
   /* Índice por id: com filtro ou agrupamento a posição visual deixa de
      ser o índice no array de tarefas, e as setas apontariam errado. */
@@ -147,10 +303,27 @@ export default function GanttView() {
     rows.forEach((r, i) => { if (r.kind === 'task') map.set(r.id, i); });
     return map;
   }, [rows]);
+  const selectedTasksInOrder = useMemo(
+    () => rows
+      .filter((row) => row.kind === 'task' && selectedIds.has(row.task.id))
+      .map((row) => row.task),
+    [rows, selectedIds]
+  );
+  const selectedDependencyCount = useMemo(() => {
+    if (selectedTasksInOrder.length < 2) return 0;
+    const ids = new Set(selectedTasksInOrder.map((task) => task.id));
+    return selectedTasksInOrder.reduce((count, task) => (
+      count + readDependencies(task.dependsOn).filter((dep) => ids.has(dep.id)).length
+    ), 0);
+  }, [selectedTasksInOrder]);
 
-  const viewport = useScrollViewport(scrollerRef);
   const vRows = useVirtualRows(viewport, rows.length, rowH, HEADER_H);
   const vDays = useVirtualDays(viewport, gridWidth, zoom.dayWidth, layout.totalDays);
+  const timelineWidth = useMemo(() => {
+    const visibleTimelineWidth = Math.max(0, viewport.width - gridWidth);
+    const visibleRight = viewport.left + visibleTimelineWidth;
+    return Math.max(layout.totalWidth, visibleRight);
+  }, [gridWidth, layout.totalWidth, viewport.left, viewport.width]);
 
   /* Barreira única de escrita: nada derivado (rollup, hasChildren,
      isSummary) chega ao IndexedDB. */
@@ -230,7 +403,7 @@ export default function GanttView() {
   );
 
   /* Predecessoras são exibidas como número de linha, não como id. */
-  /* "2FS+3" — número da linha, tipo e defasagem, como no MS Project. */
+  /* "2+3; 4II" — número da linha, tipo opcional e defasagem. TI é implícito. */
   const predecessorLabel = useCallback((dependsOn) => {
     return readDependencies(dependsOn)
       .map((dep) => {
@@ -304,43 +477,6 @@ export default function GanttView() {
 
   useZoomOnWheel(scrollerRef, zoomAtCursor);
 
-  /* ── Seleção ────────────────────────────────────────────────── */
-  const handleRowMouseDown = useCallback((e, task, index) => {
-    if (e.button !== 0) return;
-
-    /* Clicar move o cursor de teclado para a coluna clicada, para o
-       usuário poder alternar mouse e teclado sem perder o lugar. */
-    /* Clique em <div> não move foco sozinho. Trazemos o foco para a
-       grade para que as setas e o Tab cheguem ao Gantt em vez de
-       continuarem no último input tocado. */
-    scrollerRef.current?.focus({ preventScroll: true });
-
-    const colId = e.target.closest?.('[data-col]')?.getAttribute('data-col');
-    setActiveCell({ taskId: task.id, colId: colId || 'name' });
-
-    setSelectedIds((prev) => {
-      if (e.shiftKey && prev.size) {
-        const next = new Set(prev);
-        next.add(task.id);
-        return next;
-      }
-      if (e.metaKey || e.ctrlKey) {
-        const next = new Set(prev);
-        next.has(task.id) ? next.delete(task.id) : next.add(task.id);
-        return next;
-      }
-      return new Set([task.id]);
-    });
-  }, []);
-
-  const toggleCollapse = useCallback((taskId) => {
-    setCollapsedIds((prev) => {
-      const next = new Set(prev);
-      next.has(taskId) ? next.delete(taskId) : next.add(taskId);
-      return next;
-    });
-  }, []);
-
   /* ── Edição inline ──────────────────────────────────────────── */
   /* O editor abre com a MESMA unidade que o commit vai gravar. Abrir
      em dias corridos e gravar em dias úteis — o que acontecia aqui —
@@ -353,6 +489,102 @@ export default function GanttView() {
     else if (col.id === 'mode') setEditValue(isManual(task) ? SCHEDULE_MODES.MANUAL : SCHEDULE_MODES.AUTO);
     else setEditValue(task[col.field] ?? '');
   }, [predecessorLabel, durationLabel]);
+
+  /* ── Seleção ────────────────────────────────────────────────── */
+  const handleRowMouseDown = useCallback((e, task, index) => {
+    if (e.button !== 0) return;
+
+    /* Clicar move o cursor de teclado para a coluna clicada, para o
+       usuário poder alternar mouse e teclado sem perder o lugar. */
+    /* Clique em <div> não move foco sozinho. Trazemos o foco para a
+       grade para que as setas e o Tab cheguem ao Gantt em vez de
+       continuarem no último input tocado. */
+    scrollerRef.current?.focus({ preventScroll: true });
+
+    const cell = e.target.closest?.('[data-col]');
+    const colId = cell?.getAttribute('data-col') || 'name';
+    setActiveCell({ taskId: task.id, colId });
+
+    setSelectedIds((prev) => {
+      if (e.shiftKey && prev.size) {
+        const anchorId = selectionAnchorRef.current || [...prev][0];
+        const from = rowIndexById.get(anchorId) ?? index;
+        const to = rowIndexById.get(task.id) ?? index;
+        const [start, end] = [from, to].sort((a, b) => a - b);
+        const rangeIds = rows
+          .slice(start, end + 1)
+          .filter((row) => row.kind === 'task')
+          .map((row) => row.task.id);
+        return new Set(e.metaKey || e.ctrlKey ? [...prev, ...rangeIds] : rangeIds);
+      }
+      if (e.metaKey || e.ctrlKey) {
+        selectionAnchorRef.current = task.id;
+        const next = new Set(prev);
+        next.has(task.id) ? next.delete(task.id) : next.add(task.id);
+        return next;
+      }
+      selectionAnchorRef.current = task.id;
+      return new Set([task.id]);
+    });
+  }, [rowIndexById, rows]);
+
+  const cancelPendingCellEdit = useCallback(() => {
+    if (!pendingCellEditRef.current) return;
+    window.clearTimeout(pendingCellEditRef.current);
+    pendingCellEditRef.current = null;
+  }, []);
+
+  useEffect(() => cancelPendingCellEdit, [cancelPendingCellEdit]);
+
+  const handleRowDoubleClick = useCallback((task) => {
+    cancelPendingCellEdit();
+    lastCellClickRef.current = { taskId: null, colId: null, time: 0 };
+    openTaskInspector(task.id);
+  }, [cancelPendingCellEdit, openTaskInspector]);
+
+  const handleRowClick = useCallback((e, task) => {
+    cancelPendingCellEdit();
+    if (e.detail > 1) {
+      handleRowDoubleClick(task);
+      return;
+    }
+
+    const cell = e.target.closest?.('[data-col]');
+    const colId = cell?.getAttribute('data-col') || 'name';
+    const col = columns.find((item) => item.id === colId);
+    const locked = task.isSummary && col?.summaryLocked;
+    const now = performance.now();
+    const elapsed = now - (lastCellClickRef.current.time || 0);
+    const sameCell =
+      lastCellClickRef.current.taskId === task.id
+      && lastCellClickRef.current.colId === colId
+      && activeCell?.taskId === task.id
+      && activeCell?.colId === colId;
+    const canSlowEdit =
+      cell && e.detail === 1 && !e.shiftKey && !e.metaKey && !e.ctrlKey
+      && col?.editable && !locked
+      && selectedIds.has(task.id)
+      && sameCell
+      && elapsed >= SLOW_EDIT_CLICK_DELAY_MS;
+
+    lastCellClickRef.current = { taskId: task.id, colId, time: now };
+
+    if (!canSlowEdit) return;
+
+    pendingCellEditRef.current = window.setTimeout(() => {
+      pendingCellEditRef.current = null;
+      document.getSelection?.()?.removeAllRanges?.();
+      startEdit(task, col);
+    }, DOUBLE_CLICK_GUARD_MS);
+  }, [activeCell, cancelPendingCellEdit, columns, handleRowDoubleClick, selectedIds, startEdit]);
+
+  const toggleCollapse = useCallback((taskId) => {
+    setCollapsedIds((prev) => {
+      const next = new Set(prev);
+      next.has(taskId) ? next.delete(taskId) : next.add(taskId);
+      return next;
+    });
+  }, []);
 
   const commitEdit = useCallback(async (overrideValue) => {
     if (!editingCell) return;
@@ -441,7 +673,7 @@ export default function GanttView() {
         if (cyclic.length) {
           rejected = `Ignorado: ${cyclic.join(', ')} criaria dependência circular.`;
         } else if (invalid.length) {
-          rejected = `Não reconhecido: ${invalid.join(', ')}. Use o número da linha, ex.: 2FS+3`;
+          rejected = `Não reconhecido: ${invalid.join('; ')}. Use o número da linha, ex.: 2+3; 4II`;
         }
         break;
       }
@@ -595,10 +827,20 @@ export default function GanttView() {
   }, []);
 
   /* ── Reordenar linhas ───────────────────────────────────────── */
-  const handleRowDrop = useCallback(async (e, targetIndex) => {
+  const handleRowDrop = useCallback(async (e, targetTask) => {
     e.preventDefault();
     setDragOverIndex(null);
-    if (draggedIndex === null || draggedIndex === targetIndex) { setDraggedIndex(null); return; }
+    if (!draggedTaskId || draggedTaskId === targetTask.id) {
+      setDraggedTaskId(null);
+      return;
+    }
+
+    const draggedIndex = tasks.findIndex((task) => task.id === draggedTaskId);
+    const targetIndex = tasks.findIndex((task) => task.id === targetTask.id);
+    if (draggedIndex < 0 || targetIndex < 0) {
+      setDraggedTaskId(null);
+      return;
+    }
 
     const reordered = [...tasks];
     const [moved] = reordered.splice(draggedIndex, 1);
@@ -608,8 +850,88 @@ export default function GanttView() {
       .map((t, i) => (t.order !== i ? { ...t, order: i } : null))
       .filter(Boolean);
     if (updates.length) await saveTasks(updates);
-    setDraggedIndex(null);
-  }, [draggedIndex, tasks, updateTasksBatch]);
+    setDraggedTaskId(null);
+  }, [draggedTaskId, saveTasks, tasks]);
+
+  const handleLinkSelected = useCallback(async () => {
+    if (selectedTasksInOrder.length < 2) {
+      showToast('Selecione pelo menos duas tarefas para vincular.', 'info');
+      return;
+    }
+
+    let working = tasks;
+    const updatesById = new Map();
+    let created = 0;
+    let skipped = 0;
+
+    for (let i = 1; i < selectedTasksInOrder.length; i += 1) {
+      const predecessor = selectedTasksInOrder[i - 1];
+      const successor = selectedTasksInOrder[i];
+      const current = updatesById.get(successor.id)
+        || working.find((task) => task.id === successor.id)
+        || successor;
+
+      if (wouldCreateCycle(predecessor.id, successor.id, working)) {
+        skipped += 1;
+        continue;
+      }
+
+      const nextDeps = [
+        ...readDependencies(current.dependsOn).filter((dep) => dep.id !== predecessor.id),
+        { id: predecessor.id, type: 'FS', lag: 0 },
+      ];
+      const scheduled = applyAutoScheduling({ ...current, dependsOn: nextDeps }, working);
+
+      scheduled.forEach((task) => {
+        updatesById.set(task.id, task);
+      });
+      working = working.map((task) => updatesById.get(task.id) || task);
+      created += 1;
+    }
+
+    const updates = [...updatesById.values()];
+    if (updates.length) await saveTasks(updates, 'Vincular tarefas');
+
+    if (created) showToast(`${created} vínculo(s) criado(s).`, 'success');
+    if (skipped) {
+      showToast('Alguns vínculos foram ignorados para evitar dependência circular.', 'error');
+    }
+  }, [applyAutoScheduling, saveTasks, selectedTasksInOrder, showToast, tasks]);
+
+  const handleUnlinkSelected = useCallback(async () => {
+    if (selectedTasksInOrder.length < 2) {
+      showToast('Selecione pelo menos duas tarefas para remover vínculos entre elas.', 'info');
+      return;
+    }
+
+    const selected = new Set(selectedTasksInOrder.map((task) => task.id));
+    let working = tasks;
+    const updatesById = new Map();
+    let removed = 0;
+
+    selectedTasksInOrder.forEach((task) => {
+      const current = updatesById.get(task.id)
+        || working.find((item) => item.id === task.id)
+        || task;
+      const deps = readDependencies(current.dependsOn);
+      const nextDeps = deps.filter((dep) => !selected.has(dep.id));
+      if (nextDeps.length === deps.length) return;
+
+      removed += deps.length - nextDeps.length;
+      applyAutoScheduling({ ...current, dependsOn: nextDeps }, working).forEach((item) => {
+        updatesById.set(item.id, item);
+      });
+      working = working.map((item) => updatesById.get(item.id) || item);
+    });
+
+    if (!removed) {
+      showToast('A seleção não tem vínculos entre si para remover.', 'info');
+      return;
+    }
+
+    await saveTasks([...updatesById.values()], 'Remover vínculos entre tarefas');
+    showToast(`${removed} vínculo(s) removido(s) da seleção.`, 'success');
+  }, [applyAutoScheduling, saveTasks, selectedTasksInOrder, showToast, tasks]);
 
   /* ── Splitter ───────────────────────────────────────────────── */
   const handleSplitterDown = useCallback((e) => {
@@ -630,26 +952,42 @@ export default function GanttView() {
   }, [gridWidth]);
 
   /* ── Ações ──────────────────────────────────────────────────── */
-  const handleAddTask = useCallback(async (e) => {
-    if (e.key !== 'Enter' || !newTaskName.trim()) return;
-    /* Nasce AUTOMÁTICA e com jornada: começa na abertura do próximo
-       dia útil e dura 5 dias do calendário padrão do projeto. */
+  const buildNewTask = useCallback((name, order) => {
     const start = workdayStart(projectCalendar, today());
-    await addTask({
+    return {
       id: generateId(),
       projectId: state.activeProjectId,
-      name: newTaskName.trim(),
+      name,
       startDate: start,
       endDate: addWorkingMinutes(projectCalendar, start, 5 * minutesPerDay(projectCalendar)),
       scheduleMode: SCHEDULE_MODES.AUTO,
       progress: 0,
       dependsOn: [],
       indentLevel: 0,
-      order: tasks.length,
-    });
+      order,
+    };
+  }, [projectCalendar, state.activeProjectId]);
+
+  const handleAddTask = useCallback(async (e) => {
+    if (e.key !== 'Enter' || !newTaskName.trim()) return;
+    /* Nasce AUTOMÁTICA e com jornada: começa na abertura do próximo
+       dia útil e dura 5 dias do calendário padrão do projeto. */
+    await addTask(buildNewTask(newTaskName.trim(), tasks.length));
     setNewTaskName('');
     setTimeout(() => newTaskRef.current?.focus(), 40);
-  }, [newTaskName, state.activeProjectId, tasks.length, addTask, projectCalendar]);
+  }, [newTaskName, tasks.length, addTask, buildNewTask]);
+
+  const handlePasteNewTasks = useCallback(async (e) => {
+    const names = taskNamesFromPaste(e.clipboardData?.getData('text/plain'));
+    if (names.length < 2) return;
+
+    e.preventDefault();
+    const inserted = names.map((name, index) => buildNewTask(name, tasks.length + index));
+    await addTasks(inserted);
+    setNewTaskName('');
+    setTimeout(() => newTaskRef.current?.focus(), 40);
+    showToast(`${inserted.length} tarefas adicionadas`, 'success');
+  }, [addTasks, buildNewTask, showToast, tasks.length]);
 
   /* Gravar a linha de base era um tiro só: carimbava o projeto inteiro,
      sem como limpar, sem como restringir à seleção e sem como ocultar.
@@ -710,6 +1048,37 @@ export default function GanttView() {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([header, ...rows]), 'Gantt');
     XLSX.writeFile(wb, `${activeProject?.name || 'Projeto'}_Gantt.xlsx`);
   };
+
+  const exportToPdf = useCallback(() => {
+    if (!tasks.length) {
+      showToast('Não há tarefas para exportar em PDF.', 'info');
+      return;
+    }
+
+    setTooltip(null);
+    setEditingCell(null);
+
+    const previousTitle = document.title;
+    document.querySelector('#gantt-print-page-style')?.remove();
+    const pageStyle = document.createElement('style');
+    pageStyle.id = 'gantt-print-page-style';
+    pageStyle.textContent = `@page { size: A4 ${printOrientation}; margin: ${printOrientation === 'portrait' ? '10mm' : '8mm'}; }`;
+    document.title = activeProject?.name || 'Cronograma Gantt';
+    document.head.appendChild(pageStyle);
+    document.body.classList.add('is-printing-gantt', `is-printing-gantt-${printOrientation}`);
+
+    const cleanup = () => {
+      document.body.classList.remove('is-printing-gantt', `is-printing-gantt-${printOrientation}`);
+      pageStyle.remove();
+      document.title = previousTitle;
+      window.removeEventListener('afterprint', cleanup);
+    };
+
+    window.addEventListener('afterprint', cleanup);
+    requestAnimationFrame(() => {
+      setTimeout(() => window.print(), 40);
+    });
+  }, [activeProject?.name, printOrientation, showToast, tasks.length]);
 
   /* ── Colunas (modelo MS Project) ─────────────────────────────
      Gerenciadas no próprio cabeçalho: botão direito na coluna,
@@ -882,6 +1251,7 @@ export default function GanttView() {
   const ctx = {
     columns, gridWidth, layout, selectedIds, editingCell, collapsedIds,
     criticalIds, showCriticalPath, showBarLabels, showBaseline,
+    timelineWidth,
     dragPreview, dragOverIndex,
     editValue, editInputRef, predecessorLabel,
     durationLabel, calendarLabel, calendarFor, formatMinutes,
@@ -892,6 +1262,8 @@ export default function GanttView() {
     onProgressDrag: handleProgressDrag,
     onContextMenu: handleContextMenu,
     onRowMouseDown: handleRowMouseDown,
+    onRowClick: handleRowClick,
+    onRowDoubleClick: handleRowDoubleClick,
     onToggleCollapse: toggleCollapse,
     onStartEdit: startEdit,
     onEditChange: setEditValue,
@@ -903,21 +1275,45 @@ export default function GanttView() {
     onBarMove: moveTooltip,
     onBarLeave: () => setTooltip(null),
     onOpenDetails: (task) => openTaskInspector(task.id),
-    onRowDragStart: (e, i) => { setDraggedIndex(i); e.dataTransfer.effectAllowed = 'move'; },
-    onRowDragOver: (e, i) => { e.preventDefault(); if (dragOverIndex !== i) setDragOverIndex(i); },
+    onRowDragStart: (e, task) => {
+      setDraggedTaskId(task.id);
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', task.id);
+    },
+    onRowDragOver: (e, i) => {
+      if (!draggedTaskId) return;
+      e.preventDefault();
+      if (dragOverIndex !== i) setDragOverIndex(i);
+    },
     onRowDrop: handleRowDrop,
-    onRowDragEnd: () => { setDraggedIndex(null); setDragOverIndex(null); },
+    onRowDragEnd: () => { setDraggedTaskId(null); setDragOverIndex(null); },
   };
 
   /* Fase da faixa de fim de semana: alinha o gradiente de 7 dias ao
      dia da semana em que a timeline começa. */
   const weekendPhase =
     ((new Date(`${layout.rangeStart}T00:00:00Z`).getUTCDay() + 6) % 7) * zoom.dayWidth;
+  const displayMenuActive =
+    density.id !== DEFAULT_GANTT_DENSITY ||
+    !showProjectSummary ||
+    !showBarLabels ||
+    showCriticalPath ||
+    showSlack;
+  const planningMenuActive = baselineCount > 0 || selectedIds.size >= 2 || selectedDependencyCount > 0;
 
   return (
-    <div className="gantt-view">
-      <ViewBar>
-        <div className="flex items-center gap-1" role="group" aria-label="Escala da timeline">
+    <div
+      className={`gantt-view is-density-${density.id}`}
+      style={{
+        '--gantt-row-h': `${rowH}px`,
+        '--gantt-text-body': density.textBody,
+        '--gantt-text-small': density.textSmall,
+        '--gantt-text-micro': density.textMicro,
+        '--gantt-cell-px': `${density.cellPadding}px`,
+      }}
+    >
+      <ViewBar className="gantt-commandbar !overflow-x-hidden !overflow-y-visible">
+        <div className="flex min-w-0 items-center gap-1" role="group" aria-label="Escala do Gantt">
           <ViewBarSegments
             options={ZOOM_LEVELS.map((z) => ({ id: z.id, label: z.label }))}
             value={zoom.id}
@@ -927,37 +1323,95 @@ export default function GanttView() {
             Ajustar
           </ViewBarButton>
         </div>
-        <ViewBarDivider />
-        <div className="flex items-center gap-1" role="group" aria-label="Análise do cronograma">
-          <ViewBarButton
-            icon={AlertCircle}
-            active={showCriticalPath}
-            onClick={() => setShowCriticalPath((v) => !v)}
-            title="Destacar tarefas sem folga"
-          >
-            Caminho crítico
-          </ViewBarButton>
-          <ViewBarButton
-            icon={Hourglass}
-            active={showSlack}
-            onClick={() => setShowSlack((v) => !v)}
-            title="Mostrar folga total de cada tarefa"
-          >
-            Folga
-          </ViewBarButton>
+
+        <div className="flex min-w-0 items-center gap-1" role="group" aria-label="Comandos do Gantt">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <ViewBarButton icon={Target} active={baselineCount > 0 && showBaseline}>
-                Linha de base
+              <ViewBarButton icon={FolderTree} active={displayMenuActive}>
+                Exibição
+              </ViewBarButton>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-56">
+              <DropdownMenuLabel className="text-micro uppercase tracking-wide text-text-3">
+                Densidade
+              </DropdownMenuLabel>
+              <DropdownMenuRadioGroup value={density.id} onValueChange={setDensityId}>
+                {GANTT_DENSITIES.map((item) => (
+                  <DropdownMenuRadioItem
+                    key={item.id}
+                    value={item.id}
+                    onSelect={(e) => e.preventDefault()}
+                  >
+                    {item.label}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuCheckboxItem
+                  checked={showProjectSummary}
+                  onCheckedChange={setShowProjectSummary}
+                  onSelect={(e) => e.preventDefault()}
+                >
+                  Resumo global
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem
+                  checked={showBarLabels}
+                  onCheckedChange={setShowBarLabels}
+                  onSelect={(e) => e.preventDefault()}
+                >
+                  Rótulos nas barras
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem
+                  checked={showCriticalPath}
+                  onCheckedChange={setShowCriticalPath}
+                  onSelect={(e) => e.preventDefault()}
+                >
+                  Caminho crítico
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem
+                  checked={showSlack}
+                  onCheckedChange={setShowSlack}
+                  onSelect={(e) => e.preventDefault()}
+                >
+                  Folga total
+                </DropdownMenuCheckboxItem>
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <ViewBarButton icon={Target} active={planningMenuActive}>
+                Planejar
               </ViewBarButton>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-64">
               <DropdownMenuLabel className="text-micro uppercase tracking-wide text-text-3">
-                {baselineCount > 0
-                  ? `Gravada em ${baselineCount} de ${tasks.length}`
-                  : 'Nenhuma linha de base gravada'}
+                Seleção
               </DropdownMenuLabel>
+              <DropdownMenuGroup>
+                <DropdownMenuItem
+                  disabled={selectedIds.size < 2}
+                  onSelect={handleLinkSelected}
+                >
+                  <Link2 />
+                  Vincular término-início
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={selectedDependencyCount === 0}
+                  onSelect={handleUnlinkSelected}
+                >
+                  <Link2Off />
+                  Remover vínculos da seleção
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
               <DropdownMenuSeparator />
+              <DropdownMenuLabel className="text-micro uppercase tracking-wide text-text-3">
+                {baselineCount > 0
+                  ? `Linha de base: ${baselineCount}/${tasks.length}`
+                  : 'Linha de base'}
+              </DropdownMenuLabel>
               <DropdownMenuGroup>
                 <DropdownMenuItem onSelect={() => saveBaseline('project')}>
                   Gravar do projeto inteiro
@@ -968,9 +1422,6 @@ export default function GanttView() {
                 >
                   Gravar da seleção ({selectedIds.size})
                 </DropdownMenuItem>
-              </DropdownMenuGroup>
-              <DropdownMenuSeparator />
-              <DropdownMenuGroup>
                 <DropdownMenuCheckboxItem
                   checked={showBaseline}
                   disabled={baselineCount === 0}
@@ -989,32 +1440,59 @@ export default function GanttView() {
               </DropdownMenuGroup>
             </DropdownMenuContent>
           </DropdownMenu>
-        </div>
-        <ViewBarDivider />
-        <div className="flex items-center gap-0.5" role="group" aria-label="Histórico de edição">
-          <ViewBarButton icon={Undo2} onClick={undo} disabled={!canUndo} title="Desfazer (⌘Z)" />
-          <ViewBarButton icon={Redo2} onClick={redo} disabled={!canRedo} title="Refazer (⇧⌘Z)" />
+
+          <GanttCalendarMenu
+            project={activeProject}
+            triggerLabel="Calendário"
+            onChange={(patch) => updateProject({ ...activeProject, ...patch })}
+          />
+
+          <GanttFilterMenu filters={filters} onChange={setFilters} filteredOut={filteredOut} />
         </div>
 
         <div className="ml-auto" />
 
-        <div className="flex items-center gap-1" role="group" aria-label="Ferramentas da visualização">
-          <GanttFilterMenu filters={filters} onChange={setFilters} filteredOut={filteredOut} />
-          <ViewBarButton icon={Download} onClick={exportToExcel} title="Exportar para Excel" />
+        <div className="flex shrink-0 items-center gap-0.5" role="group" aria-label="Histórico de edição">
+          <ViewBarButton icon={Undo2} onClick={undo} disabled={!canUndo} title="Desfazer (⌘Z)" />
+          <ViewBarButton icon={Redo2} onClick={redo} disabled={!canRedo} title="Refazer (⇧⌘Z)" />
+        </div>
 
-          <GanttCalendarMenu
-            project={activeProject}
-            onChange={(patch) => updateProject({ ...activeProject, ...patch })}
-          />
-
-          <ViewBarButton
-            icon={Tag}
-            active={showBarLabels}
-            onClick={() => setShowBarLabels((v) => !v)}
-            title="Mostrar o nome da tarefa nas barras"
-          >
-            Rótulos
-          </ViewBarButton>
+        <div className="flex shrink-0 items-center gap-1" role="group" aria-label="Saída e criação">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <ViewBarButton icon={Download} title="Exportar cronograma">
+                Exportar
+              </ViewBarButton>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuLabel className="text-micro uppercase tracking-wide text-text-3">
+                Arquivos
+              </DropdownMenuLabel>
+              <DropdownMenuItem onSelect={exportToExcel}>
+                <Download />
+                Exportar para Excel
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuLabel className="px-2 py-1 text-micro uppercase tracking-wide text-text-3">
+                  PDF
+                </DropdownMenuLabel>
+                <DropdownMenuRadioGroup value={printOrientation} onValueChange={setPrintOrientation}>
+                  <DropdownMenuRadioItem value="landscape" onSelect={(e) => e.preventDefault()}>
+                    Paisagem
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="portrait" onSelect={(e) => e.preventDefault()}>
+                    Retrato
+                  </DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={exportToPdf}>
+                <FileText />
+                Imprimir ou salvar PDF
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           <ViewBarButton icon={Plus} variant="primary" onClick={() => newTaskRef.current?.focus()}>
             Tarefa
@@ -1064,7 +1542,8 @@ export default function GanttView() {
               '--gantt-day-w': `${zoom.dayWidth}px`,
               '--gantt-week-w': `${zoom.dayWidth * 7}px`,
               '--gantt-weekend-phase': `${-weekendPhase}px`,
-              width: gridWidth + layout.totalWidth,
+              '--gantt-scroll-left': `${viewport.left}px`,
+              width: gridWidth + timelineWidth,
             }}
           >
             <GanttHeader
@@ -1072,6 +1551,7 @@ export default function GanttView() {
               gridWidth={gridWidth}
               layout={layout}
               zoom={zoom}
+              timelineWidth={timelineWidth}
               visibleDays={vDays}
               onResizeColumn={handleResizeColumn}
               onColumnMenu={openColumnMenu}
@@ -1083,7 +1563,7 @@ export default function GanttView() {
               {/* Fundo da timeline: gradientes em vez de um div por dia */}
               <div
                 className={`gantt-grid-bg ${zoom.tick === 'day' ? 'has-day-lines' : ''}`}
-                style={{ left: gridWidth, width: layout.totalWidth }}
+                style={{ left: gridWidth, width: timelineWidth }}
               />
 
               {layout.months.map((m) => (
@@ -1102,11 +1582,13 @@ export default function GanttView() {
                 tasks={tasks}
                 layout={layout}
                 rowH={rowH}
+                timelineWidth={timelineWidth}
                 criticalIds={criticalIds}
                 showCriticalPath={showCriticalPath}
                 selectedId={selectedIds.size === 1 ? [...selectedIds][0] : null}
                 visibleRange={vRows}
                 rowIndexById={rowIndexById}
+                rowCount={rows.length}
               />
 
               {/* Spacers em vez de transform: transform criaria um novo
@@ -1114,18 +1596,31 @@ export default function GanttView() {
               {vRows.padTop > 0 && <div style={{ height: vRows.padTop }} aria-hidden="true" />}
 
               {rows.slice(vRows.start, vRows.end).map((row, i) =>
-                row.kind === 'group' ? (
+                row.kind === 'project-summary' ? (
+                  <GanttProjectSummaryRow
+                    key={row.id}
+                    task={row.task}
+                    columns={columns}
+                    gridWidth={gridWidth}
+                    layout={layout}
+                    timelineWidth={timelineWidth}
+                    ctx={ctx}
+                    showBarLabels={showBarLabels}
+                  />
+                ) : row.kind === 'group' ? (
                   <GanttGroupRow
                     key={row.id}
                     row={row}
                     gridWidth={gridWidth}
                     layout={layout}
+                    timelineWidth={timelineWidth}
                   />
                 ) : (
                   <GanttRow
                     key={row.id}
                     task={row.task}
                     index={vRows.start + i}
+                    rowNumber={(tasks.findIndex((task) => task.id === row.task.id) + 1) || undefined}
                     ctx={ctx}
                   />
                 )
@@ -1146,11 +1641,12 @@ export default function GanttView() {
                       placeholder="Nova tarefa — Enter para adicionar"
                       value={newTaskName}
                       onChange={(e) => setNewTaskName(e.target.value)}
+                      onPaste={handlePasteNewTasks}
                       onKeyDown={handleAddTask}
                     />
                   </div>
                 </div>
-                <div className="gantt-row-time" style={{ width: layout.totalWidth }} />
+                <div className="gantt-row-time" style={{ width: timelineWidth }} />
               </div>
             </div>
           </div>
@@ -1194,6 +1690,9 @@ export default function GanttView() {
           paste: handlePaste,
           duplicate: handleDuplicate,
           remove: handleDeleteSelected,
+          linkSelection: handleLinkSelected,
+          unlinkSelection: handleUnlinkSelected,
+          selectionLinkCount: selectedDependencyCount,
           clearDependencies: (task) =>
             saveTasks([{ ...task, dependsOn: [] }], 'Remover predecessoras'),
         }}
@@ -1206,6 +1705,276 @@ export default function GanttView() {
         title={confirmAction?.title}
         message={confirmAction?.message}
       />
+
+      <GanttPrintReport
+        project={activeProject}
+        rows={rows}
+        layout={printLayout}
+        durationLabel={durationLabel}
+        predecessorLabel={predecessorLabel}
+        showBaseline={showBaseline}
+        showBarLabels={showBarLabels}
+        showCriticalPath={showCriticalPath}
+        criticalIds={analysis.criticalIds}
+        orientation={printOrientation}
+      />
     </div>
+  );
+}
+
+function GanttProjectSummaryRow({
+  task,
+  columns,
+  gridWidth,
+  layout,
+  timelineWidth,
+  ctx,
+  showBarLabels,
+}) {
+  const start = viewStart(task);
+  const end = viewEnd(task);
+  const hasDates = Boolean(start && end);
+  const progress = viewProgress(task);
+
+  return (
+    <div className="gantt-row is-project-summary is-summary" data-row="project-summary">
+      <div className="gantt-row-grid" style={{ width: gridWidth }}>
+        <div className="gantt-cell gantt-cell-index">
+          <span className="tabular">0</span>
+        </div>
+
+        {columns.map((col) => (
+          <div
+            key={col.id}
+            data-col={col.id}
+            className={`gantt-cell is-${col.align} is-locked`}
+            style={{
+              width: col.width,
+              flex: col.grow ? '1 1 auto' : `0 0 ${col.width}px`,
+            }}
+          >
+            {col.id === 'name' ? (
+              <span className="gantt-cell-name">
+                <span className="gantt-twisty-spacer" />
+                <span className="gantt-cell-text">{task.name}</span>
+              </span>
+            ) : (
+              <span className="gantt-cell-text tabular">{col.render(task, ctx)}</span>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="gantt-row-time" style={{ width: timelineWidth || layout.totalWidth }}>
+        {hasDates && (
+          <div
+            className="gantt-project-summary-bar"
+            style={{
+              left: layout.xOf(start, task),
+              width: layout.widthOf(start, end, task),
+            }}
+            title={`${formatDateTimeShort(start)} → ${formatDateTimeShort(end)} · ${progress}%`}
+          >
+            <span className="gantt-project-summary-fill" style={{ width: `${progress}%` }} />
+            {showBarLabels && <span className="gantt-project-summary-label">{task.name}</span>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function GanttPrintReport({
+  project,
+  rows,
+  layout,
+  durationLabel,
+  predecessorLabel,
+  showBaseline,
+  showBarLabels,
+  showCriticalPath,
+  criticalIds,
+  orientation,
+}) {
+  const tableWidth = PRINT_TABLE_W[orientation];
+  const rowHeight = 22;
+  const chartWidth = Math.max(1, layout.totalWidth);
+  const printableRows = useMemo(() => {
+    let taskNumber = 0;
+    return rows.map((row) => {
+      if (row.kind === 'project-summary') return { ...row, rowNumber: 0 };
+      if (row.kind === 'task') {
+        taskNumber += 1;
+        return { ...row, rowNumber: taskNumber };
+      }
+      return row;
+    });
+  }, [rows]);
+
+  return (
+    <section
+      className={`gantt-print-report print-report is-${orientation}`}
+      style={{
+        '--gantt-print-table-w': `${tableWidth}px`,
+        '--gantt-print-chart-w': `${chartWidth}px`,
+        '--gantt-print-day-w': `${layout.dayWidth}px`,
+        '--gantt-print-row-h': `${rowHeight}px`,
+      }}
+    >
+      <header className="gantt-print-cover">
+        <div>
+          <div className="gantt-print-brand">
+            <img src="/logo.png" alt="RV Planejamento" />
+            <span>Projeta</span>
+          </div>
+          <p className="gantt-print-kicker">Cronograma Gantt</p>
+          <h1>{project?.name || 'Projeto'}</h1>
+        </div>
+      </header>
+
+      <div className="gantt-print-grid">
+        <div className="gantt-print-table-head">
+          <span>#</span>
+          <span>Tarefa</span>
+          <span>Duração</span>
+          <span>Início</span>
+          <span>Término</span>
+          <span>%</span>
+          <span>Pred.</span>
+        </div>
+
+        <div className="gantt-print-time-head" style={{ width: chartWidth }}>
+          <div className="gantt-print-months">
+            {layout.months.map((month) => (
+              <span
+                key={month.key}
+                style={{ width: month.days * layout.dayWidth }}
+              >
+                {month.days * layout.dayWidth > 42 ? month.shortLabel : ''}
+              </span>
+            ))}
+          </div>
+          <div className="gantt-print-ticks">
+            {layout.ticks.map((tick) => (
+              <span
+                key={tick.date}
+                className={tick.weekend ? 'is-weekend' : ''}
+                style={{ width: tick.span * layout.dayWidth }}
+              >
+                {tick.span * layout.dayWidth > 18 ? Number(tick.date.slice(8, 10)) : ''}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {printableRows.map((row) => (
+          row.kind === 'group' ? (
+            <React.Fragment key={row.id}>
+              <div className="gantt-print-table-row is-group">
+                <span />
+                <span>{row.label}</span>
+                <span>{row.count}</span>
+                <span />
+                <span />
+                <span />
+                <span />
+              </div>
+              <div className="gantt-print-time-row is-group" style={{ width: chartWidth }}>
+                {row.start && row.end && (
+                  <span
+                    className="gantt-print-group-span"
+                    style={{
+                      left: layout.xOf(row.start),
+                      width: layout.widthOf(row.start, row.end),
+                    }}
+                  />
+                )}
+              </div>
+            </React.Fragment>
+          ) : (
+            <PrintTaskRow
+              key={row.id}
+              row={row}
+              rowNumber={row.rowNumber}
+              layout={layout}
+              chartWidth={chartWidth}
+              durationLabel={durationLabel}
+              predecessorLabel={predecessorLabel}
+              showBaseline={showBaseline}
+              showBarLabels={showBarLabels}
+              showCriticalPath={showCriticalPath}
+              criticalIds={criticalIds}
+            />
+          )
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function PrintTaskRow({
+  row,
+  rowNumber,
+  layout,
+  chartWidth,
+  durationLabel,
+  predecessorLabel,
+  showBaseline,
+  showBarLabels,
+  showCriticalPath,
+  criticalIds,
+}) {
+  const task = row.task;
+  const start = viewStart(task);
+  const end = viewEnd(task);
+  const hasDates = Boolean(start && end);
+  const progress = viewProgress(task);
+  const stageClass = showCriticalPath && criticalIds.has(task.id)
+    ? 'is-critical'
+    : progress >= 100
+    ? STAGE_MODIFIER.done
+    : progress > 0
+      ? STAGE_MODIFIER['in-progress']
+      : STAGE_MODIFIER['not-started'];
+
+  return (
+    <React.Fragment>
+      <div className={`gantt-print-table-row ${task.isSummary ? 'is-summary' : ''}`}>
+        <span className="tabular">{rowNumber}</span>
+        <span style={{ paddingLeft: `${Math.min(40, (task.indentLevel || 0) * 8)}px` }}>
+          {task.name}
+        </span>
+        <span>{durationLabel(task)}</span>
+        <span>{formatDateTimeShort(start)}</span>
+        <span>{formatDateTimeShort(end)}</span>
+        <span className="tabular">{progress}%</span>
+        <span>{predecessorLabel(task.dependsOn)}</span>
+      </div>
+
+      <div className={`gantt-print-time-row ${task.isSummary ? 'is-summary' : ''}`} style={{ width: chartWidth }}>
+        {showBaseline && task.baselineStart && task.baselineEnd && (
+          <span
+            className="gantt-print-baseline"
+            style={{
+              left: layout.xOf(task.baselineStart, task),
+              width: layout.widthOf(task.baselineStart, task.baselineEnd, task),
+            }}
+          />
+        )}
+
+        {hasDates && (
+          <span
+            className={`gantt-print-bar ${stageClass} ${task.isSummary ? 'is-summary' : ''}`}
+            style={{
+              left: layout.xOf(start, task),
+              width: layout.widthOf(start, end, task),
+            }}
+          >
+            <span className="gantt-print-bar-fill" style={{ width: `${progress}%` }} />
+            {showBarLabels && <span className="gantt-print-bar-label">{task.name}</span>}
+          </span>
+        )}
+      </div>
+    </React.Fragment>
   );
 }

@@ -22,7 +22,7 @@ import { STAGE_MODIFIER } from './ganttConfig';
    uma no caminho é ruído. Quem precisa estar visível é a seleção.
    ═══════════════════════════════════════════════════════════════ */
 
-export default function GanttRow({ task, index, ctx }) {
+export default function GanttRow({ task, index, rowNumber, ctx }) {
   const {
     columns,
     gridWidth,
@@ -36,8 +36,9 @@ export default function GanttRow({ task, index, ctx }) {
     showBaseline,
     dragPreview,
     onRowMouseDown,
+    onRowClick,
+    onRowDoubleClick,
     onToggleCollapse,
-    onStartEdit,
     onEditChange,
     onCommitEdit,
     onCancelEdit,
@@ -46,7 +47,6 @@ export default function GanttRow({ task, index, ctx }) {
     onBarEnter,
     onBarMove,
     onBarLeave,
-    onOpenDetails,
     onRowDragStart,
     onRowDragOver,
     onRowDrop,
@@ -97,19 +97,26 @@ export default function GanttRow({ task, index, ctx }) {
       className={rowClass}
       data-row={index}
       onMouseDown={(e) => onRowMouseDown(e, task, index)}
-      onDoubleClick={() => onOpenDetails(task)}
+      onClick={(e) => onRowClick(e, task)}
+      onDoubleClick={(e) => {
+        if (editingCell) return;
+        e.preventDefault();
+        onRowDoubleClick(task);
+      }}
       onContextMenu={(e) => onContextMenu(e, task)}
-      draggable={!editingCell}
-      onDragStart={(e) => onRowDragStart(e, index)}
       onDragOver={(e) => onRowDragOver(e, index)}
-      onDrop={(e) => onRowDrop(e, index)}
+      onDrop={(e) => onRowDrop(e, task)}
       onDragEnd={onRowDragEnd}
     >
       {/* ── Planilha ─────────────────────────────────────────── */}
       <div className="gantt-row-grid" style={{ width: gridWidth }}>
-        <div className="gantt-cell gantt-cell-index">
+        <div
+          className="gantt-cell gantt-cell-index"
+          draggable={!editingCell}
+          onDragStart={(e) => onRowDragStart(e, task)}
+        >
           <GripVertical size={11} className="gantt-grip" />
-          <span className="tabular">{index + 1}</span>
+          <span className="tabular">{rowNumber ?? index + 1}</span>
         </div>
 
         {columns.map((col) => {
@@ -136,10 +143,6 @@ export default function GanttRow({ task, index, ctx }) {
                 width: col.width,
                 flex: col.grow ? '1 1 auto' : `0 0 ${col.width}px`,
               }}
-              onDoubleClick={(e) => {
-                e.stopPropagation();
-                if (col.editable && !locked) onStartEdit(task, col);
-              }}
             >
               {editing ? (
                 <CellEditor
@@ -164,6 +167,7 @@ export default function GanttRow({ task, index, ctx }) {
                         e.stopPropagation();
                         onToggleCollapse(task.id);
                       }}
+                      onDoubleClick={(e) => e.stopPropagation()}
                       title={collapsed ? 'Expandir' : 'Recolher'}
                     >
                       <ChevronRight size={12} />
@@ -182,7 +186,7 @@ export default function GanttRow({ task, index, ctx }) {
       </div>
 
       {/* ── Timeline ─────────────────────────────────────────── */}
-      <div className="gantt-row-time" style={{ width: layout.totalWidth }}>
+      <div className="gantt-row-time" style={{ width: ctx.timelineWidth || layout.totalWidth }}>
         {/* Folga: quanto a tarefa pode escorregar sem empurrar o
             projeto. Fantasma logo após o término, para o atraso
             aceitável ser visível sem precisar abrir nada. */}
@@ -350,6 +354,9 @@ function CellEditor({ col, ctx, value, inputRef, onChange, onCommit, onCancel })
       }
       value={value}
       onChange={(e) => onChange(e.target.value)}
+      onFocus={(e) => {
+        if (col.type === 'text') e.target.select();
+      }}
       onBlur={() => onCommit()}
       onKeyDown={onKeyDown}
       autoFocus

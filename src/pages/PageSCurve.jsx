@@ -48,6 +48,7 @@ export default function PageSCurve() {
   if (!project) return null;
 
   const behind = curve.deviation < 0;
+  const deviationLabel = `${curve.deviation > 0 ? '+' : ''}${Math.round(curve.deviation)}%`;
 
   const exportCsv = () => {
     const rows = [['Data', 'Planejado (%)', 'Realizado (%)']];
@@ -76,7 +77,7 @@ export default function PageSCurve() {
         </ViewBarButton>
       </ViewBar>
 
-      <div className="min-h-0 flex-1 overflow-auto p-5">
+      <div className="min-h-0 flex-1 overflow-auto p-3">
         {!curve.points.length ? (
           <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
             <TrendingUp size={40} strokeWidth={1.2} className="text-text-3" />
@@ -111,13 +112,13 @@ export default function PageSCurve() {
             </ViewBarButton>
           </div>
         ) : (
-          <div className="mx-auto flex w-full max-w-[1480px] flex-col gap-4">
-            <section className="grid overflow-hidden rounded-[8px] border border-line bg-line sm:grid-cols-2 xl:grid-cols-6">
+          <div className="mx-auto flex h-full w-full max-w-[1480px] flex-col gap-3">
+            <section className="grid shrink-0 overflow-hidden rounded-[8px] border border-line bg-line sm:grid-cols-3 xl:grid-cols-6">
               <Metric label="Planejado hoje" value={`${Math.round(curve.plannedToday)}%`} />
               <Metric label="Realizado" value={`${Math.round(curve.actualToday)}%`} />
               <Metric
                 label="Desvio"
-                value={`${curve.deviation > 0 ? '+' : ''}${Math.round(curve.deviation)} p.p.`}
+                value={deviationLabel}
                 tone={behind ? 'late' : 'done'}
               />
               <Metric label="Baseline" value={`${curve.baselineCoverage}%`} />
@@ -125,8 +126,8 @@ export default function PageSCurve() {
               <Metric label="Término" value={formatDateLong(curve.maxDate)} small />
             </section>
 
-            <section className="overflow-hidden rounded-[8px] border border-line bg-surface-1">
-              <header className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-3">
+            <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[8px] border border-line bg-surface-1">
+              <header className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-2.5">
                 <div>
                   <h2 className="text-body font-semibold text-text-1">Avanço acumulado</h2>
                   <p className="text-micro text-text-3">Planejado e realizado por data de controle</p>
@@ -137,33 +138,15 @@ export default function PageSCurve() {
                 )}>
                   {curve.deviation === 0
                     ? 'No plano'
-                    : `${behind ? 'Abaixo' : 'Acima'} do plano em ${Math.abs(Math.round(curve.deviation))} p.p.`}
+                    : `${behind ? 'Abaixo' : 'Acima'} do plano em ${Math.abs(Math.round(curve.deviation))}%`}
                 </span>
               </header>
-              <div className="px-4 pb-4 pt-3">
+              <div className="min-h-0 flex-1 px-4 pb-3 pt-2">
                 <div className="mx-auto max-w-[1280px]">
-                  <CurveChart curve={curve} height={420} variant="detail" />
+                  <CurveChart curve={curve} height={320} variant="detail" />
                 </div>
               </div>
             </section>
-
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-line px-1 pt-3 text-small text-text-2">
-              {curve.deviation === 0 ? (
-                <span>Na data de controle, realizado e planejado estão alinhados.</span>
-              ) : (
-                <span>
-                  Na data de controle, o projeto registra{' '}
-                  <strong className={behind ? 'text-sched-late' : 'text-sched-done'}>
-                    {Math.abs(Math.round(curve.deviation))} p.p. {behind ? 'de atraso' : 'de adiantamento'}
-                  </strong>.
-                </span>
-              )}
-              {curve.baselineCoverage < 100 && (
-                <span className="text-sched-at-risk">
-                  {curve.baselineCoverage}% das tarefas possuem linha de base.
-                </span>
-              )}
-            </div>
           </div>
         )}
       </div>
@@ -173,12 +156,12 @@ export default function PageSCurve() {
 
 function Metric({ label, value, tone, small }) {
   return (
-    <div className="flex min-w-36 flex-1 flex-col gap-0.5 bg-surface-1 px-4 py-3">
+    <div className="flex min-w-36 flex-1 flex-col gap-0.5 bg-surface-1 px-4 py-2.5">
       <span className="text-micro font-medium uppercase tracking-wide text-text-3">{label}</span>
       <span
         className={cn(
           'font-semibold leading-none tracking-tight tabular-nums',
-          small ? 'text-read' : 'text-[24px]',
+          small ? 'text-body' : 'text-[22px]',
           tone === 'late' ? 'text-sched-late' : tone === 'done' ? 'text-sched-done' : 'text-text-1'
         )}
       >

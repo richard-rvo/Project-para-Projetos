@@ -61,6 +61,16 @@ describe('forward pass — encadeamento', () => {
     expect(r.get('B').endDate).toBe(`${TER}T12:00`);
   });
 
+  it('TI respeita o horário exato quando a predecessora termina na abertura da jornada', () => {
+    const tasks = [
+      task('A', `${SEG}T13:00`, `${TER}T08:00`),
+      task('B', `${SEG}T08:00`, `${SEG}T12:00`, { dependsOn: link('A') }),
+    ];
+    const r = schedule(tasks, 'A');
+    expect(r.get('B').startDate).toBe(`${TER}T08:00`);
+    expect(r.get('B').endDate).toBe(`${TER}T12:00`);
+  });
+
   it('II alinha os inícios', () => {
     const tasks = [
       task('A', `${TER}T08:00`, `${TER}T17:00`),
