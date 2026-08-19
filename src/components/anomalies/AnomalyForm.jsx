@@ -3,9 +3,16 @@ import { cn } from '@/lib/utils';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Camera, X, ChevronLeft, ChevronRight, Check } from 'lucide-react';
 import {
-  SEVERITY_OPTIONS, SEVERITY_TONE, STATUS_OPTIONS, TYPE_OPTIONS,
+  SEVERITY_OPTIONS, SEVERITY_DOT, STATUS_OPTIONS, TYPE_OPTIONS,
   DISCIPLINES, FORM_STEPS, MAX_PHOTOS, compressImage,
 } from './anomalyConfig';
 
@@ -85,39 +92,47 @@ export default function AnomalyForm({
           {step === 0 && (
             <>
               <Field label="Título" required>
-                <input autoFocus className={input} value={form.title}
+                <Input autoFocus value={form.title}
                   onChange={(e) => set({ title: e.target.value })}
                   placeholder="Ex: Trinca em viga de sustentação" />
               </Field>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Severidade">
-                  <div className="flex flex-wrap gap-1.5">
+                  <ToggleGroup
+                    type="single"
+                    value={form.severity}
+                    onValueChange={(severity) => severity && set({ severity })}
+                    size="sm"
+                    className="w-full"
+                    aria-label="Severidade"
+                  >
                     {SEVERITY_OPTIONS.map((s) => (
-                      <button key={s} type="button" onClick={() => set({ severity: s })}
-                        className={cn('rounded-full px-2.5 py-1 text-small font-medium transition-colors',
-                          form.severity === s ? SEVERITY_TONE[s] : 'bg-surface-3 text-text-2')}>
+                      <ToggleGroupItem key={s} value={s} className="flex-1">
+                        <span className={cn('size-2 rounded-full', SEVERITY_DOT[s])} />
                         {s}
-                      </button>
+                      </ToggleGroupItem>
                     ))}
-                  </div>
+                  </ToggleGroup>
                 </Field>
                 <Field label="Tipo">
-                  <select className={input} value={form.type} onChange={(e) => set({ type: e.target.value })}>
-                    {TYPE_OPTIONS.map((t) => <option key={t}>{t}</option>)}
-                  </select>
+                  <AnomalySelect value={form.type} onValueChange={(type) => set({ type })}>
+                    {TYPE_OPTIONS.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                  </AnomalySelect>
                 </Field>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Registrado por" required>
-                  <input className={input} value={form.reportedBy}
+                  <Input value={form.reportedBy}
                     onChange={(e) => set({ reportedBy: e.target.value })} placeholder="Nome" />
                 </Field>
                 <Field label="Tarefa vinculada">
-                  <select className={input} value={form.taskId || ''}
-                    onChange={(e) => set({ taskId: e.target.value })}>
-                    <option value="">— nenhuma —</option>
-                    {tasks.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                  </select>
+                  <AnomalySelect
+                    value={form.taskId || '__none__'}
+                    onValueChange={(taskId) => set({ taskId: taskId === '__none__' ? '' : taskId })}
+                  >
+                    <SelectItem value="__none__">Nenhuma</SelectItem>
+                    {tasks.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                  </AnomalySelect>
                 </Field>
               </div>
             </>
@@ -126,38 +141,41 @@ export default function AnomalyForm({
           {step === 1 && (
             <>
               <Field label="Descrição">
-                <textarea rows={3} className={cn(input, 'h-auto py-2 leading-relaxed')}
+                <Textarea rows={3}
                   value={form.description} onChange={(e) => set({ description: e.target.value })}
                   placeholder="O que foi observado?" />
               </Field>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Ordem de serviço">
-                  <input className={input} value={form.osNumber} onChange={(e) => set({ osNumber: e.target.value })} />
+                  <Input value={form.osNumber} onChange={(e) => set({ osNumber: e.target.value })} />
                 </Field>
                 <Field label="Equipamento / ativo">
-                  <input className={input} value={form.equipment} onChange={(e) => set({ equipment: e.target.value })} />
+                  <Input value={form.equipment} onChange={(e) => set({ equipment: e.target.value })} />
                 </Field>
                 <Field label="Localização">
-                  <input className={input} value={form.location} onChange={(e) => set({ location: e.target.value })} />
+                  <Input value={form.location} onChange={(e) => set({ location: e.target.value })} />
                 </Field>
                 <Field label="Disciplina">
-                  <select className={input} value={form.discipline} onChange={(e) => set({ discipline: e.target.value })}>
-                    <option value="">—</option>
-                    {DISCIPLINES.map((d) => <option key={d}>{d}</option>)}
-                  </select>
+                  <AnomalySelect
+                    value={form.discipline || '__none__'}
+                    onValueChange={(discipline) => set({ discipline: discipline === '__none__' ? '' : discipline })}
+                  >
+                    <SelectItem value="__none__">Não informada</SelectItem>
+                    {DISCIPLINES.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                  </AnomalySelect>
                 </Field>
               </div>
               <Field label="Causa raiz">
-                <input className={input} value={form.rootCause} onChange={(e) => set({ rootCause: e.target.value })} />
+                <Input value={form.rootCause} onChange={(e) => set({ rootCause: e.target.value })} />
               </Field>
               <Field label="Ação corretiva">
-                <input className={input} value={form.correctiveAction}
+                <Input value={form.correctiveAction}
                   onChange={(e) => set({ correctiveAction: e.target.value })} />
               </Field>
               <Field label="Status">
-                <select className={input} value={form.status} onChange={(e) => set({ status: e.target.value })}>
-                  {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
+                <AnomalySelect value={form.status} onValueChange={(status) => set({ status })}>
+                  {STATUS_OPTIONS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                </AnomalySelect>
               </Field>
             </>
           )}
@@ -208,22 +226,21 @@ export default function AnomalyForm({
         </div>
 
         <div className="flex items-center gap-2 border-t border-line pt-3">
-          <button type="button" onClick={() => setStep((s) => Math.max(0, s - 1))}
-            disabled={step === 0} className={cn(secondary, 'disabled:opacity-40')}>
-            <ChevronLeft size={14} /> Voltar
-          </button>
+          <Button type="button" onClick={() => setStep((s) => Math.max(0, s - 1))}
+            disabled={step === 0} variant="outline">
+            <ChevronLeft data-icon="inline-start" /> Voltar
+          </Button>
           <span className="ml-auto text-micro text-text-3">
             Passo {step + 1} de {FORM_STEPS.length}
           </span>
           {step < FORM_STEPS.length - 1 ? (
-            <button type="button" onClick={() => setStep((s) => s + 1)} disabled={!canAdvance}
-              className={cn(primary, 'disabled:opacity-40')}>
-              Avançar <ChevronRight size={14} />
-            </button>
+            <Button type="button" onClick={() => setStep((s) => s + 1)} disabled={!canAdvance}>
+              Avançar <ChevronRight data-icon="inline-end" />
+            </Button>
           ) : (
-            <button type="button" onClick={submit} className={primary}>
-              <Check size={14} /> Salvar
-            </button>
+            <Button type="button" onClick={submit}>
+              <Check data-icon="inline-start" /> Salvar
+            </Button>
           )}
         </div>
       </DialogContent>
@@ -231,15 +248,16 @@ export default function AnomalyForm({
   );
 }
 
-const input =
-  'h-8 w-full rounded-[6px] border border-line bg-surface-0 px-2.5 text-body text-text-1 ' +
-  'placeholder:text-text-3 focus:border-line-strong';
-
-const primary =
-  'flex items-center gap-1.5 rounded-[6px] bg-brand px-3 py-1.5 text-small font-medium text-white transition-colors hover:bg-brand-hover';
-
-const secondary =
-  'flex items-center gap-1.5 rounded-[6px] border border-line px-3 py-1.5 text-small font-medium text-text-2 transition-colors hover:bg-surface-3 hover:text-text-1';
+function AnomalySelect({ children, ...props }) {
+  return (
+    <Select {...props}>
+      <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+      <SelectContent position="popper" align="start">
+        <SelectGroup>{children}</SelectGroup>
+      </SelectContent>
+    </Select>
+  );
+}
 
 function Field({ label, required, children }) {
   return (

@@ -88,11 +88,6 @@ export default function GanttTooltip({ data, ctx }) {
         </div>
       )}
 
-      {task.isBlocked && (
-        <div className="gantt-tooltip-flag">
-          Bloqueado{task.blockReason ? `: ${task.blockReason}` : ''}
-        </div>
-      )}
     </div>
   );
 }

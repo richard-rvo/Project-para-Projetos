@@ -1,5 +1,8 @@
 import React from 'react';
 import { ChevronRight, GripVertical, AlertTriangle } from 'lucide-react';
+import {
+  Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
 import { isMilestone, isManual } from '../../utils/schedule';
 import {
   viewStart, viewEnd, viewProgress, stageOf, isLate,
@@ -234,7 +237,6 @@ export default function GanttRow({ task, index, ctx }) {
               late ? 'is-late' : '',
               critical ? 'is-critical' : '',
               dimmed ? 'is-dimmed' : '',
-              task.isBlocked ? 'is-blocked' : '',
               manual && !task.isSummary ? 'is-manual' : '',
               violation > 0 ? 'is-violating' : '',
             ]
@@ -305,20 +307,35 @@ function CellEditor({ col, ctx, value, inputRef, onChange, onCommit, onCancel })
   };
 
   if (col.type === 'select') {
+    const options = col.options(ctx);
+    const uiValue = value || '__empty__';
     return (
-      <select
-        ref={inputRef}
-        className="gantt-cell-input is-select"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onBlur={onCommit}
-        onKeyDown={onKeyDown}
-        autoFocus
+      <Select
+        value={uiValue}
+        onValueChange={(next) => {
+          const resolved = next === '__empty__' ? '' : next;
+          onChange(resolved);
+          onCommit(resolved);
+        }}
       >
-        {col.options(ctx).map((opt) => (
-          <option key={opt.value} value={opt.value}>{opt.label}</option>
-        ))}
-      </select>
+        <SelectTrigger
+          ref={inputRef}
+          className="gantt-cell-input is-select !h-full w-full"
+          onKeyDown={(e) => { if (e.key === 'Escape') onCancel(); }}
+          autoFocus
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent position="popper" align="start">
+          <SelectGroup>
+            {options.map((opt) => (
+              <SelectItem key={opt.value || '__empty__'} value={opt.value || '__empty__'}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        </SelectContent>
+      </Select>
     );
   }
 
@@ -333,7 +350,7 @@ function CellEditor({ col, ctx, value, inputRef, onChange, onCommit, onCancel })
       }
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      onBlur={onCommit}
+      onBlur={() => onCommit()}
       onKeyDown={onKeyDown}
       autoFocus
     />

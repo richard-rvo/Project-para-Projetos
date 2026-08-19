@@ -41,7 +41,6 @@ export default function CommandPalette() {
     setProjectTab,
     navigate,
     openTaskInspector,
-    setDensity,
     setTheme,
   } = useContext(AppContext);
 
@@ -182,12 +181,6 @@ export default function CommandPalette() {
           </CommandItem>
           <CommandItem value="tema escuro" onSelect={run(() => setTheme('dark'))}>
             Tema escuro
-          </CommandItem>
-          <CommandItem value="densidade confortavel" onSelect={run(() => setDensity('comfortable'))}>
-            Densidade confortável
-          </CommandItem>
-          <CommandItem value="densidade compacta" onSelect={run(() => setDensity('compact'))}>
-            Densidade compacta
           </CommandItem>
         </CommandGroup>
       </CommandList>

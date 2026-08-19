@@ -133,8 +133,8 @@ export default function PageProjectOverview() {
                 items={inHorizon}
                 rangeStart={todayStr}
                 rangeEnd={horizonEnd}
-                labelWidth={200}
-                rowHeight={26}
+                labelWidth="clamp(260px, 34%, 380px)"
+                rowHeight={32}
                 onSelect={(item) => openTaskInspector(item.id)}
               />
             ) : (

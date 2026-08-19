@@ -24,7 +24,7 @@ O app funcionava, mas a organização visual estava ruim por razões **estrutura
 
 1. **Um chrome só** — uma barra de contexto por nível, nunca três empilhadas
 2. **Cor é informação** — superfícies neutras; cor reservada para estado de cronograma
-3. **Densidade adaptativa** — Confortável/Compacto via token
+3. **Densidade consistente** — uma escala única para leitura e planejamento
 4. **O Gantt manda** — todo o resto cede altura para ele
 5. **Teclado primeiro** — toda ação do Gantt alcançável sem mouse
 
@@ -276,6 +276,29 @@ estar visível é a seleção.
 
 ---
 
+## Movimento 3 — RV Precision
+
+O terceiro movimento consolida o produto em torno da identidade RV. O laranja foi extraído da
+própria marca (`#E85D12` no tema claro e `#FF8736` no escuro) e passou a indicar ação, seleção e
+foco. Cores de cronograma continuam semânticas: atraso, risco, conclusão e caminho crítico não
+foram tingidos de laranja só para combinar com a marca.
+
+A referência Apple aparece na disciplina, não na imitação: superfícies neutras quentes, materiais
+translúcidos apenas no topo, hierarquia tipográfica contida, controles compactos, sombras leves e
+movimento curto. O shell mantém dois níveis estáveis — navegação do produto e ferramentas da
+visão — e remove sino e perfil sem função.
+
+Os controles centrais agora usam primitivas shadcn/Radix (`Button`, `Select`, `Sheet`, `Table`,
+`Badge`, `Checkbox` e `ToggleGroup`). O Inspetor virou um `Sheet` acessível; tabelas e formulários
+de Portfólio, Tarefas, Relatórios e Ocorrências compartilham o mesmo vocabulário; e a barra do
+Gantt foi reorganizada por escala, análise, histórico e ferramentas da visão. O rótulo externo da
+barra também deixa de vazar sobre a planilha fixa.
+
+O estado de caminho crítico e linha de base ficou local ao Gantt, onde é usado. Foram removidos do
+contexto global os toggles órfãos, além do antigo `isBlocked`, que não existia no modelo de dados.
+
+---
+
 ## Resultado
 
 | Medida | Antes | Depois |
@@ -313,7 +336,7 @@ Cada fase é verificada rodando o app de verdade com Puppeteer e dados semeados 
 1. `npm test` e `npm run build` sem erro
 2. Percorrer as rotas críticas: Portfólio → projeto → Gantt; criar tarefa → indentar → ligar dependência pela coluna Pred. → mover predecessora
 3. Abrir um projeto com dados **anteriores à migração** e conferir que nenhuma data andou e que os marcos continuam marcos
-4. Alternar claro/escuro e Confortável/Compacto
+4. Alternar claro/escuro e validar a responsividade
 5. Zero erros de console
 
 A partir da Fase 10, o que é puro (`utils/worktime`, `utils/duration`, forward pass, CPM,

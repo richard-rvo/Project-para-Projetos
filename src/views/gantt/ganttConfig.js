@@ -80,9 +80,7 @@ export const DEFAULT_GRID_W = 660;
 export const SPLITTER_W = 5;
 
 /** Espelha --gantt-row-h de tokens.css. */
-export function rowHeightFor(density) {
-  return density === 'compact' ? 30 : 40;
-}
+export const ROW_H = 40;
 
 /* ── Estados ───────────────────────────────────────────────────── */
 

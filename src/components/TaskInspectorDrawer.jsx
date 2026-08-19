@@ -2,6 +2,16 @@ import React, { useContext, useState, useEffect, useMemo, useCallback } from 're
 import { AppContext } from '../context/AppContext';
 import { cn } from '@/lib/utils';
 import ConfirmDialog from './ConfirmDialog';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
+import {
+  Sheet, SheetContent, SheetDescription, SheetTitle,
+} from '@/components/ui/sheet';
+import { Textarea } from '@/components/ui/textarea';
 import {
   X, Calendar, CalendarClock, Users, Link2, FileText, Trash2,
   AlertTriangle, Indent, Outdent, Target,
@@ -44,10 +54,10 @@ import {
 /* Estado não é editável aqui porque não é um campo: estágio é a
    leitura de `progress` e atraso é medido contra hoje. Editar o
    estado É mover o progresso — que é o controle logo abaixo. */
-const STAGE_TONE_CLASS = {
-  'not-started': 'bg-sched-not-started-soft text-sched-not-started',
-  'on-track': 'bg-sched-on-track-soft text-sched-on-track',
-  done: 'bg-sched-done-soft text-sched-done',
+const STAGE_TONE_VARIANT = {
+  'not-started': 'neutral',
+  'on-track': 'onTrack',
+  done: 'done',
 };
 
 export default function TaskInspectorDrawer() {
@@ -63,13 +73,6 @@ export default function TaskInspectorDrawer() {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => { setDraft(task ? { ...task } : null); }, [task]);
-
-  useEffect(() => {
-    if (!inspectorTaskId) return undefined;
-    const onKey = (e) => { if (e.key === 'Escape') closeTaskInspector(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [inspectorTaskId, closeTaskInspector]);
 
   /* Irmãos do mesmo projeto, na ordem da grade — as predecessoras são
      exibidas por número de linha, como no MS Project. */
@@ -193,34 +196,29 @@ export default function TaskInspectorDrawer() {
 
   return (
     <>
-      <div
-        className="fixed inset-0 z-50 bg-[var(--overlay-scrim)] animate-in fade-in-0 duration-200"
-        onClick={closeTaskInspector}
-      />
-
-      <aside
-        className={cn(
-          'fixed inset-y-0 right-0 z-50 flex w-[380px] max-w-full flex-col',
-          'border-l border-line bg-surface-1 shadow-elev-4',
-          'animate-in slide-in-from-right-2 fade-in-0 duration-200'
-        )}
-        role="dialog"
-        aria-label="Detalhes da tarefa"
+      <Sheet
+        open={Boolean(inspectorTaskId)}
+        onOpenChange={(open) => { if (!open) closeTaskInspector(); }}
       >
+        <SheetContent
+          side="right"
+          showCloseButton={false}
+          className="w-[420px] max-w-full sm:max-w-[420px]"
+        >
+          <SheetTitle className="sr-only">Detalhes da tarefa</SheetTitle>
+          <SheetDescription className="sr-only">
+            Edite o cronograma, progresso, recursos e vínculos da tarefa.
+          </SheetDescription>
         {/* ── Cabeçalho ──────────────────────────────────────── */}
         <header className="flex shrink-0 items-start gap-2 border-b border-line px-4 py-3">
           <div className="min-w-0 flex-1">
             <div className="mb-1 flex items-center gap-1.5 text-micro text-text-3">
               <span className="truncate">{project?.name}</span>
               {milestone && (
-                <span className="rounded-full bg-surface-3 px-1.5 py-px font-medium text-text-2">
-                  Marco
-                </span>
+                <Badge variant="secondary">Marco</Badge>
               )}
               {task.isSummary && (
-                <span className="rounded-full bg-surface-3 px-1.5 py-px font-medium text-text-2">
-                  Resumo
-                </span>
+                <Badge variant="secondary">Resumo</Badge>
               )}
             </div>
             <input
@@ -235,14 +233,16 @@ export default function TaskInspectorDrawer() {
               placeholder="Nome da tarefa"
             />
           </div>
-          <button
+          <Button
             type="button"
             onClick={closeTaskInspector}
             title="Fechar (Esc)"
-            className="mt-1 grid size-7 shrink-0 place-items-center rounded-[6px] text-text-3 transition-colors hover:bg-surface-3 hover:text-text-1"
+            variant="ghost"
+            size="icon-sm"
+            className="mt-1"
           >
-            <X size={16} strokeWidth={1.8} />
-          </button>
+            <X />
+          </Button>
         </header>
 
         {/* ── Corpo ──────────────────────────────────────────── */}
@@ -251,19 +251,16 @@ export default function TaskInspectorDrawer() {
             label="Progresso"
             aside={
               <span className="flex items-center gap-1.5">
-                <span className={cn(
-                  'rounded-full px-2 py-0.5 text-micro font-medium',
-                  STAGE_TONE_CLASS[derived.tone]
-                )}>
+                <Badge variant={STAGE_TONE_VARIANT[derived.tone] || 'neutral'}>
                   {derived.label}
-                </span>
+                </Badge>
                 {derived.late && (
-                  <span
+                  <Badge
+                    variant="late"
                     title={`${derived.lateDays} dia(s) além do término`}
-                    className="rounded-full bg-sched-late-soft px-2 py-0.5 text-micro font-semibold tabular-nums text-sched-late"
                   >
                     {derived.lateDays}d atrás
-                  </span>
+                  </Badge>
                 )}
                 <span className="text-small font-semibold tabular-nums text-text-1">
                   {viewProgress(task)}%
@@ -288,19 +285,16 @@ export default function TaskInspectorDrawer() {
                 />
                 <div className="mt-2 flex gap-1.5">
                   {[0, 25, 50, 75, 100].map((pct) => (
-                    <button
+                    <Button
                       key={pct}
                       type="button"
                       onClick={() => commit({ progress: pct }, 'Ajustar progresso')}
-                      className={cn(
-                        'flex-1 rounded-[6px] py-1 text-micro font-medium tabular-nums transition-colors',
-                        clampProgress(task.progress) === pct
-                          ? 'bg-brand-soft text-brand'
-                          : 'bg-surface-3 text-text-2 hover:text-text-1'
-                      )}
+                      variant={clampProgress(task.progress) === pct ? 'navActive' : 'secondary'}
+                      size="xs"
+                      className="flex-1"
                     >
                       {pct}%
-                    </button>
+                    </Button>
                   ))}
                 </div>
               </>
@@ -312,15 +306,14 @@ export default function TaskInspectorDrawer() {
                 planejador colocou, e o Gantt avisa se isso desrespeitar
                 a dependência — mas não move nada sozinho. */}
             <Field label="Modo de agendamento">
-              <select
+              <InspectorSelect
                 value={isManual(task) ? SCHEDULE_MODES.MANUAL : SCHEDULE_MODES.AUTO}
                 disabled={task.isSummary}
-                onChange={(e) => commit({ scheduleMode: e.target.value }, 'Alterar modo de agendamento')}
-                className={inputCls}
+                onValueChange={(value) => commit({ scheduleMode: value }, 'Alterar modo de agendamento')}
               >
-                <option value={SCHEDULE_MODES.AUTO}>Automática — segue as predecessoras</option>
-                <option value={SCHEDULE_MODES.MANUAL}>Manual — datas fixas</option>
-              </select>
+                <SelectItem value={SCHEDULE_MODES.AUTO}>Automática — segue as predecessoras</SelectItem>
+                <SelectItem value={SCHEDULE_MODES.MANUAL}>Manual — datas fixas</SelectItem>
+              </InspectorSelect>
             </Field>
 
             {violation > 0 && (
@@ -335,30 +328,28 @@ export default function TaskInspectorDrawer() {
 
             <div className="mt-2 grid grid-cols-2 gap-2">
               <Field label="Início">
-                <input
+                <Input
                   type="datetime-local"
                   value={draft.startDate || ''}
                   disabled={task.isSummary}
                   onChange={(e) => setDraft({ ...draft, startDate: e.target.value })}
                   onBlur={(e) => e.target.value !== task.startDate && commitStart(e.target.value)}
-                  className={inputCls}
                 />
               </Field>
               <Field label="Término">
-                <input
+                <Input
                   type="datetime-local"
                   value={draft.endDate || ''}
                   disabled={task.isSummary}
                   onChange={(e) => setDraft({ ...draft, endDate: e.target.value })}
                   onBlur={(e) => e.target.value !== task.endDate && commitEnd(e.target.value)}
-                  className={inputCls}
                 />
               </Field>
             </div>
 
             <div className="mt-2 grid grid-cols-2 gap-2">
               <Field label="Duração">
-                <input
+                <Input
                   type="text"
                   defaultValue={formatDuration(durationMinutes, calendar)}
                   disabled={task.isSummary}
@@ -375,21 +366,21 @@ export default function TaskInspectorDrawer() {
                       'Alterar duração'
                     );
                   }}
-                  className={inputCls}
                 />
               </Field>
               <Field label="Calendário">
-                <select
-                  value={draft.calendarId || ''}
+                <InspectorSelect
+                  value={draft.calendarId || '__project__'}
                   disabled={task.isSummary}
-                  onChange={(e) => commitCalendar(e.target.value)}
-                  className={inputCls}
+                  onValueChange={(value) => commitCalendar(value === '__project__' ? '' : value)}
                 >
-                  <option value="">Do projeto ({defaultCalendarOf(project).name})</option>
+                  <SelectItem value="__project__">
+                    Do projeto ({defaultCalendarOf(project).name})
+                  </SelectItem>
                   {calendars.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                   ))}
-                </select>
+                </InspectorSelect>
               </Field>
             </div>
           </Section>
@@ -401,32 +392,29 @@ export default function TaskInspectorDrawer() {
           <Section label="Restrição de data" icon={CalendarClock}>
             <div className="grid grid-cols-2 gap-2">
               <Field label="Tipo">
-                <select
+                <InspectorSelect
                   value={draft.constraintType || CONSTRAINT_NONE}
                   disabled={task.isSummary}
-                  onChange={(e) => {
-                    const type = e.target.value;
+                  onValueChange={(type) => {
                     const patch = { constraintType: type };
                     if (type === CONSTRAINT_NONE) patch.constraintDate = undefined;
                     else if (!task.constraintDate) patch.constraintDate = task.startDate;
                     commit(patch, 'Alterar restrição');
                   }}
-                  className={inputCls}
                 >
                   {CONSTRAINT_TYPES.map((c) => (
-                    <option key={c.id} value={c.id}>{c.label}</option>
+                    <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>
                   ))}
-                </select>
+                </InspectorSelect>
               </Field>
               <Field label="Data">
-                <input
+                <Input
                   type="datetime-local"
                   value={draft.constraintDate || ''}
                   disabled={task.isSummary || !constraint}
                   onChange={(e) => setDraft({ ...draft, constraintDate: e.target.value })}
                   onBlur={(e) => e.target.value !== task.constraintDate
                     && commit({ constraintDate: e.target.value }, 'Alterar data da restrição')}
-                  className={inputCls}
                 />
               </Field>
             </div>
@@ -465,33 +453,35 @@ export default function TaskInspectorDrawer() {
                       <span className="min-w-0 flex-1 truncate text-small text-text-1">
                         {pred?.name || "(fora deste projeto)"}
                       </span>
-                      <select
+                      <InspectorSelect
                         value={dep.type}
-                        onChange={(e) => setLinks(links.map((d, j) =>
-                          j === i ? { ...d, type: e.target.value } : d))}
+                        onValueChange={(value) => setLinks(links.map((d, j) =>
+                          j === i ? { ...d, type: value } : d))}
                         title={DEPENDENCY_TYPES.find((t) => t.id === dep.type)?.hint}
-                        className="h-7 shrink-0 rounded-[5px] border border-line bg-surface-0 px-1 text-micro text-text-1"
+                        className="w-18 shrink-0"
+                        size="sm"
                       >
                         {DEPENDENCY_TYPES.map((t) => (
-                          <option key={t.id} value={t.id}>{t.id}</option>
+                          <SelectItem key={t.id} value={t.id}>{t.id}</SelectItem>
                         ))}
-                      </select>
-                      <input
+                      </InspectorSelect>
+                      <Input
                         type="number"
                         value={dep.lag}
                         onChange={(e) => setLinks(links.map((d, j) =>
                           j === i ? { ...d, lag: parseInt(e.target.value, 10) || 0 } : d))}
                         title="Defasagem em dias úteis"
-                        className="h-7 w-14 shrink-0 rounded-[5px] border border-line bg-surface-0 px-1.5 text-micro tabular-nums text-text-1"
+                        className="w-14 shrink-0"
                       />
-                      <button
+                      <Button
                         type="button"
                         onClick={() => setLinks(links.filter((_, j) => j !== i))}
                         title="Remover"
-                        className="grid size-6 shrink-0 place-items-center rounded-[5px] text-text-3 transition-colors hover:bg-sched-late-soft hover:text-sched-late"
+                        variant="destructiveGhost"
+                        size="icon-xs"
                       >
-                        <X size={12} />
-                      </button>
+                        <X />
+                      </Button>
                     </li>
                   );
                 })}
@@ -502,42 +492,40 @@ export default function TaskInspectorDrawer() {
                 ponta da barra saiu do Gantt. Só entram candidatas que não
                 fecham ciclo, então não existe opção que dê erro. */}
             {candidates.length > 0 && (
-              <select
+              <InspectorSelect
                 value=""
-                onChange={(e) => {
-                  if (!e.target.value) return;
-                  setLinks([...links, { id: e.target.value, type: 'FS', lag: 0 }]);
+                onValueChange={(value) => {
+                  if (!value) return;
+                  setLinks([...links, { id: value, type: 'FS', lag: 0 }]);
                 }}
-                className={cn(inputCls, 'mt-2 cursor-pointer')}
+                placeholder="Adicionar predecessora…"
+                className="mt-2"
               >
-                <option value="">Adicionar predecessora…</option>
                 {candidates.map(({ task: cand, row }) => (
-                  <option key={cand.id} value={cand.id}>
+                  <SelectItem key={cand.id} value={cand.id}>
                     {row}. {cand.name}
-                  </option>
+                  </SelectItem>
                 ))}
-              </select>
+              </InspectorSelect>
             )}
           </Section>
 
           <Section label="Recursos" icon={Users}>
             <div className="grid grid-cols-2 gap-2">
               <Field label="Equipe">
-                <input
+                <Input
                   value={draft.resources || ''}
                   onChange={(e) => setDraft({ ...draft, resources: e.target.value })}
                   onBlur={(e) => e.target.value !== (task.resources || '') && commit({ resources: e.target.value }, 'Alterar recursos')}
                   placeholder="2 Mecânicos"
-                  className={inputCls}
                 />
               </Field>
               <Field label="Grupo">
-                <input
+                <Input
                   value={draft.resourceGroup || ''}
                   onChange={(e) => setDraft({ ...draft, resourceGroup: e.target.value })}
                   onBlur={(e) => e.target.value !== (task.resourceGroup || '') && commit({ resourceGroup: e.target.value }, 'Alterar grupo')}
                   placeholder="Engenharia"
-                  className={inputCls}
                 />
               </Field>
             </div>
@@ -545,21 +533,23 @@ export default function TaskInspectorDrawer() {
 
           <Section label="Hierarquia" icon={Indent}>
             <div className="flex items-center gap-2">
-              <button
+              <Button
                 type="button"
                 onClick={() => commit({ indentLevel: Math.max(0, (task.indentLevel || 0) - 1) }, 'Alterar hierarquia')}
                 disabled={(task.indentLevel || 0) === 0}
-                className={btnCls}
+                variant="outline"
+                size="sm"
               >
-                <Outdent size={14} /> Recuar
-              </button>
-              <button
+                <Outdent data-icon="inline-start" /> Recuar
+              </Button>
+              <Button
                 type="button"
                 onClick={() => commit({ indentLevel: (task.indentLevel || 0) + 1 }, 'Alterar hierarquia')}
-                className={btnCls}
+                variant="outline"
+                size="sm"
               >
-                <Indent size={14} /> Avançar
-              </button>
+                <Indent data-icon="inline-start" /> Avançar
+              </Button>
               <span className="ml-auto text-micro tabular-nums text-text-3">
                 Nível {task.indentLevel || 0}
               </span>
@@ -591,13 +581,12 @@ export default function TaskInspectorDrawer() {
           )}
 
           <Section label="Observações" icon={FileText}>
-            <textarea
+            <Textarea
               rows={3}
               value={draft.notes || ''}
               onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
               onBlur={(e) => e.target.value !== (task.notes || '') && commit({ notes: e.target.value }, 'Alterar observações')}
               placeholder="Contexto, riscos, decisões…"
-              className={cn(inputCls, 'h-auto resize-y py-2 leading-relaxed')}
             />
           </Section>
 
@@ -621,16 +610,18 @@ export default function TaskInspectorDrawer() {
 
         {/* ── Rodapé ─────────────────────────────────────────── */}
         <footer className="flex shrink-0 items-center justify-between border-t border-line px-4 py-3">
-          <button
+          <Button
             type="button"
             onClick={() => setConfirmDelete(true)}
-            className="flex items-center gap-1.5 rounded-[6px] px-2 py-1.5 text-small font-medium text-sched-late transition-colors hover:bg-sched-late-soft"
+            variant="destructiveGhost"
+            size="sm"
           >
-            <Trash2 size={14} /> Excluir
-          </button>
+            <Trash2 data-icon="inline-start" /> Excluir
+          </Button>
           <span className="text-micro text-text-3">Alterações salvas automaticamente</span>
         </footer>
-      </aside>
+        </SheetContent>
+      </Sheet>
 
       <ConfirmDialog
         isOpen={confirmDelete}
@@ -650,15 +641,20 @@ export default function TaskInspectorDrawer() {
 
 /* ── Peças ─────────────────────────────────────────────────────── */
 
-const inputCls =
-  'h-8 w-full rounded-[6px] border border-line bg-surface-0 px-2.5 text-body text-text-1 ' +
-  'placeholder:text-text-3 transition-colors focus:border-line-strong ' +
-  'disabled:cursor-not-allowed disabled:text-text-3';
-
-const btnCls =
-  'flex items-center gap-1.5 rounded-[6px] border border-line px-2.5 py-1.5 text-small ' +
-  'font-medium text-text-2 transition-colors hover:bg-surface-3 hover:text-text-1 ' +
-  'disabled:cursor-not-allowed disabled:opacity-45';
+function InspectorSelect({
+  children, className, placeholder, size = 'default', title, ...props
+}) {
+  return (
+    <Select {...props}>
+      <SelectTrigger size={size} title={title} className={cn('w-full', className)}>
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectContent position="popper" align="start">
+        <SelectGroup>{children}</SelectGroup>
+      </SelectContent>
+    </Select>
+  );
+}
 
 function Section({ label, icon: Icon, aside, children }) {
   return (

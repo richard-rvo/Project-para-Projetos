@@ -1,5 +1,8 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 
 /**
  * Barra de ações da view ativa — o segundo e ÚLTIMO nível de chrome.
@@ -14,7 +17,7 @@ export default function ViewBar({ children, className }) {
   return (
     <div
       className={cn(
-        'flex h-11 shrink-0 items-center gap-2 border-b border-line bg-surface-1 px-3',
+        'flex h-11 shrink-0 items-center gap-2 overflow-x-auto border-b border-line bg-surface-1 px-3',
         className
       )}
     >
@@ -30,7 +33,7 @@ export function ViewBarSpacer() {
 
 /** Separador vertical entre grupos de controle. */
 export function ViewBarDivider() {
-  return <div className="mx-1 h-5 w-px shrink-0 bg-line-strong" />;
+  return <Separator orientation="vertical" className="mx-1 h-5" />;
 }
 
 /**
@@ -39,31 +42,28 @@ export function ViewBarDivider() {
  */
 export function ViewBarSegments({ options, value, onChange, className }) {
   return (
-    <div className={cn('flex items-center gap-0.5 rounded-[7px] bg-surface-3 p-0.5', className)}>
+    <ToggleGroup
+      type="single"
+      value={value}
+      onValueChange={(next) => next && onChange(next)}
+      size="sm"
+      className={className}
+      aria-label="Modo de visualização"
+    >
       {options.map((opt) => {
         const Icon = opt.icon;
-        const isActive = value === opt.id;
         return (
-          <button
+          <ToggleGroupItem
             key={opt.id}
-            type="button"
-            onClick={() => onChange(opt.id)}
-            aria-pressed={isActive}
+            value={opt.id}
             title={opt.title}
-            className={cn(
-              'flex h-6.5 items-center gap-1.5 rounded-[5px] px-2',
-              'text-small font-medium transition-all duration-100',
-              isActive
-                ? 'bg-surface-1 text-text-1 shadow-elev-1'
-                : 'text-text-2 hover:text-text-1'
-            )}
           >
-            {Icon && <Icon size={13} strokeWidth={1.9} />}
+            {Icon && <Icon data-icon="inline-start" />}
             {opt.label}
-          </button>
+          </ToggleGroupItem>
         );
       })}
-    </div>
+    </ToggleGroup>
   );
 }
 
@@ -85,30 +85,24 @@ export const ViewBarButton = React.forwardRef(function ViewBarButton({
   className,
   ...props
 }, ref) {
+  const buttonVariant = variant === 'primary'
+    ? 'default'
+    : active
+      ? 'navActive'
+      : 'ghost';
+
   return (
-    <button
+    <Button
       ref={ref}
       type="button"
       disabled={disabled}
-      className={cn(
-        'flex h-7.5 shrink-0 items-center gap-1.5 rounded-[6px]',
-        /* Sem rótulo o botão vira quadrado, para não ficar um retângulo
-           largo com um ícone perdido no meio. */
-        children ? 'px-2.5' : 'w-7.5 justify-center px-0',
-        'text-small font-medium transition-colors duration-100',
-        disabled
-          ? 'cursor-not-allowed text-text-3 opacity-45'
-          : variant === 'primary'
-            ? 'bg-brand text-white hover:bg-brand-hover'
-            : active
-              ? 'bg-brand-soft text-brand'
-              : 'text-text-2 hover:bg-surface-3 hover:text-text-1',
-        className
-      )}
+      variant={buttonVariant}
+      size={children ? 'sm' : 'icon-sm'}
+      className={cn('shrink-0', className)}
       {...props}
     >
-      {Icon && <Icon size={14} strokeWidth={1.9} />}
+      {Icon && <Icon data-icon={children ? 'inline-start' : undefined} />}
       {children}
-    </button>
+    </Button>
   );
 });

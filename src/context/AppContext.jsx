@@ -19,16 +19,12 @@ const initialState = {
   /* Shell: o rail fica em 64px e sobrepõe ao passar o mouse. Fixá-lo
      reserva a largura de verdade no layout. */
   railPinned: localStorage.getItem('projeta_rail_pinned') === 'true',
-  /* 'comfortable' = leitura executiva · 'compact' = trabalho de plano */
-  density: localStorage.getItem('projeta_density') || 'comfortable',
 
   /* Histórico de edição de tarefas. Não é persistido: desfazer vale
      para a sessão, como em qualquer editor. */
   history: { past: [], future: [] },
   inspectorTaskId: null,
   isCommandPaletteOpen: false,
-  showCriticalPath: false,
-  showBaseline: false,
 };
 
 /* ── action types ───────────────────────────────────────────── */
@@ -52,14 +48,11 @@ export const ACTIONS = {
   SET_THEME: 'SET_THEME',
   SET_TOAST: 'SET_TOAST',
   TOGGLE_RAIL_PINNED: 'TOGGLE_RAIL_PINNED',
-  SET_DENSITY: 'SET_DENSITY',
   PUSH_HISTORY: 'PUSH_HISTORY',
   UNDO: 'UNDO',
   REDO: 'REDO',
   SET_INSPECTOR_TASK: 'SET_INSPECTOR_TASK',
   TOGGLE_COMMAND_PALETTE: 'TOGGLE_COMMAND_PALETTE',
-  TOGGLE_CRITICAL_PATH: 'TOGGLE_CRITICAL_PATH',
-  TOGGLE_BASELINE: 'TOGGLE_BASELINE',
 };
 
 /* ── reducer ────────────────────────────────────────────────── */
@@ -143,8 +136,6 @@ function reducer(state, action) {
       return { ...state, toast: action.payload };
     case ACTIONS.TOGGLE_RAIL_PINNED:
       return { ...state, railPinned: !state.railPinned };
-    case ACTIONS.SET_DENSITY:
-      return { ...state, density: action.payload };
 
     /* Uma ação nova invalida o futuro — é o comportamento esperado
        de qualquer editor. Teto de 60 passos para não crescer sem fim. */
@@ -182,10 +173,6 @@ function reducer(state, action) {
       return { ...state, inspectorTaskId: action.payload };
     case ACTIONS.TOGGLE_COMMAND_PALETTE:
       return { ...state, isCommandPaletteOpen: action.payload !== undefined ? action.payload : !state.isCommandPaletteOpen };
-    case ACTIONS.TOGGLE_CRITICAL_PATH:
-      return { ...state, showCriticalPath: action.payload !== undefined ? action.payload : !state.showCriticalPath };
-    case ACTIONS.TOGGLE_BASELINE:
-      return { ...state, showBaseline: action.payload !== undefined ? action.payload : !state.showBaseline };
     default:
       return state;
   }
@@ -222,13 +209,6 @@ export function AppProvider({ children }) {
     localStorage.setItem('projeta_theme', state.theme);
     document.documentElement.setAttribute('data-theme', state.theme);
   }, [state.theme]);
-
-  /* Persist density — os tokens de espaçamento e --gantt-row-h
-     reagem ao atributo data-density no <html>. */
-  useEffect(() => {
-    localStorage.setItem('projeta_density', state.density);
-    document.documentElement.setAttribute('data-density', state.density);
-  }, [state.density]);
 
   /* Persist rail pin */
   useEffect(() => {
@@ -400,20 +380,8 @@ export function AppProvider({ children }) {
     dispatch({ type: ACTIONS.TOGGLE_COMMAND_PALETTE, payload: isOpen });
   }, []);
 
-  const toggleCriticalPath = useCallback((show) => {
-    dispatch({ type: ACTIONS.TOGGLE_CRITICAL_PATH, payload: show });
-  }, []);
-
-  const toggleBaseline = useCallback((show) => {
-    dispatch({ type: ACTIONS.TOGGLE_BASELINE, payload: show });
-  }, []);
-
   const toggleRailPinned = useCallback(() => {
     dispatch({ type: ACTIONS.TOGGLE_RAIL_PINNED });
-  }, []);
-
-  const setDensity = useCallback((density) => {
-    dispatch({ type: ACTIONS.SET_DENSITY, payload: density });
   }, []);
 
   const setTheme = useCallback((theme) => {
@@ -447,10 +415,7 @@ export function AppProvider({ children }) {
     openTaskInspector,
     closeTaskInspector,
     toggleCommandPalette,
-    toggleCriticalPath,
-    toggleBaseline,
     toggleRailPinned,
-    setDensity,
     setTheme,
   };
 

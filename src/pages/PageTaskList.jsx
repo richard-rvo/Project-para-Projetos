@@ -3,10 +3,16 @@ import { AppContext } from '../context/AppContext';
 import { cn } from '@/lib/utils';
 import ViewBar, { ViewBarButton, ViewBarDivider } from '../components/shell/ViewBar';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent,
-  DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenuGroup, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from '@/components/ui/table';
 import {
   Plus, Search, SlidersHorizontal, Trash2, CheckCheck, ArrowUpDown, ListChecks, X,
 } from 'lucide-react';
@@ -35,9 +41,9 @@ import { formatDuration } from '../utils/duration';
    ═══════════════════════════════════════════════════════════════ */
 
 const STAGE_TONE = {
-  'not-started': 'bg-sched-not-started-soft text-sched-not-started',
-  'in-progress': 'bg-sched-on-track-soft text-sched-on-track',
-  done: 'bg-sched-done-soft text-sched-done',
+  'not-started': 'neutral',
+  'in-progress': 'onTrack',
+  done: 'done',
 };
 
 const SORTABLE = {
@@ -144,6 +150,7 @@ export default function PageTaskList() {
   });
 
   const allSelected = rows.length > 0 && rows.every((t) => selected.has(t.id));
+  const someSelected = !allSelected && rows.some((t) => selected.has(t.id));
 
   const addQuick = async () => {
     const cal = defaultCalendarOf(project);
@@ -200,27 +207,31 @@ export default function PageTaskList() {
             <DropdownMenuLabel className="text-micro uppercase tracking-wide text-text-3">
               Mostrar apenas
             </DropdownMenuLabel>
-            {STAGES.map((stage) => (
+            <DropdownMenuGroup>
+              {STAGES.map((stage) => (
+                <DropdownMenuCheckboxItem
+                  key={stage.id}
+                  checked={stages.includes(stage.id)}
+                  onCheckedChange={() => setStages((prev) =>
+                    prev.includes(stage.id)
+                      ? prev.filter((x) => x !== stage.id)
+                      : [...prev, stage.id])}
+                  onSelect={(e) => e.preventDefault()}
+                >
+                  {stage.label}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
               <DropdownMenuCheckboxItem
-                key={stage.id}
-                checked={stages.includes(stage.id)}
-                onCheckedChange={() => setStages((prev) =>
-                  prev.includes(stage.id)
-                    ? prev.filter((x) => x !== stage.id)
-                    : [...prev, stage.id])}
+                checked={onlyLate}
+                onCheckedChange={setOnlyLate}
                 onSelect={(e) => e.preventDefault()}
               >
-                {stage.label}
+                Só atrasadas
               </DropdownMenuCheckboxItem>
-            ))}
-            <DropdownMenuSeparator />
-            <DropdownMenuCheckboxItem
-              checked={onlyLate}
-              onCheckedChange={setOnlyLate}
-              onSelect={(e) => e.preventDefault()}
-            >
-              Só atrasadas
-            </DropdownMenuCheckboxItem>
+            </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>
 
@@ -242,18 +253,17 @@ export default function PageTaskList() {
             </div>
           </div>
         ) : (
-          <table className="w-full border-collapse">
-            <thead className="sticky top-0 z-10">
-              <tr className="border-b border-line bg-surface-3">
-                <th className="w-10 px-3 py-2">
-                  <input
-                    type="checkbox"
-                    checked={allSelected}
-                    onChange={() =>
+          <Table>
+            <TableHeader className="sticky top-0 z-10 bg-surface-3">
+              <TableRow>
+                <TableHead className="w-10 px-3">
+                  <Checkbox
+                    checked={allSelected ? true : someSelected ? 'indeterminate' : false}
+                    onCheckedChange={() =>
                       setSelected(allSelected ? new Set() : new Set(rows.map((t) => t.id)))}
                     aria-label="Selecionar todas"
                   />
-                </th>
+                </TableHead>
                 {columns.map((col) => (
                   <SortHeader
                     key={col.id}
@@ -270,29 +280,26 @@ export default function PageTaskList() {
                   dir={sort.dir}
                   onClick={() => toggleSort('stage')}
                 />
-                <th className="w-14 px-3 py-2" />
-              </tr>
-            </thead>
-            <tbody>
+                <TableHead className="w-14 px-3" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {rows.map((task) => (
-                <tr
+                <TableRow
                   key={task.id}
-                  className={cn(
-                    'group border-b border-line transition-colors last:border-0',
-                    selected.has(task.id) ? 'bg-brand-soft' : 'hover:bg-surface-2'
-                  )}
+                  data-state={selected.has(task.id) ? 'selected' : undefined}
+                  className="group"
                 >
-                  <td className="px-3 py-2">
-                    <input
-                      type="checkbox"
+                  <TableCell className="px-3">
+                    <Checkbox
                       checked={selected.has(task.id)}
-                      onChange={() => toggleRow(task.id)}
+                      onCheckedChange={() => toggleRow(task.id)}
                       aria-label={`Selecionar ${task.name}`}
                     />
-                  </td>
+                  </TableCell>
 
                   {columns.map((col) => (
-                    <td
+                    <TableCell
                       key={col.id}
                       onClick={() => openTaskInspector(task.id)}
                       className={cn(
@@ -302,44 +309,43 @@ export default function PageTaskList() {
                       )}
                     >
                       {col.id === 'name' ? task.name : col.render(task, ctx)}
-                    </td>
+                    </TableCell>
                   ))}
 
-                  <td className="px-3 py-2">
+                  <TableCell className="px-3">
                     <span className="flex flex-wrap items-center gap-1">
-                      <span className={cn(
-                        'rounded-full px-2 py-0.5 text-micro font-medium',
-                        STAGE_TONE[stageOf(task)]
-                      )}>
+                      <Badge variant={STAGE_TONE[stageOf(task)] || 'neutral'}>
                         {stageLabel(task)}
-                      </span>
+                      </Badge>
                       {/* Atraso é condição: acompanha o estágio em vez
                           de substituí-lo. */}
                       {isLate(task) && (
-                        <span
+                        <Badge
+                          variant="late"
                           title={`${lateDays(task)} dia(s) além do término`}
-                          className="rounded-full bg-sched-late-soft px-2 py-0.5 text-micro font-semibold tabular-nums text-sched-late"
                         >
                           {lateDays(task)}d
-                        </span>
+                        </Badge>
                       )}
                     </span>
-                  </td>
+                  </TableCell>
 
-                  <td className="px-3 py-2">
-                    <button
+                  <TableCell className="px-3">
+                    <Button
                       type="button"
                       onClick={() => removeTasks([task.id])}
                       title="Excluir"
-                      className="grid size-7 place-items-center rounded-[6px] text-text-3 opacity-0 transition-all group-hover:opacity-100 hover:bg-sched-late-soft hover:text-sched-late"
+                      variant="destructiveGhost"
+                      size="icon-sm"
+                      className="opacity-0 group-hover:opacity-100"
                     >
-                      <Trash2 size={14} strokeWidth={1.8} />
-                    </button>
-                  </td>
-                </tr>
+                      <Trash2 />
+                    </Button>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         )}
       </div>
 
@@ -374,7 +380,7 @@ export default function PageTaskList() {
 
 function SortHeader({ label, active, dir, onClick, align }) {
   return (
-    <th
+    <TableHead
       onClick={onClick}
       className={cn(
         'cursor-pointer select-none px-3 py-2 text-micro font-semibold uppercase tracking-wide',
@@ -391,6 +397,6 @@ function SortHeader({ label, active, dir, onClick, align }) {
           style={active && dir === 'desc' ? { transform: 'scaleY(-1)' } : undefined}
         />
       </span>
-    </th>
+    </TableHead>
   );
 }

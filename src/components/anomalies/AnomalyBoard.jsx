@@ -3,13 +3,27 @@ import { cn } from '@/lib/utils';
 import ViewBar, { ViewBarButton } from '../shell/ViewBar';
 import ConfirmDialog from '../ConfirmDialog';
 import AnomalyForm from './AnomalyForm';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  Select as UiSelect, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import {
   Plus, Search, AlertTriangle, Trash2, PenLine, X, MapPin, Wrench, Hash,
 } from 'lucide-react';
 import {
-  SEVERITY_OPTIONS, SEVERITY_DOT, SEVERITY_TONE,
-  STATUS_OPTIONS, STATUS_TONE, EMPTY_ANOMALY, formatDatetime,
+  SEVERITY_OPTIONS, SEVERITY_DOT,
+  STATUS_OPTIONS, EMPTY_ANOMALY, formatDatetime,
 } from './anomalyConfig';
+
+const SEVERITY_VARIANT = {
+  baixa: 'onTrack', média: 'atRisk', alta: 'late', crítica: 'critical',
+};
+
+const STATUS_VARIANT = {
+  aberta: 'late', 'em análise': 'atRisk', resolvida: 'done', cancelada: 'neutral',
+};
 
 /* ═══════════════════════════════════════════════════════════════
    Split view de anomalias: lista densa à esquerda, detalhe à direita.
@@ -73,9 +87,9 @@ export default function AnomalyBoard({
           />
         </label>
 
-        <Select value={severity} onChange={setSeverity}
+        <FilterSelect value={severity} onChange={setSeverity}
           options={[{ v: 'todas', l: 'Toda severidade' }, ...SEVERITY_OPTIONS.map((s) => ({ v: s, l: s }))]} />
-        <Select value={status} onChange={setStatus}
+        <FilterSelect value={status} onChange={setStatus}
           options={[{ v: 'todos', l: 'Todo status' }, ...STATUS_OPTIONS.map((s) => ({ v: s, l: s }))]} />
 
         <span className="ml-1 text-micro tabular-nums text-text-3">
@@ -134,12 +148,9 @@ export default function AnomalyBoard({
                         <span className="tabular-nums">{formatDatetime(a.reportedAt)}</span>
                       </span>
                     </span>
-                    <span className={cn(
-                      'shrink-0 rounded-full px-1.5 py-0.5 text-micro font-medium',
-                      STATUS_TONE[a.status] || 'bg-surface-3 text-text-3'
-                    )}>
+                    <Badge variant={STATUS_VARIANT[a.status] || 'neutral'}>
                       {a.status}
-                    </span>
+                    </Badge>
                   </button>
                 </li>
               ))}
@@ -153,16 +164,14 @@ export default function AnomalyBoard({
             <header className="flex items-start gap-3">
               <div className="min-w-0 flex-1">
                 <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
-                  <span className={cn('rounded-full px-2 py-0.5 text-micro font-medium', SEVERITY_TONE[selected.severity])}>
+                  <Badge variant={SEVERITY_VARIANT[selected.severity] || 'neutral'}>
                     {selected.severity}
-                  </span>
-                  <span className={cn('rounded-full px-2 py-0.5 text-micro font-medium', STATUS_TONE[selected.status])}>
+                  </Badge>
+                  <Badge variant={STATUS_VARIANT[selected.status] || 'neutral'}>
                     {selected.status}
-                  </span>
+                  </Badge>
                   {selected.type && (
-                    <span className="rounded-full bg-surface-3 px-2 py-0.5 text-micro text-text-2">
-                      {selected.type}
-                    </span>
+                    <Badge variant="secondary">{selected.type}</Badge>
                   )}
                 </div>
                 <h2 className="text-title font-semibold leading-tight tracking-tight text-text-1">
@@ -225,25 +234,26 @@ export default function AnomalyBoard({
               <h3 className="mb-2 text-micro font-semibold uppercase tracking-wide text-text-3">
                 Alterar status
               </h3>
-              <div className="flex flex-wrap gap-1.5">
+              <ToggleGroup
+                type="single"
+                value={selected.status}
+                onValueChange={(next) => {
+                  if (!next || next === selected.status) return;
+                  onUpdate({
+                    ...selected,
+                    status: next,
+                    resolvedAt: next === 'resolvida' ? new Date().toISOString() : null,
+                  });
+                }}
+                size="sm"
+                aria-label="Status da anomalia"
+              >
                 {STATUS_OPTIONS.map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => onUpdate({
-                      ...selected,
-                      status: s,
-                      resolvedAt: s === 'resolvida' ? new Date().toISOString() : null,
-                    })}
-                    className={cn(
-                      'rounded-full px-2.5 py-1 text-small font-medium transition-colors',
-                      selected.status === s ? STATUS_TONE[s] : 'bg-surface-3 text-text-2 hover:text-text-1'
-                    )}
-                  >
+                  <ToggleGroupItem key={s} value={s}>
                     {s}
-                  </button>
+                  </ToggleGroupItem>
                 ))}
-              </div>
+              </ToggleGroup>
             </div>
           </div>
         )}
@@ -284,15 +294,16 @@ export default function AnomalyBoard({
 
 /* ── Peças ─────────────────────────────────────────────────────── */
 
-function Select({ value, onChange, options }) {
+function FilterSelect({ value, onChange, options }) {
   return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="h-7.5 rounded-[6px] border border-line bg-surface-0 px-2 text-small text-text-1 focus:border-line-strong"
-    >
-      {options.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}
-    </select>
+    <UiSelect value={value} onValueChange={onChange}>
+      <SelectTrigger size="sm"><SelectValue /></SelectTrigger>
+      <SelectContent position="popper" align="start">
+        <SelectGroup>
+          {options.map((o) => <SelectItem key={o.v} value={o.v}>{o.l}</SelectItem>)}
+        </SelectGroup>
+      </SelectContent>
+    </UiSelect>
   );
 }
 
@@ -309,16 +320,14 @@ function Detail({ label, value, icon: Icon }) {
 
 function IconBtn({ title, danger, children, ...props }) {
   return (
-    <button
+    <Button
       type="button"
       title={title}
-      className={cn(
-        'grid size-7 place-items-center rounded-[6px] text-text-3 transition-colors',
-        danger ? 'hover:bg-sched-late-soft hover:text-sched-late' : 'hover:bg-surface-3 hover:text-text-1'
-      )}
+      variant={danger ? 'destructiveGhost' : 'ghost'}
+      size="icon-sm"
       {...props}
     >
       {children}
-    </button>
+    </Button>
   );
 }

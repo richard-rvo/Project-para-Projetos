@@ -3,6 +3,12 @@ import { AppContext } from '../context/AppContext';
 import { cn } from '@/lib/utils';
 import ViewBar, { ViewBarSegments, ViewBarButton } from '../components/shell/ViewBar';
 import CurveChart from '../components/CurveChart';
+import {
+  Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from '@/components/ui/table';
 import { calculateProjectMetrics } from '../utils/progress';
 import { computeSCurve } from '../utils/scurve';
 import {
@@ -72,13 +78,19 @@ export default function PageReports() {
   return (
     <div className="flex h-full flex-col">
       <ViewBar className="no-print">
-        <select
+        <Select
           value={project?.id || ''}
-          onChange={(e) => setProjectId(e.target.value)}
-          className="h-7.5 max-w-64 rounded-[6px] border border-line bg-surface-0 px-2 text-small text-text-1 focus:border-line-strong"
+          onValueChange={setProjectId}
         >
-          {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
+          <SelectTrigger size="sm" className="w-64 max-w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent position="popper" align="start">
+            <SelectGroup>
+              {projects.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
         <ViewBarSegments options={TYPES} value={type} onChange={setType} />
         <div className="ml-auto" />
         <ViewBarButton icon={Printer} variant="primary" onClick={() => window.print()}>
@@ -156,39 +168,39 @@ export default function PageReports() {
               )}
 
               <Section title={`Cronograma (${projTasks.length} tarefas)`}>
-                <table className="w-full border-collapse text-[10px]">
-                  <thead>
-                    <tr className="border-b border-[#111]">
+                <Table className="text-[10px]">
+                  <TableHeader>
+                    <TableRow className="border-b border-[#111] hover:bg-transparent">
                       {['#', 'Tarefa', 'Início', 'Término', 'Dur.', '%', 'Status'].map((h) => (
-                        <th key={h} className="px-1.5 py-1 text-left font-semibold uppercase tracking-wide">
+                        <TableHead key={h} className="h-auto px-1.5 py-1 text-left text-[10px] font-semibold uppercase tracking-wide text-[#111]">
                           {h}
-                        </th>
+                        </TableHead>
                       ))}
-                    </tr>
-                  </thead>
-                  <tbody>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {projTasks.map((t, i) => (
-                      <tr key={t.id} className="border-b border-[#eee]">
-                        <td className="px-1.5 py-1 tabular-nums text-[#888]">{i + 1}</td>
-                        <td className="px-1.5 py-1">{t.name}</td>
-                        <td className="px-1.5 py-1 tabular-nums">{formatDateTimeShort(t.startDate)}</td>
-                        <td className="px-1.5 py-1 tabular-nums">{formatDateTimeShort(t.endDate)}</td>
+                      <TableRow key={t.id} className="border-b border-[#eee] hover:bg-transparent">
+                        <TableCell className="px-1.5 py-1 tabular-nums text-[#888]">{i + 1}</TableCell>
+                        <TableCell className="px-1.5 py-1">{t.name}</TableCell>
+                        <TableCell className="px-1.5 py-1 tabular-nums">{formatDateTimeShort(t.startDate)}</TableCell>
+                        <TableCell className="px-1.5 py-1 tabular-nums">{formatDateTimeShort(t.endDate)}</TableCell>
                         {/* Dias ÚTEIS do calendário da tarefa, como no Gantt. Com dias
                             corridos o relatório dizia 16d onde a tela dizia 12d. */}
-                        <td className="px-1.5 py-1 tabular-nums">
+                        <TableCell className="px-1.5 py-1 tabular-nums">
                           {formatDuration(
                             workingMinutesBetween(calendarOf(project, t), t.startDate, t.endDate),
                             calendarOf(project, t)
                           )}
-                        </td>
-                        <td className="px-1.5 py-1 tabular-nums">{t.progress || 0}%</td>
-                        <td className={cn('px-1.5 py-1', isLate(t) && 'font-semibold text-[#b4331f]')}>
+                        </TableCell>
+                        <TableCell className="px-1.5 py-1 tabular-nums">{t.progress || 0}%</TableCell>
+                        <TableCell className={cn('px-1.5 py-1', isLate(t) && 'font-semibold text-[#b4331f]')}>
                           {isLate(t) ? `${stageLabel(t)} · ${lateDays(t)}d` : stageLabel(t)}
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               </Section>
 
               {projAnomalies.length > 0 && (

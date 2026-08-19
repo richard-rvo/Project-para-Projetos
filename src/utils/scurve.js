@@ -1,4 +1,4 @@
-import { addDays, dateOf, durationDays, today } from './schedule';
+import { addDays, dateOf, daysBetween, durationDays, today } from './schedule';
 import { viewProgress, leaves } from './taskState';
 import { hasBaseline, calculateProjectMetrics } from './progress';
 
@@ -67,7 +67,10 @@ export function computeSCurve(allTasks, samples = 30) {
 
   const minDate = starts[0];
   const maxDate = ends[ends.length - 1];
-  const totalDays = durationDays(minDate, maxDate);
+  /* Geometria usa distância ENTRE datas, não duração inclusiva. Antes
+     `durationDays` fazia o domínio terminar um dia depois de maxDate,
+     deixando um trecho vazio no fim do eixo X. */
+  const totalDays = daysBetween(minDate, maxDate);
   if (totalDays <= 0) return empty;
 
   const todayStr = today();
@@ -82,10 +85,18 @@ export function computeSCurve(allTasks, samples = 30) {
   const plannedWeight = based.reduce((sum, t) => sum + weightOf(t), 0) || 1;
   const actualWeight = tasks.reduce((sum, t) => sum + weightOf(t), 0) || 1;
 
-  const step = Math.max(1, Math.floor(totalDays / samples));
+  const step = Math.max(1, Math.ceil(totalDays / samples));
   const points = [];
 
-  for (let i = 0; i <= totalDays; i += step) {
+  /* Início, data de controle e término são pontos obrigatórios. Isso
+     evita o tooltip dizer "perto de hoje" e garante que as linhas
+     realmente alcancem as duas extremidades do eixo. */
+  const sampleDays = new Set([0, totalDays]);
+  for (let i = 0; i <= totalDays; i += step) sampleDays.add(i);
+  const todayDay = daysBetween(minDate, todayStr);
+  if (todayDay >= 0 && todayDay <= totalDays) sampleDays.add(todayDay);
+
+  for (const i of [...sampleDays].sort((a, b) => a - b)) {
     const date = addDays(minDate, i);
 
     /* ── Planejado: fração da BASELINE decorrida até `date` ──── */

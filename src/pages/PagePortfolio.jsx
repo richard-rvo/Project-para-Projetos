@@ -4,19 +4,18 @@ import { cn } from '@/lib/utils';
 import ViewBar, { ViewBarSegments, ViewBarButton } from '../components/shell/ViewBar';
 import ConfirmDialog from '../components/ConfirmDialog';
 import PortfolioTimeline from '../components/PortfolioTimeline';
+import ProjectDialog from '../components/ProjectDialog';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from '@/components/ui/table';
 import { calculateProjectMetrics } from '../utils/progress';
 import { today, addDays, formatDateLong } from '../utils/schedule';
 import { countByStage, isDueWithin, projectSpan } from '../utils/taskState';
 import {
   Plus, Search, LayoutGrid, Table2, GanttChartSquare, Trash2, FolderOpen,
-  CalendarRange,
+  CalendarRange, Pencil,
 } from 'lucide-react';
 
 function generateId() {
@@ -30,11 +29,11 @@ const MODES = [
 ];
 
 const STATUS_TONE = {
-  Planejado: 'bg-sched-not-started-soft text-sched-not-started',
-  'Em Andamento': 'bg-sched-on-track-soft text-sched-on-track',
-  Concluído: 'bg-sched-done-soft text-sched-done',
-  Atrasado: 'bg-sched-late-soft text-sched-late',
-  Pausado: 'bg-sched-not-started-soft text-sched-not-started',
+  Planejado: 'neutral',
+  'Em Andamento': 'onTrack',
+  Concluído: 'done',
+  Atrasado: 'late',
+  Pausado: 'neutral',
 };
 
 const HEALTH_DOT = {
@@ -55,16 +54,14 @@ const HEALTH_DOT = {
  * números grandes em tipografia — número é o dado, o ícone era enfeite.
  */
 export default function PagePortfolio() {
-  const { state, addProject, removeProject, selectProject, showToast } =
+  const { state, addProject, updateProject, removeProject, selectProject, showToast } =
     useContext(AppContext);
 
   const [mode, setMode] = useState('cards');
   const [query, setQuery] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
+  const [editingProject, setEditingProject] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
-  const [form, setForm] = useState({
-    name: '', description: '', startDate: '', endDate: '', status: 'Planejado',
-  });
 
   const { projects, tasks, anomalies } = state;
 
@@ -105,14 +102,19 @@ export default function PagePortfolio() {
     return { total: projects.length, active, avg, dueSoon, late, openAnoms };
   }, [projects, tasks, anomalies, rows]);
 
-  const handleCreate = async () => {
-    if (!form.name.trim()) {
-      showToast('Nome do projeto é obrigatório', 'error');
-      return;
-    }
-    await addProject({ id: generateId(), ...form, createdAt: new Date().toISOString() });
-    setForm({ name: '', description: '', startDate: '', endDate: '', status: 'Planejado' });
-    setCreateOpen(false);
+  const handleCreate = (fields) => addProject({
+    id: generateId(),
+    ...fields,
+    createdAt: new Date().toISOString(),
+  });
+
+  const handleUpdate = async (fields) => {
+    await updateProject({
+      ...editingProject,
+      ...fields,
+      updatedAt: new Date().toISOString(),
+    });
+    showToast('Projeto atualizado', 'success');
   };
 
   return (
@@ -151,21 +153,36 @@ export default function PagePortfolio() {
               onCreate={() => setCreateOpen(true)}
             />
           ) : mode === 'cards' ? (
-            <CardsGrid rows={visible} onOpen={selectProject} onDelete={setConfirmId} />
+            <CardsGrid
+              rows={visible}
+              onOpen={selectProject}
+              onEdit={setEditingProject}
+              onDelete={setConfirmId}
+            />
           ) : mode === 'timeline' ? (
             <PortfolioTimeline rows={visible} onOpen={selectProject} />
           ) : (
-            <ProjectsTable rows={visible} onOpen={selectProject} onDelete={setConfirmId} />
+            <ProjectsTable
+              rows={visible}
+              onOpen={selectProject}
+              onEdit={setEditingProject}
+              onDelete={setConfirmId}
+            />
           )}
         </div>
       </div>
 
-      <CreateProjectDialog
+      <ProjectDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
-        form={form}
-        setForm={setForm}
-        onCreate={handleCreate}
+        onSave={handleCreate}
+      />
+
+      <ProjectDialog
+        open={Boolean(editingProject)}
+        onOpenChange={(open) => !open && setEditingProject(null)}
+        project={editingProject}
+        onSave={handleUpdate}
       />
 
       <ConfirmDialog
@@ -216,7 +233,7 @@ function MetricsStrip({ summary }) {
 
 /* ── Cards ───────────────────────────────────────────────────────── */
 
-function CardsGrid({ rows, onOpen, onDelete }) {
+function CardsGrid({ rows, onOpen, onEdit, onDelete }) {
   return (
     <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3">
       {rows.map(({ project, metrics, span, lateCount, taskCount, openAnomalies }) => (
@@ -224,7 +241,7 @@ function CardsGrid({ rows, onOpen, onDelete }) {
           key={project.id}
           onClick={() => onOpen(project.id)}
           className={cn(
-            'group cursor-pointer rounded-[10px] border border-line bg-surface-1 p-4',
+            'group cursor-pointer rounded-[8px] border border-line bg-surface-1 p-4',
             'transition-all duration-150 hover:border-line-strong hover:shadow-elev-2'
           )}
         >
@@ -236,18 +253,26 @@ function CardsGrid({ rows, onOpen, onDelete }) {
             <h3 className="min-w-0 flex-1 truncate text-read font-semibold tracking-tight text-text-1">
               {project.name}
             </h3>
-            <button
+            <Button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onEdit(project); }}
+              title="Editar projeto"
+              variant="ghost"
+              size="icon-sm"
+              className="opacity-60 hover:opacity-100"
+            >
+              <Pencil />
+            </Button>
+            <Button
               type="button"
               onClick={(e) => { e.stopPropagation(); onDelete(project.id); }}
               title="Excluir projeto"
-              className={cn(
-                'grid size-7 shrink-0 place-items-center rounded-[6px] text-text-3',
-                'opacity-0 transition-all duration-100 group-hover:opacity-100',
-                'hover:bg-sched-late-soft hover:text-sched-late'
-              )}
+              variant="destructiveGhost"
+              size="icon-sm"
+              className="opacity-60 hover:opacity-100"
             >
-              <Trash2 size={14} strokeWidth={1.8} />
-            </button>
+              <Trash2 />
+            </Button>
           </div>
 
           {project.description && (
@@ -257,19 +282,19 @@ function CardsGrid({ rows, onOpen, onDelete }) {
           )}
 
           <div className="mt-3 flex flex-wrap items-center gap-1.5">
-            <Pill className={STATUS_TONE[project.status] || STATUS_TONE.Planejado}>
+            <Pill variant={STATUS_TONE[project.status] || STATUS_TONE.Planejado}>
               {project.status || 'Planejado'}
             </Pill>
-            <Pill className="bg-surface-3 text-text-2">
+            <Pill variant="secondary">
               {taskCount} tarefa{taskCount !== 1 ? 's' : ''}
             </Pill>
             {lateCount > 0 && (
-              <Pill className="bg-sched-late-soft text-sched-late">
+              <Pill variant="late">
                 {lateCount} atrasada{lateCount !== 1 ? 's' : ''}
               </Pill>
             )}
             {openAnomalies > 0 && (
-              <Pill className="bg-sched-at-risk-soft text-sched-at-risk">
+              <Pill variant="atRisk">
                 {openAnomalies} anomalia{openAnomalies !== 1 ? 's' : ''}
               </Pill>
             )}
@@ -301,90 +326,96 @@ function CardsGrid({ rows, onOpen, onDelete }) {
 
 /* ── Tabela ──────────────────────────────────────────────────────── */
 
-function ProjectsTable({ rows, onOpen, onDelete }) {
+function ProjectsTable({ rows, onOpen, onEdit, onDelete }) {
   return (
-    <div className="overflow-x-auto rounded-[10px] border border-line bg-surface-1">
-      <table className="w-full min-w-[720px] border-collapse">
-        <thead>
-          <tr className="border-b border-line">
+    <div className="overflow-hidden rounded-[8px] border border-line bg-surface-1">
+      <Table className="min-w-[720px]">
+        <TableHeader>
+          <TableRow>
             {['Projeto', 'Status', 'Saúde', 'Progresso', 'Tarefas', 'Período', ''].map((h, i) => (
-              <th
+              <TableHead
                 key={h || i}
                 className={cn(
-                  'px-3 py-2.5 text-micro font-semibold uppercase tracking-wide text-text-3',
-                  i === 0 ? 'text-left' : i === 6 ? 'w-10' : 'text-left'
+                  'px-3 text-micro font-semibold uppercase tracking-wide text-text-3',
+                  i === 0 ? 'text-left' : i === 6 ? 'w-20' : 'text-left'
                 )}
               >
                 {h}
-              </th>
+              </TableHead>
             ))}
-          </tr>
-        </thead>
-        <tbody>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {rows.map(({ project, metrics, span, taskCount }) => (
-            <tr
+            <TableRow
               key={project.id}
               onClick={() => onOpen(project.id)}
-              className="group cursor-pointer border-b border-line last:border-0 transition-colors duration-100 hover:bg-surface-2"
+              className="group cursor-pointer"
             >
-              <td className="max-w-0 px-3 py-2.5">
+              <TableCell className="max-w-0 px-3">
                 <span className="block truncate text-body font-medium text-text-1">
                   {project.name}
                 </span>
-              </td>
-              <td className="px-3 py-2.5">
-                <Pill className={STATUS_TONE[project.status] || STATUS_TONE.Planejado}>
+              </TableCell>
+              <TableCell className="px-3">
+                <Pill variant={STATUS_TONE[project.status] || STATUS_TONE.Planejado}>
                   {project.status || 'Planejado'}
                 </Pill>
-              </td>
-              <td className="px-3 py-2.5">
+              </TableCell>
+              <TableCell className="px-3">
                 <span className="flex items-center gap-1.5 text-small text-text-2">
                   <span className={cn('size-2 rounded-full', HEALTH_DOT[metrics.health])} />
                   {metrics.health}
                 </span>
-              </td>
-              <td className="w-44 px-3 py-2.5">
+              </TableCell>
+              <TableCell className="w-44 px-3">
                 <div className="flex items-center gap-2">
                   <ProgressTrack value={metrics.progress} planned={metrics.planned} />
                   <span className="w-9 shrink-0 text-right text-small font-semibold tabular-nums text-text-1">
                     {metrics.progress}%
                   </span>
                 </div>
-              </td>
-              <td className="px-3 py-2.5 text-small tabular-nums text-text-2">{taskCount}</td>
-              <td className="whitespace-nowrap px-3 py-2.5 text-small tabular-nums text-text-2">
+              </TableCell>
+              <TableCell className="px-3 text-small tabular-nums text-text-2">{taskCount}</TableCell>
+              <TableCell className="px-3 text-small tabular-nums text-text-2">
                 {formatDateLong(span.start)} → {formatDateLong(span.end)}
-              </td>
-              <td className="px-3 py-2.5">
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); onDelete(project.id); }}
-                  title="Excluir projeto"
-                  className={cn(
-                    'grid size-7 place-items-center rounded-[6px] text-text-3',
-                    'opacity-0 transition-all duration-100 group-hover:opacity-100',
-                    'hover:bg-sched-late-soft hover:text-sched-late'
-                  )}
-                >
-                  <Trash2 size={14} strokeWidth={1.8} />
-                </button>
-              </td>
-            </tr>
+              </TableCell>
+              <TableCell className="px-3">
+                <div className="flex items-center justify-end gap-0.5">
+                  <Button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onEdit(project); }}
+                    title="Editar projeto"
+                    variant="ghost"
+                    size="icon-sm"
+                    className="opacity-60 hover:opacity-100"
+                  >
+                    <Pencil />
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onDelete(project.id); }}
+                    title="Excluir projeto"
+                    variant="destructiveGhost"
+                    size="icon-sm"
+                    className="opacity-60 hover:opacity-100"
+                  >
+                    <Trash2 />
+                  </Button>
+                </div>
+              </TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   );
 }
 
 /* ── Peças ───────────────────────────────────────────────────────── */
 
-function Pill({ children, className }) {
-  return (
-    <span className={cn('rounded-full px-2 py-0.5 text-micro font-medium', className)}>
-      {children}
-    </span>
-  );
+function Pill({ children, variant = 'secondary' }) {
+  return <Badge variant={variant}>{children}</Badge>;
 }
 
 /**
@@ -430,82 +461,5 @@ function EmptyState({ hasProjects, onCreate }) {
         </ViewBarButton>
       )}
     </div>
-  );
-}
-
-/* ── Criação ─────────────────────────────────────────────────────── */
-
-const fieldCls =
-  'h-8 w-full rounded-[6px] border border-line bg-surface-0 px-2.5 text-body text-text-1 ' +
-  'placeholder:text-text-3 transition-colors duration-100 focus:border-line-strong';
-
-function CreateProjectDialog({ open, onOpenChange, form, setForm, onCreate }) {
-  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Novo Projeto</DialogTitle>
-        </DialogHeader>
-
-        <div className="flex flex-col gap-3">
-          <Field label="Nome do projeto" required>
-            <input
-              autoFocus
-              className={fieldCls}
-              value={form.name}
-              onChange={set('name')}
-              placeholder="Ex: Parada de Manutenção — Coqueria"
-            />
-          </Field>
-
-          <Field label="Descrição">
-            <textarea
-              rows={3}
-              className={cn(fieldCls, 'h-auto py-2 leading-relaxed')}
-              value={form.description}
-              onChange={set('description')}
-              placeholder="O que este projeto entrega?"
-            />
-          </Field>
-
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Início">
-              <input type="date" className={fieldCls} value={form.startDate} onChange={set('startDate')} />
-            </Field>
-            <Field label="Término">
-              <input type="date" className={fieldCls} value={form.endDate} onChange={set('endDate')} />
-            </Field>
-          </div>
-
-          <Field label="Status">
-            <select className={fieldCls} value={form.status} onChange={set('status')}>
-              <option>Planejado</option>
-              <option>Em Andamento</option>
-              <option>Concluído</option>
-              <option>Pausado</option>
-            </select>
-          </Field>
-        </div>
-
-        <DialogFooter>
-          <ViewBarButton onClick={() => onOpenChange(false)}>Cancelar</ViewBarButton>
-          <ViewBarButton variant="primary" onClick={onCreate}>Criar Projeto</ViewBarButton>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function Field({ label, required, children }) {
-  return (
-    <label className="flex flex-col gap-1.5">
-      <span className="text-micro font-medium uppercase tracking-wide text-text-3">
-        {label}
-        {required && <span className="ml-0.5 text-sched-late">*</span>}
-      </span>
-      {children}
-    </label>
   );
 }

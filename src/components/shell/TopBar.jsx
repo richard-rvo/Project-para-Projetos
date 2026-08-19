@@ -1,9 +1,14 @@
-import React, { useContext } from 'react';
+import React, { useContext, useState } from 'react';
 import { AppContext } from '@/context/AppContext';
 import { cn } from '@/lib/utils';
+import ProjectDialog from '@/components/ProjectDialog';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -13,7 +18,6 @@ import {
   ChevronLeft,
   ChevronsUpDown,
   Search,
-  Bell,
   LayoutPanelLeft,
   GanttChartSquare,
   Columns3,
@@ -21,6 +25,7 @@ import {
   ListChecks,
   AlertTriangle,
   Check,
+  Pencil,
 } from 'lucide-react';
 
 export const PROJECT_VIEWS = [
@@ -47,19 +52,34 @@ const GLOBAL_TITLES = {
  * linha só — identidade à esquerda, views no centro, busca à direita.
  */
 export default function TopBar() {
-  const { state, selectProject, setProjectTab, toggleCommandPalette } =
+  const {
+    state, selectProject, setProjectTab, toggleCommandPalette,
+    updateProject, showToast,
+  } =
     useContext(AppContext);
+  const [editOpen, setEditOpen] = useState(false);
 
   const insideProject = state.activePage === 'pageProjectWorkspace';
   const project = state.projects.find((p) => p.id === state.activeProjectId);
 
+  const saveProject = async (fields) => {
+    await updateProject({
+      ...project,
+      ...fields,
+      updatedAt: new Date().toISOString(),
+    });
+    showToast('Projeto atualizado', 'success');
+  };
+
   return (
-    <header className="flex h-13 shrink-0 items-center gap-3 border-b border-line bg-surface-1 px-3">
+    <>
+      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line bg-[var(--overlay-material)] px-3 backdrop-blur-[var(--overlay-blur)]">
       {insideProject && project ? (
         <ProjectIdentity
           project={project}
           projects={state.projects}
           onSelect={selectProject}
+          onEdit={() => setEditOpen(true)}
         />
       ) : (
         <h1 className="shrink-0 pl-2 text-[17px] font-semibold tracking-tight text-text-1">
@@ -80,77 +100,75 @@ export default function TopBar() {
       )}
 
       <div className="ml-auto flex shrink-0 items-center gap-1.5">
-        <button
+        <Button
           type="button"
           onClick={() => toggleCommandPalette(true)}
-          className={cn(
-            'flex h-8 items-center gap-2 rounded-[6px] border border-line px-2.5',
-            'text-small text-text-3 transition-colors duration-100',
-            'hover:border-line-strong hover:text-text-2'
-          )}
+          variant="outline"
+          size="sm"
         >
-          <Search size={14} strokeWidth={1.8} />
+          <Search data-icon="inline-start" />
           <span className="hidden sm:inline">Pesquisar</span>
           <kbd className="hidden rounded-[4px] bg-surface-3 px-1.5 py-0.5 text-micro font-medium text-text-3 sm:inline">
             ⌘K
           </kbd>
-        </button>
-
-        <NotificationsBell
-          count={state.anomalies.filter((a) => a.status === 'aberta').length}
-        />
+        </Button>
       </div>
-    </header>
+      </header>
+
+      <ProjectDialog
+        open={editOpen && Boolean(project)}
+        onOpenChange={setEditOpen}
+        project={project}
+        onSave={saveProject}
+      />
+    </>
   );
 }
 
 /* ── Identidade do projeto + troca rápida ────────────────────────── */
 
-function ProjectIdentity({ project, projects, onSelect }) {
+function ProjectIdentity({ project, projects, onSelect, onEdit }) {
   return (
     <div className="flex min-w-0 shrink items-center gap-1">
-      <button
+      <Button
         type="button"
         onClick={() => onSelect(null)}
         title="Voltar ao portfólio"
-        className="grid size-8 shrink-0 place-items-center rounded-[6px] text-text-3 transition-colors duration-100 hover:bg-surface-3 hover:text-text-1"
+        variant="ghost"
+        size="icon-sm"
       >
-        <ChevronLeft size={18} strokeWidth={1.8} />
-      </button>
+        <ChevronLeft />
+      </Button>
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button
-            type="button"
-            className={cn(
-              'flex h-8 min-w-0 items-center gap-1.5 rounded-[6px] px-2',
-              'transition-colors duration-100 hover:bg-surface-3'
-            )}
-          >
+          <Button type="button" variant="ghost" size="sm" className="min-w-0 max-w-72">
             <span className="truncate text-[15px] font-semibold tracking-tight text-text-1">
               {project.name}
             </span>
-            <ChevronsUpDown size={14} strokeWidth={1.8} className="shrink-0 text-text-3" />
-          </button>
+            <ChevronsUpDown data-icon="inline-end" />
+          </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-64">
           <DropdownMenuLabel className="text-micro uppercase tracking-wide text-text-3">
+            Projeto
+          </DropdownMenuLabel>
+          <DropdownMenuItem onSelect={onEdit}>
+            <Pencil />
+            Editar dados do projeto
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel className="text-micro uppercase tracking-wide text-text-3">
             Trocar de projeto
           </DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          {projects.map((p) => (
-            <DropdownMenuItem
-              key={p.id}
-              onSelect={() => onSelect(p.id)}
-              className="gap-2"
-            >
-              <Check
-                size={14}
-                className={cn('shrink-0', p.id === project.id ? 'opacity-100' : 'opacity-0')}
-              />
-              <span className="truncate">{p.name}</span>
-            </DropdownMenuItem>
-          ))}
+          <DropdownMenuGroup>
+            {projects.map((p) => (
+              <DropdownMenuItem key={p.id} onSelect={() => onSelect(p.id)}>
+                <Check className={cn(p.id === project.id ? 'opacity-100' : 'opacity-0')} />
+                <span className="truncate">{p.name}</span>
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
@@ -161,52 +179,32 @@ function ProjectIdentity({ project, projects, onSelect }) {
 
 function ViewSegments({ active, onChange, anomalyCount }) {
   return (
-    <div className="flex min-w-0 items-center gap-0.5 overflow-x-auto rounded-[8px] bg-surface-3 p-0.5">
+    <ToggleGroup
+      type="single"
+      value={active}
+      onValueChange={(next) => next && onChange(next)}
+      size="sm"
+      className="min-w-0 overflow-x-auto"
+      aria-label="Visão do projeto"
+    >
       {PROJECT_VIEWS.map((view) => {
         const Icon = view.icon;
-        const isActive = active === view.id;
         const showBadge = view.badge && anomalyCount > 0;
         return (
-          <button
+          <ToggleGroupItem
             key={view.id}
-            type="button"
-            onClick={() => onChange(view.id)}
-            aria-pressed={isActive}
-            className={cn(
-              'flex h-7 shrink-0 items-center gap-1.5 rounded-[6px] px-2.5',
-              'text-small font-medium transition-all duration-100',
-              isActive
-                ? 'bg-surface-1 text-text-1 shadow-elev-1'
-                : 'text-text-2 hover:text-text-1'
-            )}
+            value={view.id}
           >
-            <Icon size={14} strokeWidth={1.9} />
+            <Icon data-icon="inline-start" />
             <span className="whitespace-nowrap">{view.label}</span>
             {showBadge && (
-              <span className="ml-0.5 rounded-full bg-sched-late-soft px-1.5 text-micro font-semibold tabular-nums text-sched-late">
+              <Badge variant="destructive" className="ml-0.5">
                 {anomalyCount > 99 ? '99+' : anomalyCount}
-              </span>
+              </Badge>
             )}
-          </button>
+          </ToggleGroupItem>
         );
       })}
-    </div>
-  );
-}
-
-/* ── Sino ────────────────────────────────────────────────────────── */
-
-function NotificationsBell({ count }) {
-  return (
-    <button
-      type="button"
-      title="Notificações"
-      className="relative grid size-8 place-items-center rounded-[6px] text-text-2 transition-colors duration-100 hover:bg-surface-3 hover:text-text-1"
-    >
-      <Bell size={17} strokeWidth={1.8} />
-      {count > 0 && (
-        <span className="absolute right-1 top-1 size-2 rounded-full bg-sched-late ring-2 ring-surface-1" />
-      )}
-    </button>
+    </ToggleGroup>
   );
 }

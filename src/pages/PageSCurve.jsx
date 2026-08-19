@@ -111,29 +111,59 @@ export default function PageSCurve() {
             </ViewBarButton>
           </div>
         ) : (
-          <div className="flex flex-col gap-4">
-            <section className="flex flex-wrap items-stretch gap-px overflow-hidden rounded-[10px] border border-line bg-line">
+          <div className="mx-auto flex w-full max-w-[1480px] flex-col gap-4">
+            <section className="grid overflow-hidden rounded-[8px] border border-line bg-line sm:grid-cols-2 xl:grid-cols-6">
               <Metric label="Planejado hoje" value={`${Math.round(curve.plannedToday)}%`} />
               <Metric label="Realizado" value={`${Math.round(curve.actualToday)}%`} />
               <Metric
-                label={behind ? 'Atrasado' : 'Adiantado'}
-                value={`${curve.deviation > 0 ? '+' : ''}${Math.round(curve.deviation)}%`}
+                label="Desvio"
+                value={`${curve.deviation > 0 ? '+' : ''}${Math.round(curve.deviation)} p.p.`}
                 tone={behind ? 'late' : 'done'}
               />
+              <Metric label="Baseline" value={`${curve.baselineCoverage}%`} />
               <Metric label="Início" value={formatDateLong(curve.minDate)} small />
               <Metric label="Término" value={formatDateLong(curve.maxDate)} small />
             </section>
 
-            <section className="rounded-[10px] border border-line bg-surface-1 p-5">
-              <CurveChart curve={curve} height={380} />
+            <section className="overflow-hidden rounded-[8px] border border-line bg-surface-1">
+              <header className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-3">
+                <div>
+                  <h2 className="text-body font-semibold text-text-1">Avanço acumulado</h2>
+                  <p className="text-micro text-text-3">Planejado e realizado por data de controle</p>
+                </div>
+                <span className={cn(
+                  'text-small font-semibold tabular-nums',
+                  behind ? 'text-sched-late' : 'text-sched-done'
+                )}>
+                  {curve.deviation === 0
+                    ? 'No plano'
+                    : `${behind ? 'Abaixo' : 'Acima'} do plano em ${Math.abs(Math.round(curve.deviation))} p.p.`}
+                </span>
+              </header>
+              <div className="px-4 pb-4 pt-3">
+                <div className="mx-auto max-w-[1280px]">
+                  <CurveChart curve={curve} height={420} variant="detail" />
+                </div>
+              </div>
             </section>
 
-            <p className="text-small leading-relaxed text-text-2">
-              A área entre as curvas é o desvio acumulado.{' '}
-              {behind
-                ? 'A execução está abaixo do planejado — a faixa vermelha mostra o quanto.'
-                : 'A execução está acima do planejado — a faixa verde mostra a margem.'}
-            </p>
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-line px-1 pt-3 text-small text-text-2">
+              {curve.deviation === 0 ? (
+                <span>Na data de controle, realizado e planejado estão alinhados.</span>
+              ) : (
+                <span>
+                  Na data de controle, o projeto registra{' '}
+                  <strong className={behind ? 'text-sched-late' : 'text-sched-done'}>
+                    {Math.abs(Math.round(curve.deviation))} p.p. {behind ? 'de atraso' : 'de adiantamento'}
+                  </strong>.
+                </span>
+              )}
+              {curve.baselineCoverage < 100 && (
+                <span className="text-sched-at-risk">
+                  {curve.baselineCoverage}% das tarefas possuem linha de base.
+                </span>
+              )}
+            </div>
           </div>
         )}
       </div>

@@ -5,6 +5,7 @@ import {
 } from './taskState';
 import { calculateProjectMetrics } from './progress';
 import { computeSCurve } from './scurve';
+import { addDays, today } from './schedule';
 import { upgradeTaskToV5 } from './storage';
 
 /* Datas fixas em torno de um "hoje" explícito: o teste nunca pode
@@ -262,6 +263,25 @@ describe('curva S', () => {
     expect(curve.hasBaseline).toBe(true);
     expect(curve.minDate).toBe('2026-08-03');
     expect(curve.maxDate).toBe('2026-09-30');
+  });
+
+  it('amostra exatamente início, hoje e término do eixo', () => {
+    const control = today();
+    const start = addDays(control, -10);
+    const end = addDays(control, 10);
+    const curve = computeSCurve([
+      t({
+        startDate: `${start}T08:00`,
+        endDate: `${end}T17:00`,
+        baselineStart: `${start}T08:00`,
+        baselineEnd: `${end}T17:00`,
+        progress: 40,
+      }),
+    ], 5);
+
+    expect(curve.points[0].date).toBe(start);
+    expect(curve.points.at(-1).date).toBe(end);
+    expect(curve.points.some((point) => point.date === control)).toBe(true);
   });
 });
 

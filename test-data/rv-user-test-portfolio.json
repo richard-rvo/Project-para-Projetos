@@ -1,0 +1,1467 @@
+{
+  "projects": [
+    {
+      "id": "usr-project-absorvedora-nh3",
+      "name": "Revamp da Absorvedora de NH3 — Carboquímicos",
+      "description": "Recuperação interna, substituição de recheios, revisão de distribuidores e adequação do circuito de licor da absorvedora de amônia.",
+      "startDate": "2026-06-19",
+      "endDate": "2026-09-17",
+      "status": "Em Andamento",
+      "createdAt": "2026-06-09T16:44:26.556Z",
+      "calendars": [
+        {
+          "id": "padrao",
+          "name": "Padrão",
+          "workdays": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "shifts": [
+            {
+              "from": "08:00",
+              "to": "12:00"
+            },
+            {
+              "from": "13:00",
+              "to": "17:00"
+            }
+          ],
+          "holidays": [
+            "2026-09-07",
+            "2026-10-12",
+            "2026-11-02",
+            "2026-11-15"
+          ]
+        },
+        {
+          "id": "seis-por-um",
+          "name": "Campo 6 × 1",
+          "workdays": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ],
+          "shifts": [
+            {
+              "from": "07:00",
+              "to": "13:00"
+            }
+          ],
+          "holidays": []
+        }
+      ],
+      "defaultCalendarId": "padrao"
+    },
+    {
+      "id": "usr-project-selo-pote-exaustor",
+      "name": "Adequação do Selo Pote — Exaustor Principal",
+      "description": "Substituição do selo pote, adequação das linhas de transbordo e drenagem e revisão dos intertravamentos do exaustor de gás.",
+      "startDate": "2026-07-31",
+      "endDate": "2026-09-03",
+      "status": "Em Andamento",
+      "createdAt": "2026-07-18T16:44:26.556Z",
+      "calendars": [
+        {
+          "id": "padrao",
+          "name": "Padrão",
+          "workdays": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "shifts": [
+            {
+              "from": "08:00",
+              "to": "12:00"
+            },
+            {
+              "from": "13:00",
+              "to": "17:00"
+            }
+          ],
+          "holidays": [
+            "2026-09-07",
+            "2026-10-12",
+            "2026-11-02",
+            "2026-11-15"
+          ]
+        },
+        {
+          "id": "24h",
+          "name": "Operação 24 Horas",
+          "workdays": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ],
+          "shifts": [
+            {
+              "from": "00:00",
+              "to": "24:00"
+            }
+          ],
+          "holidays": []
+        }
+      ],
+      "defaultCalendarId": "padrao"
+    },
+    {
+      "id": "usr-project-tratamento-gas",
+      "name": "Implantação da Planta de Tratamento de Gás — Siderúrgica",
+      "description": "Nova unidade para resfriamento, remoção de particulados, NH3 e H2S do gás de coqueria, integrada às utilidades existentes.",
+      "startDate": "2026-07-23",
+      "endDate": "2027-01-25",
+      "status": "Em Andamento",
+      "createdAt": "2026-06-21T16:44:26.556Z",
+      "calendars": [
+        {
+          "id": "padrao",
+          "name": "Padrão",
+          "workdays": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "shifts": [
+            {
+              "from": "08:00",
+              "to": "12:00"
+            },
+            {
+              "from": "13:00",
+              "to": "17:00"
+            }
+          ],
+          "holidays": [
+            "2026-09-07",
+            "2026-10-12",
+            "2026-11-02",
+            "2026-11-15"
+          ]
+        },
+        {
+          "id": "seis-por-um",
+          "name": "Campo 6 × 1",
+          "workdays": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ],
+          "shifts": [
+            {
+              "from": "07:00",
+              "to": "13:00"
+            }
+          ],
+          "holidays": []
+        }
+      ],
+      "defaultCalendarId": "padrao"
+    },
+    {
+      "id": "usr-project-parada-gas-coqueria",
+      "name": "Parada Integrada do Sistema de Gás — Coqueria",
+      "description": "Parada coordenada para inspeção do coletor principal, limpeza de precipitadores, revisão de válvulas e testes.",
+      "startDate": "2026-08-13",
+      "endDate": "2026-08-27",
+      "status": "Em Andamento",
+      "createdAt": "2026-07-11T16:44:26.556Z",
+      "calendars": [
+        {
+          "id": "padrao",
+          "name": "Padrão",
+          "workdays": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "shifts": [
+            {
+              "from": "08:00",
+              "to": "12:00"
+            },
+            {
+              "from": "13:00",
+              "to": "17:00"
+            }
+          ],
+          "holidays": [
+            "2026-09-07",
+            "2026-10-12",
+            "2026-11-02",
+            "2026-11-15"
+          ]
+        },
+        {
+          "id": "24h",
+          "name": "Operação 24 Horas",
+          "workdays": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ],
+          "shifts": [
+            {
+              "from": "00:00",
+              "to": "24:00"
+            }
+          ],
+          "holidays": []
+        }
+      ],
+      "defaultCalendarId": "24h"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "nh3-engineering",
+      "projectId": "usr-project-absorvedora-nh3",
+      "name": "Engenharia e preparação",
+      "startDate": "2026-06-19T08:00",
+      "endDate": "2026-06-19T17:00",
+      "progress": 0,
+      "dependsOn": [],
+      "indentLevel": 0,
+      "order": 0,
+      "scheduleMode": "auto"
+    },
+    {
+      "id": "nh3-survey",
+      "projectId": "usr-project-absorvedora-nh3",
+      "name": "Levantamento dimensional e inspeção interna",
+      "startDate": "2026-06-19T08:00",
+      "endDate": "2026-06-25T17:00",
+      "progress": 100,
+      "dependsOn": [],
+      "indentLevel": 1,
+      "order": 1,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-06-19T08:00",
+      "baselineEnd": "2026-06-25T17:00",
+      "resources": "2 Inspetores + Operação",
+      "resourceGroup": "Inspeção"
+    },
+    {
+      "id": "nh3-detailing",
+      "projectId": "usr-project-absorvedora-nh3",
+      "name": "Detalhamento de internos e suportação",
+      "startDate": "2026-06-26T08:00",
+      "endDate": "2026-07-09T17:00",
+      "progress": 100,
+      "dependsOn": [
+        {
+          "id": "nh3-survey",
+          "type": "FS",
+          "lag": 0
+        }
+      ],
+      "indentLevel": 1,
+      "order": 2,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-06-26T08:00",
+      "baselineEnd": "2026-07-09T17:00",
+      "resources": "3 Projetistas",
+      "resourceGroup": "Engenharia"
+    },
+    {
+      "id": "nh3-procurement",
+      "projectId": "usr-project-absorvedora-nh3",
+      "name": "Fabricação dos recheios e distribuidores",
+      "startDate": "2026-07-10T08:00",
+      "endDate": "2026-08-04T17:00",
+      "progress": 100,
+      "dependsOn": [
+        {
+          "id": "nh3-detailing",
+          "type": "FS",
+          "lag": 0
+        }
+      ],
+      "indentLevel": 1,
+      "order": 3,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-07-10T08:00",
+      "baselineEnd": "2026-07-31T17:00",
+      "resources": "Suprimentos + Fornecedor",
+      "resourceGroup": "Suprimentos",
+      "notes": "Itens em aço inoxidável; inspeção dimensional antes do embarque."
+    },
+    {
+      "id": "nh3-field",
+      "projectId": "usr-project-absorvedora-nh3",
+      "name": "Intervenção em campo",
+      "startDate": "2026-08-05T08:00",
+      "endDate": "2026-08-05T17:00",
+      "progress": 0,
+      "dependsOn": [],
+      "indentLevel": 0,
+      "order": 4,
+      "scheduleMode": "auto"
+    },
+    {
+      "id": "nh3-isolation",
+      "projectId": "usr-project-absorvedora-nh3",
+      "name": "Bloqueio, lavagem e liberação para entrada",
+      "startDate": "2026-08-05T08:00",
+      "endDate": "2026-08-07T17:00",
+      "progress": 100,
+      "dependsOn": [
+        {
+          "id": "nh3-procurement",
+          "type": "FS",
+          "lag": 0
+        }
+      ],
+      "indentLevel": 1,
+      "order": 5,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-08-03T08:00",
+      "baselineEnd": "2026-08-05T17:00",
+      "resources": "Operação + Segurança",
+      "resourceGroup": "Operação"
+    },
+    {
+      "id": "nh3-removal",
+      "projectId": "usr-project-absorvedora-nh3",
+      "name": "Remoção dos internos existentes",
+      "startDate": "2026-08-10T08:00",
+      "endDate": "2026-08-17T17:00",
+      "progress": 100,
+      "dependsOn": [
+        {
+          "id": "nh3-isolation",
+          "type": "FS",
+          "lag": 0
+        }
+      ],
+      "indentLevel": 1,
+      "order": 6,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-08-06T08:00",
+      "baselineEnd": "2026-08-12T17:00",
+      "resources": "8 Caldeireiros",
+      "resourceGroup": "Mecânica",
+      "calendarId": "seis-por-um"
+    },
+    {
+      "id": "nh3-shell-repair",
+      "projectId": "usr-project-absorvedora-nh3",
+      "name": "Reparo de costado e suportes internos",
+      "startDate": "2026-08-18T08:00",
+      "endDate": "2026-08-28T17:00",
+      "progress": 62,
+      "dependsOn": [
+        {
+          "id": "nh3-removal",
+          "type": "FS",
+          "lag": 0
+        }
+      ],
+      "indentLevel": 1,
+      "order": 7,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-08-13T08:00",
+      "baselineEnd": "2026-08-20T17:00",
+      "resources": "6 Caldeireiros + 3 Soldadores",
+      "resourceGroup": "Mecânica",
+      "calendarId": "seis-por-um",
+      "notes": "Espessura abaixo do mínimo no quadrante norte, entre as cotas +8,2 m e +9,1 m."
+    },
+    {
+      "id": "nh3-internals",
+      "projectId": "usr-project-absorvedora-nh3",
+      "name": "Montagem de recheios e distribuidores",
+      "startDate": "2026-08-31T08:00",
+      "endDate": "2026-09-09T17:00",
+      "progress": 20,
+      "dependsOn": [
+        {
+          "id": "nh3-shell-repair",
+          "type": "FS",
+          "lag": 0
+        }
+      ],
+      "indentLevel": 1,
+      "order": 8,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-08-21T08:00",
+      "baselineEnd": "2026-08-31T17:00",
+      "resources": "10 Montadores",
+      "resourceGroup": "Mecânica",
+      "calendarId": "seis-por-um"
+    },
+    {
+      "id": "nh3-piping",
+      "projectId": "usr-project-absorvedora-nh3",
+      "name": "Adequação das linhas de licor e amônia",
+      "startDate": "2026-08-21T08:00",
+      "endDate": "2026-09-02T17:00",
+      "progress": 48,
+      "dependsOn": [
+        {
+          "id": "nh3-shell-repair",
+          "type": "SS",
+          "lag": 3
+        }
+      ],
+      "indentLevel": 1,
+      "order": 9,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-08-18T08:00",
+      "baselineEnd": "2026-08-27T17:00",
+      "resources": "5 Tubistas + 2 Soldadores",
+      "resourceGroup": "Tubulação"
+    },
+    {
+      "id": "nh3-test",
+      "projectId": "usr-project-absorvedora-nh3",
+      "name": "Teste de estanqueidade e flushing",
+      "startDate": "2026-09-10T08:00",
+      "endDate": "2026-09-15T17:00",
+      "progress": 0,
+      "dependsOn": [
+        {
+          "id": "nh3-internals",
+          "type": "FS",
+          "lag": 0
+        },
+        {
+          "id": "nh3-piping",
+          "type": "FS",
+          "lag": 0
+        }
+      ],
+      "indentLevel": 1,
+      "order": 10,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-09-01T08:00",
+      "baselineEnd": "2026-09-04T17:00",
+      "resources": "Operação + Qualidade",
+      "resourceGroup": "Comissionamento"
+    },
+    {
+      "id": "nh3-startup",
+      "projectId": "usr-project-absorvedora-nh3",
+      "name": "Retorno da absorvedora à operação",
+      "startDate": "2026-09-17T08:00",
+      "endDate": "2026-09-17T08:00",
+      "progress": 0,
+      "dependsOn": [
+        {
+          "id": "nh3-test",
+          "type": "FS",
+          "lag": 0
+        }
+      ],
+      "indentLevel": 0,
+      "order": 11,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-09-07T08:00",
+      "baselineEnd": "2026-09-07T08:00",
+      "resources": "Operação",
+      "resourceGroup": "Operação"
+    },
+    {
+      "id": "seal-preparation",
+      "projectId": "usr-project-selo-pote-exaustor",
+      "name": "Preparação da intervenção",
+      "startDate": "2026-07-31T08:00",
+      "endDate": "2026-07-31T17:00",
+      "progress": 0,
+      "dependsOn": [],
+      "indentLevel": 0,
+      "order": 0,
+      "scheduleMode": "auto"
+    },
+    {
+      "id": "seal-design",
+      "projectId": "usr-project-selo-pote-exaustor",
+      "name": "Revisão do arranjo e memória de cálculo",
+      "startDate": "2026-07-31T08:00",
+      "endDate": "2026-08-06T17:00",
+      "progress": 100,
+      "dependsOn": [],
+      "indentLevel": 1,
+      "order": 1,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-07-31T08:00",
+      "baselineEnd": "2026-08-06T17:00",
+      "resources": "2 Engenheiros",
+      "resourceGroup": "Engenharia"
+    },
+    {
+      "id": "seal-fabrication",
+      "projectId": "usr-project-selo-pote-exaustor",
+      "name": "Fabricação do novo selo pote e spools",
+      "startDate": "2026-08-07T08:00",
+      "endDate": "2026-08-18T17:00",
+      "progress": 100,
+      "dependsOn": [
+        {
+          "id": "seal-design",
+          "type": "FS",
+          "lag": 0
+        }
+      ],
+      "indentLevel": 1,
+      "order": 2,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-08-07T08:00",
+      "baselineEnd": "2026-08-18T17:00",
+      "resources": "Caldeiraria externa",
+      "resourceGroup": "Suprimentos"
+    },
+    {
+      "id": "seal-preassembly",
+      "projectId": "usr-project-selo-pote-exaustor",
+      "name": "Pré-montagem e inspeção dimensional",
+      "startDate": "2026-08-19T08:00",
+      "endDate": "2026-08-21T17:00",
+      "progress": 100,
+      "dependsOn": [
+        {
+          "id": "seal-fabrication",
+          "type": "FS",
+          "lag": 0
+        }
+      ],
+      "indentLevel": 1,
+      "order": 3,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-08-19T08:00",
+      "baselineEnd": "2026-08-21T17:00",
+      "resources": "2 Inspetores + 4 Montadores",
+      "resourceGroup": "Qualidade"
+    },
+    {
+      "id": "seal-shutdown",
+      "projectId": "usr-project-selo-pote-exaustor",
+      "name": "Janela de parada",
+      "startDate": "2026-08-24T08:00",
+      "endDate": "2026-08-24T17:00",
+      "progress": 0,
+      "dependsOn": [],
+      "indentLevel": 0,
+      "order": 4,
+      "scheduleMode": "auto"
+    },
+    {
+      "id": "seal-stop",
+      "projectId": "usr-project-selo-pote-exaustor",
+      "name": "Parada, bloqueio e inertização do exaustor",
+      "startDate": "2026-08-16T00:00",
+      "endDate": "2026-08-17T00:00",
+      "progress": 100,
+      "dependsOn": [
+        {
+          "id": "seal-preassembly",
+          "type": "FS",
+          "lag": 0
+        }
+      ],
+      "indentLevel": 1,
+      "order": 5,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-08-16T00:00",
+      "baselineEnd": "2026-08-17T00:00",
+      "resources": "Operação + Segurança",
+      "resourceGroup": "Operação",
+      "calendarId": "24h"
+    },
+    {
+      "id": "seal-dismantle",
+      "projectId": "usr-project-selo-pote-exaustor",
+      "name": "Desmontagem do selo pote existente",
+      "startDate": "2026-08-17T00:00",
+      "endDate": "2026-08-19T00:00",
+      "progress": 70,
+      "dependsOn": [
+        {
+          "id": "seal-stop",
+          "type": "FS",
+          "lag": 0
+        }
+      ],
+      "indentLevel": 1,
+      "order": 6,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-08-17T00:00",
+      "baselineEnd": "2026-08-19T00:00",
+      "resources": "6 Mecânicos",
+      "resourceGroup": "Mecânica",
+      "calendarId": "24h"
+    },
+    {
+      "id": "seal-installation",
+      "projectId": "usr-project-selo-pote-exaustor",
+      "name": "Instalação do novo conjunto",
+      "startDate": "2026-08-19T00:00",
+      "endDate": "2026-08-21T00:00",
+      "progress": 0,
+      "dependsOn": [
+        {
+          "id": "seal-dismantle",
+          "type": "FS",
+          "lag": 0
+        }
+      ],
+      "indentLevel": 1,
+      "order": 7,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-08-19T00:00",
+      "baselineEnd": "2026-08-21T00:00",
+      "resources": "6 Mecânicos + 2 Soldadores",
+      "resourceGroup": "Mecânica",
+      "calendarId": "24h"
+    },
+    {
+      "id": "seal-instrumentation",
+      "projectId": "usr-project-selo-pote-exaustor",
+      "name": "Montagem de nível, drenos e intertravamentos",
+      "startDate": "2026-08-19T00:00",
+      "endDate": "2026-08-21T00:00",
+      "progress": 0,
+      "dependsOn": [
+        {
+          "id": "seal-installation",
+          "type": "SS",
+          "lag": 0
+        }
+      ],
+      "indentLevel": 1,
+      "order": 8,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-08-19T00:00",
+      "baselineEnd": "2026-08-21T00:00",
+      "resources": "3 Instrumentistas",
+      "resourceGroup": "Instrumentação",
+      "calendarId": "24h"
+    },
+    {
+      "id": "seal-leak-test",
+      "projectId": "usr-project-selo-pote-exaustor",
+      "name": "Teste de estanqueidade e funcional",
+      "startDate": "2026-08-21T00:00",
+      "endDate": "2026-08-22T00:00",
+      "progress": 0,
+      "dependsOn": [
+        {
+          "id": "seal-installation",
+          "type": "FS",
+          "lag": 0
+        },
+        {
+          "id": "seal-instrumentation",
+          "type": "FS",
+          "lag": 0
+        }
+      ],
+      "indentLevel": 1,
+      "order": 9,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-08-21T00:00",
+      "baselineEnd": "2026-08-22T00:00",
+      "resources": "Qualidade + Operação",
+      "resourceGroup": "Comissionamento",
+      "calendarId": "24h"
+    },
+    {
+      "id": "seal-restart",
+      "projectId": "usr-project-selo-pote-exaustor",
+      "name": "Partida do exaustor principal",
+      "startDate": "2026-08-22T00:00",
+      "endDate": "2026-08-22T00:00",
+      "progress": 0,
+      "dependsOn": [
+        {
+          "id": "seal-leak-test",
+          "type": "FS",
+          "lag": 0
+        }
+      ],
+      "indentLevel": 0,
+      "order": 10,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-08-22T00:00",
+      "baselineEnd": "2026-08-22T00:00",
+      "resources": "Operação",
+      "resourceGroup": "Operação",
+      "calendarId": "24h",
+      "constraintType": "mso",
+      "constraintDate": "2026-08-22T00:00"
+    },
+    {
+      "id": "gtp-engineering",
+      "projectId": "usr-project-tratamento-gas",
+      "name": "Engenharia",
+      "startDate": "2026-07-23T08:00",
+      "endDate": "2026-07-23T17:00",
+      "progress": 0,
+      "dependsOn": [],
+      "indentLevel": 0,
+      "order": 0,
+      "scheduleMode": "auto"
+    },
+    {
+      "id": "gtp-basic",
+      "projectId": "usr-project-tratamento-gas",
+      "name": "Consolidar engenharia básica e balanço de massa",
+      "startDate": "2026-07-23T08:00",
+      "endDate": "2026-08-07T17:00",
+      "progress": 100,
+      "dependsOn": [],
+      "indentLevel": 1,
+      "order": 1,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-07-23T08:00",
+      "baselineEnd": "2026-08-07T17:00",
+      "resources": "Processo + Operação",
+      "resourceGroup": "Engenharia"
+    },
+    {
+      "id": "gtp-detail",
+      "projectId": "usr-project-tratamento-gas",
+      "name": "Engenharia detalhada multidisciplinar",
+      "startDate": "2026-08-10T08:00",
+      "endDate": "2026-09-16T17:00",
+      "progress": 45,
+      "dependsOn": [
+        {
+          "id": "gtp-basic",
+          "type": "FS",
+          "lag": 0
+        }
+      ],
+      "indentLevel": 1,
+      "order": 2,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-08-10T08:00",
+      "baselineEnd": "2026-09-11T17:00",
+      "resources": "12 Projetistas",
+      "resourceGroup": "Engenharia",
+      "notes": "Priorizar fundações, pipe rack e equipamentos de longo fornecimento."
+    },
+    {
+      "id": "gtp-hazop",
+      "projectId": "usr-project-tratamento-gas",
+      "name": "HAZOP e consolidação das salvaguardas",
+      "startDate": "2026-09-04T08:00",
+      "endDate": "2026-09-10T17:00",
+      "progress": 20,
+      "dependsOn": [
+        {
+          "id": "gtp-detail",
+          "type": "SS",
+          "lag": 19
+        }
+      ],
+      "indentLevel": 1,
+      "order": 3,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-09-01T08:00",
+      "baselineEnd": "2026-09-07T17:00",
+      "resources": "Processo + Segurança + Operação",
+      "resourceGroup": "Segurança"
+    },
+    {
+      "id": "gtp-procurement",
+      "projectId": "usr-project-tratamento-gas",
+      "name": "Suprimentos",
+      "startDate": "2026-08-20T08:00",
+      "endDate": "2026-08-20T17:00",
+      "progress": 0,
+      "dependsOn": [],
+      "indentLevel": 0,
+      "order": 4,
+      "scheduleMode": "auto"
+    },
+    {
+      "id": "gtp-packages",
+      "projectId": "usr-project-tratamento-gas",
+      "name": "Contratar pacotes de processo e equipamentos",
+      "startDate": "2026-08-20T08:00",
+      "endDate": "2026-10-07T17:00",
+      "progress": 28,
+      "dependsOn": [
+        {
+          "id": "gtp-basic",
+          "type": "FS",
+          "lag": 0
+        }
+      ],
+      "indentLevel": 1,
+      "order": 5,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-08-20T08:00",
+      "baselineEnd": "2026-10-02T17:00",
+      "resources": "Suprimentos + Engenharia",
+      "resourceGroup": "Suprimentos"
+    },
+    {
+      "id": "gtp-fabrication",
+      "projectId": "usr-project-tratamento-gas",
+      "name": "Fabricação e diligenciamento",
+      "startDate": "2026-10-08T08:00",
+      "endDate": "2026-11-30T17:00",
+      "progress": 0,
+      "dependsOn": [
+        {
+          "id": "gtp-packages",
+          "type": "FS",
+          "lag": 0
+        }
+      ],
+      "indentLevel": 1,
+      "order": 6,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-10-05T08:00",
+      "baselineEnd": "2026-11-20T17:00",
+      "resources": "Fornecedores + Diligenciamento",
+      "resourceGroup": "Suprimentos"
+    },
+    {
+      "id": "gtp-construction",
+      "projectId": "usr-project-tratamento-gas",
+      "name": "Construção e montagem",
+      "startDate": "2026-09-17T08:00",
+      "endDate": "2026-09-17T17:00",
+      "progress": 0,
+      "dependsOn": [],
+      "indentLevel": 0,
+      "order": 7,
+      "scheduleMode": "auto"
+    },
+    {
+      "id": "gtp-civil",
+      "projectId": "usr-project-tratamento-gas",
+      "name": "Terraplenagem, fundações e drenagem",
+      "startDate": "2026-09-17T08:00",
+      "endDate": "2026-10-26T17:00",
+      "progress": 0,
+      "dependsOn": [
+        {
+          "id": "gtp-detail",
+          "type": "FS",
+          "lag": 0
+        }
+      ],
+      "indentLevel": 1,
+      "order": 8,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-09-14T08:00",
+      "baselineEnd": "2026-10-19T17:00",
+      "resources": "20 Civis",
+      "resourceGroup": "Civil",
+      "calendarId": "seis-por-um"
+    },
+    {
+      "id": "gtp-structures",
+      "projectId": "usr-project-tratamento-gas",
+      "name": "Montagem de estruturas e pipe rack",
+      "startDate": "2026-10-27T08:00",
+      "endDate": "2026-11-25T17:00",
+      "progress": 0,
+      "dependsOn": [
+        {
+          "id": "gtp-civil",
+          "type": "FS",
+          "lag": 0
+        }
+      ],
+      "indentLevel": 1,
+      "order": 9,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-10-20T08:00",
+      "baselineEnd": "2026-11-16T17:00",
+      "resources": "14 Montadores",
+      "resourceGroup": "Estrutura",
+      "calendarId": "seis-por-um"
+    },
+    {
+      "id": "gtp-equipment",
+      "projectId": "usr-project-tratamento-gas",
+      "name": "Montagem dos equipamentos de processo",
+      "startDate": "2026-11-26T08:00",
+      "endDate": "2026-12-21T17:00",
+      "progress": 0,
+      "dependsOn": [
+        {
+          "id": "gtp-fabrication",
+          "type": "FS",
+          "lag": 0
+        },
+        {
+          "id": "gtp-structures",
+          "type": "FS",
+          "lag": 0
+        }
+      ],
+      "indentLevel": 1,
+      "order": 10,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-11-17T08:00",
+      "baselineEnd": "2026-12-10T17:00",
+      "resources": "12 Mecânicos",
+      "resourceGroup": "Mecânica",
+      "calendarId": "seis-por-um"
+    },
+    {
+      "id": "gtp-piping",
+      "projectId": "usr-project-tratamento-gas",
+      "name": "Montagem de tubulação e interligações",
+      "startDate": "2026-12-02T08:00",
+      "endDate": "2027-01-04T17:00",
+      "progress": 0,
+      "dependsOn": [
+        {
+          "id": "gtp-equipment",
+          "type": "SS",
+          "lag": 4
+        }
+      ],
+      "indentLevel": 1,
+      "order": 11,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-11-23T08:00",
+      "baselineEnd": "2026-12-22T17:00",
+      "resources": "18 Tubistas e Soldadores",
+      "resourceGroup": "Tubulação",
+      "calendarId": "seis-por-um"
+    },
+    {
+      "id": "gtp-electrical",
+      "projectId": "usr-project-tratamento-gas",
+      "name": "Elétrica, instrumentação e automação",
+      "startDate": "2026-12-04T08:00",
+      "endDate": "2027-01-06T17:00",
+      "progress": 0,
+      "dependsOn": [
+        {
+          "id": "gtp-structures",
+          "type": "FS",
+          "lag": 0
+        }
+      ],
+      "indentLevel": 1,
+      "order": 12,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-11-25T08:00",
+      "baselineEnd": "2026-12-24T17:00",
+      "resources": "12 E&I",
+      "resourceGroup": "Instrumentação"
+    },
+    {
+      "id": "gtp-commissioning",
+      "projectId": "usr-project-tratamento-gas",
+      "name": "Pré-operação e comissionamento integrado",
+      "startDate": "2027-01-07T08:00",
+      "endDate": "2027-01-20T17:00",
+      "progress": 0,
+      "dependsOn": [
+        {
+          "id": "gtp-piping",
+          "type": "FS",
+          "lag": 0
+        },
+        {
+          "id": "gtp-electrical",
+          "type": "FS",
+          "lag": 0
+        }
+      ],
+      "indentLevel": 0,
+      "order": 13,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-12-25T08:00",
+      "baselineEnd": "2027-01-07T17:00",
+      "resources": "Comissionamento + Operação",
+      "resourceGroup": "Comissionamento"
+    },
+    {
+      "id": "gtp-operation",
+      "projectId": "usr-project-tratamento-gas",
+      "name": "Entrada de gás na nova planta",
+      "startDate": "2027-01-22T08:00",
+      "endDate": "2027-01-22T08:00",
+      "progress": 0,
+      "dependsOn": [
+        {
+          "id": "gtp-commissioning",
+          "type": "FS",
+          "lag": 0
+        }
+      ],
+      "indentLevel": 0,
+      "order": 14,
+      "scheduleMode": "auto",
+      "baselineStart": "2027-01-11T08:00",
+      "baselineEnd": "2027-01-11T08:00",
+      "resources": "Operação",
+      "resourceGroup": "Operação"
+    },
+    {
+      "id": "shutdown-preparation",
+      "projectId": "usr-project-parada-gas-coqueria",
+      "name": "Preparação e liberação",
+      "startDate": "2026-08-13T00:00",
+      "endDate": "2026-08-14T00:00",
+      "progress": 0,
+      "dependsOn": [],
+      "indentLevel": 0,
+      "order": 0,
+      "scheduleMode": "auto",
+      "calendarId": "24h"
+    },
+    {
+      "id": "shutdown-stop",
+      "projectId": "usr-project-parada-gas-coqueria",
+      "name": "Redução de carga, bloqueios e inertização",
+      "startDate": "2026-08-13T00:00",
+      "endDate": "2026-08-15T00:00",
+      "progress": 100,
+      "dependsOn": [],
+      "indentLevel": 1,
+      "order": 1,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-08-13T00:00",
+      "baselineEnd": "2026-08-15T00:00",
+      "resources": "Operação + Segurança",
+      "resourceGroup": "Operação",
+      "calendarId": "24h"
+    },
+    {
+      "id": "shutdown-release",
+      "projectId": "usr-project-parada-gas-coqueria",
+      "name": "Medição de gases e liberação das frentes",
+      "startDate": "2026-08-15T00:00",
+      "endDate": "2026-08-16T00:00",
+      "progress": 100,
+      "dependsOn": [
+        {
+          "id": "shutdown-stop",
+          "type": "FS",
+          "lag": 0
+        }
+      ],
+      "indentLevel": 1,
+      "order": 2,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-08-15T00:00",
+      "baselineEnd": "2026-08-16T00:00",
+      "resources": "Segurança + Operação",
+      "resourceGroup": "Segurança",
+      "calendarId": "24h"
+    },
+    {
+      "id": "shutdown-execution",
+      "projectId": "usr-project-parada-gas-coqueria",
+      "name": "Execução simultânea",
+      "startDate": "2026-08-16T00:00",
+      "endDate": "2026-08-17T00:00",
+      "progress": 0,
+      "dependsOn": [],
+      "indentLevel": 0,
+      "order": 3,
+      "scheduleMode": "auto",
+      "calendarId": "24h"
+    },
+    {
+      "id": "shutdown-collector",
+      "projectId": "usr-project-parada-gas-coqueria",
+      "name": "Inspeção e reparo do coletor principal",
+      "startDate": "2026-08-16T00:00",
+      "endDate": "2026-08-22T00:00",
+      "progress": 58,
+      "dependsOn": [
+        {
+          "id": "shutdown-release",
+          "type": "FS",
+          "lag": 0
+        }
+      ],
+      "indentLevel": 1,
+      "order": 4,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-08-16T00:00",
+      "baselineEnd": "2026-08-21T00:00",
+      "resources": "8 Caldeireiros + 4 Soldadores",
+      "resourceGroup": "Mecânica",
+      "calendarId": "24h"
+    },
+    {
+      "id": "shutdown-precipitator",
+      "projectId": "usr-project-parada-gas-coqueria",
+      "name": "Limpeza dos precipitadores eletrostáticos",
+      "startDate": "2026-08-16T00:00",
+      "endDate": "2026-08-21T00:00",
+      "progress": 75,
+      "dependsOn": [
+        {
+          "id": "shutdown-release",
+          "type": "FS",
+          "lag": 0
+        }
+      ],
+      "indentLevel": 1,
+      "order": 5,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-08-16T00:00",
+      "baselineEnd": "2026-08-21T00:00",
+      "resources": "12 Mecânicos",
+      "resourceGroup": "Mecânica",
+      "calendarId": "24h"
+    },
+    {
+      "id": "shutdown-valves",
+      "projectId": "usr-project-parada-gas-coqueria",
+      "name": "Revisão das válvulas de isolamento",
+      "startDate": "2026-08-16T00:00",
+      "endDate": "2026-08-22T00:00",
+      "progress": 46,
+      "dependsOn": [
+        {
+          "id": "shutdown-release",
+          "type": "FS",
+          "lag": 0
+        }
+      ],
+      "indentLevel": 1,
+      "order": 6,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-08-16T00:00",
+      "baselineEnd": "2026-08-21T00:00",
+      "resources": "6 Mecânicos",
+      "resourceGroup": "Mecânica",
+      "calendarId": "24h"
+    },
+    {
+      "id": "shutdown-drains",
+      "projectId": "usr-project-parada-gas-coqueria",
+      "name": "Limpeza de drenos e selos hidráulicos",
+      "startDate": "2026-08-17T00:00",
+      "endDate": "2026-08-21T00:00",
+      "progress": 90,
+      "dependsOn": [
+        {
+          "id": "shutdown-release",
+          "type": "FS",
+          "lag": 1
+        }
+      ],
+      "indentLevel": 1,
+      "order": 7,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-08-17T00:00",
+      "baselineEnd": "2026-08-21T00:00",
+      "resources": "5 Operadores",
+      "resourceGroup": "Operação",
+      "calendarId": "24h"
+    },
+    {
+      "id": "shutdown-instruments",
+      "projectId": "usr-project-parada-gas-coqueria",
+      "name": "Calibração de detectores e transmissores",
+      "startDate": "2026-08-17T00:00",
+      "endDate": "2026-08-22T00:00",
+      "progress": 52,
+      "dependsOn": [
+        {
+          "id": "shutdown-release",
+          "type": "FS",
+          "lag": 1
+        }
+      ],
+      "indentLevel": 1,
+      "order": 8,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-08-17T00:00",
+      "baselineEnd": "2026-08-21T00:00",
+      "resources": "6 Instrumentistas",
+      "resourceGroup": "Instrumentação",
+      "calendarId": "24h"
+    },
+    {
+      "id": "shutdown-return",
+      "projectId": "usr-project-parada-gas-coqueria",
+      "name": "Testes e retorno operacional",
+      "startDate": "2026-08-22T00:00",
+      "endDate": "2026-08-23T00:00",
+      "progress": 0,
+      "dependsOn": [],
+      "indentLevel": 0,
+      "order": 9,
+      "scheduleMode": "auto",
+      "calendarId": "24h"
+    },
+    {
+      "id": "shutdown-leak",
+      "projectId": "usr-project-parada-gas-coqueria",
+      "name": "Teste geral de estanqueidade",
+      "startDate": "2026-08-22T00:00",
+      "endDate": "2026-08-24T00:00",
+      "progress": 0,
+      "dependsOn": [
+        {
+          "id": "shutdown-collector",
+          "type": "FS",
+          "lag": 0
+        },
+        {
+          "id": "shutdown-precipitator",
+          "type": "FS",
+          "lag": 0
+        },
+        {
+          "id": "shutdown-valves",
+          "type": "FS",
+          "lag": 0
+        },
+        {
+          "id": "shutdown-drains",
+          "type": "FS",
+          "lag": 0
+        },
+        {
+          "id": "shutdown-instruments",
+          "type": "FS",
+          "lag": 0
+        }
+      ],
+      "indentLevel": 1,
+      "order": 10,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-08-21T00:00",
+      "baselineEnd": "2026-08-23T00:00",
+      "resources": "Qualidade + Operação",
+      "resourceGroup": "Comissionamento",
+      "calendarId": "24h"
+    },
+    {
+      "id": "shutdown-purge",
+      "projectId": "usr-project-parada-gas-coqueria",
+      "name": "Purga, pressurização e alinhamento",
+      "startDate": "2026-08-24T00:00",
+      "endDate": "2026-08-26T00:00",
+      "progress": 0,
+      "dependsOn": [
+        {
+          "id": "shutdown-leak",
+          "type": "FS",
+          "lag": 0
+        }
+      ],
+      "indentLevel": 1,
+      "order": 11,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-08-23T00:00",
+      "baselineEnd": "2026-08-25T00:00",
+      "resources": "Operação",
+      "resourceGroup": "Operação",
+      "calendarId": "24h"
+    },
+    {
+      "id": "shutdown-gas-in",
+      "projectId": "usr-project-parada-gas-coqueria",
+      "name": "Entrada de gás no sistema",
+      "startDate": "2026-08-26T00:00",
+      "endDate": "2026-08-26T00:00",
+      "progress": 0,
+      "dependsOn": [
+        {
+          "id": "shutdown-purge",
+          "type": "FS",
+          "lag": 0
+        }
+      ],
+      "indentLevel": 0,
+      "order": 12,
+      "scheduleMode": "auto",
+      "baselineStart": "2026-08-25T00:00",
+      "baselineEnd": "2026-08-25T00:00",
+      "resources": "Operação",
+      "resourceGroup": "Operação",
+      "calendarId": "24h",
+      "constraintType": "fnlt",
+      "constraintDate": "2026-08-26T00:00"
+    }
+  ],
+  "anomalies": [
+    {
+      "id": "usr-anomaly-nh3-thickness",
+      "projectId": "usr-project-absorvedora-nh3",
+      "taskId": "nh3-shell-repair",
+      "title": "Perda de espessura no costado acima do previsto",
+      "description": "Ultrassom identificou região com 4,8 mm para espessura nominal de 8 mm, ampliando o escopo de chapa de reparo.",
+      "severity": "crítica",
+      "type": "Técnico",
+      "status": "em análise",
+      "reportedBy": "Carlos Menezes",
+      "reportedAt": "2026-08-15T16:44:26.556Z",
+      "osNumber": "OS-CRQ-26841",
+      "equipment": "Absorvedora NH3 A-2101",
+      "location": "Carboquímicos — cota +8,5 m",
+      "discipline": "Mecânica",
+      "rootCause": "Corrosão sob depósito associada à distribuição irregular do licor.",
+      "correctiveAction": "Escopo de chapa ampliado; memória de cálculo em aprovação.",
+      "photos": []
+    },
+    {
+      "id": "usr-anomaly-nh3-distributor",
+      "projectId": "usr-project-absorvedora-nh3",
+      "taskId": "nh3-internals",
+      "title": "Furação do distribuidor fora do desenho aprovado",
+      "description": "Doze furos apresentam diâmetro 2 mm acima da especificação, com risco de má distribuição do licor.",
+      "severity": "alta",
+      "type": "Qualidade",
+      "status": "aberta",
+      "reportedBy": "Juliana Reis",
+      "reportedAt": "2026-08-17T16:44:26.556Z",
+      "osNumber": "RNC-2026-117",
+      "equipment": "Distribuidor superior D-2101",
+      "location": "Área de pré-montagem",
+      "discipline": "Mecânica",
+      "rootCause": "",
+      "correctiveAction": "",
+      "photos": []
+    },
+    {
+      "id": "usr-anomaly-seal-bolts",
+      "projectId": "usr-project-selo-pote-exaustor",
+      "taskId": "seal-dismantle",
+      "title": "Prisioneiros da flange com corrosão severa",
+      "description": "Seis prisioneiros não responderam ao torque de desmontagem e exigem corte controlado.",
+      "severity": "alta",
+      "type": "Técnico",
+      "status": "aberta",
+      "reportedBy": "André Souza",
+      "reportedAt": "2026-08-17T16:44:26.556Z",
+      "osNumber": "OS-GAS-27102",
+      "equipment": "Selo pote SP-3102",
+      "location": "Casa do Exaustor — linha de sucção",
+      "discipline": "Mecânica",
+      "rootCause": "",
+      "correctiveAction": "Equipe de corte mobilizada e kit de prisioneiros reserva conferido.",
+      "photos": []
+    },
+    {
+      "id": "usr-anomaly-seal-level",
+      "projectId": "usr-project-selo-pote-exaustor",
+      "taskId": "seal-instrumentation",
+      "title": "Transmissor de nível entregue sem certificação de área",
+      "description": "Modelo recebido não possui certificado Ex compatível com a classificação do local.",
+      "severity": "crítica",
+      "type": "Segurança",
+      "status": "em análise",
+      "reportedBy": "Mariana Costa",
+      "reportedAt": "2026-08-16T16:44:26.556Z",
+      "osNumber": "RNC-2026-124",
+      "equipment": "LT-3102",
+      "location": "Almoxarifado de parada",
+      "discipline": "Instrumentação",
+      "rootCause": "",
+      "correctiveAction": "",
+      "photos": []
+    },
+    {
+      "id": "usr-anomaly-gtp-tiein",
+      "projectId": "usr-project-tratamento-gas",
+      "taskId": "gtp-detail",
+      "title": "Tie-in de gás interfere com linha de vapor existente",
+      "description": "Levantamento a laser mostrou conflito entre a nova linha DN900 e o coletor de vapor de média pressão.",
+      "severity": "alta",
+      "type": "Técnico",
+      "status": "em análise",
+      "reportedBy": "Felipe Rocha",
+      "reportedAt": "2026-08-13T16:44:26.556Z",
+      "osNumber": "RFI-GTP-0047",
+      "equipment": "Coletor principal de gás",
+      "location": "Pipe rack PR-03 — eixo 14",
+      "discipline": "Tubulação",
+      "rootCause": "Modelo da área existente não refletia modificação executada em 2023.",
+      "correctiveAction": "Rota alternativa em estudo e trecho afetado congelado.",
+      "photos": []
+    },
+    {
+      "id": "usr-anomaly-gtp-delivery",
+      "projectId": "usr-project-tratamento-gas",
+      "taskId": "gtp-packages",
+      "title": "Prazo do soprador excede marco de montagem",
+      "description": "Proposta técnica indica 42 semanas de fabricação contra 34 semanas disponíveis no cronograma.",
+      "severity": "crítica",
+      "type": "Prazo",
+      "status": "aberta",
+      "reportedBy": "Ana Martins",
+      "reportedAt": "2026-08-15T16:44:26.556Z",
+      "osNumber": "PC-2026-8831",
+      "equipment": "Soprador de gás BG-4101",
+      "location": "Pacote de suprimentos",
+      "discipline": "Mecânica",
+      "rootCause": "",
+      "correctiveAction": "Negociar fabricação prioritária e avaliar equipamento provisório.",
+      "photos": []
+    },
+    {
+      "id": "usr-anomaly-shutdown-crack",
+      "projectId": "usr-project-parada-gas-coqueria",
+      "taskId": "shutdown-collector",
+      "title": "Trinca em solda longitudinal do coletor",
+      "description": "Líquido penetrante revelou indicação linear de 180 mm próxima ao reforço do bocal B-17.",
+      "severity": "crítica",
+      "type": "Segurança",
+      "status": "em análise",
+      "reportedBy": "Paulo Tavares",
+      "reportedAt": "2026-08-17T16:44:26.556Z",
+      "osNumber": "OS-COQ-27311",
+      "equipment": "Coletor principal CG-01",
+      "location": "Coqueria — eixo 17",
+      "discipline": "Mecânica",
+      "rootCause": "",
+      "correctiveAction": "Região isolada; engenharia avaliando remoção e reparo com reforço.",
+      "photos": []
+    },
+    {
+      "id": "usr-anomaly-shutdown-valve",
+      "projectId": "usr-project-parada-gas-coqueria",
+      "taskId": "shutdown-valves",
+      "title": "Válvula de isolamento não atinge estanqueidade",
+      "description": "Passagem residual acima do limite após lapidação da sede da válvula.",
+      "severity": "alta",
+      "type": "Técnico",
+      "status": "aberta",
+      "reportedBy": "Roberto Lima",
+      "reportedAt": "2026-08-17T16:44:26.556Z",
+      "osNumber": "OS-COQ-27326",
+      "equipment": "Válvula VG-118",
+      "location": "Linha de gás para subprodutos",
+      "discipline": "Mecânica",
+      "rootCause": "Deformação do obturador e desgaste irregular da sede.",
+      "correctiveAction": "Conjunto reserva em transferência do almoxarifado central.",
+      "photos": []
+    }
+  ],
+  "exportedAt": "2026-08-18T16:44:26.556Z",
+  "version": 5
+}

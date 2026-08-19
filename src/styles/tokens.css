@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════
-   PROJETA — Design Tokens  ·  "Precision Calm"
+   PROJETA — Design Tokens  ·  "RV Precision"
    Apple (calma, hierarquia, material)
    × MS Project (densidade, rigor de cronograma)
    × ClickUp (velocidade, comando, views)
@@ -7,7 +7,7 @@
    Camadas:
      1. :root            → valores semânticos do tema claro
      2. [data-theme=dark]→ overrides do tema escuro
-     3. [data-density]   → densidade adaptativa
+     3. layout           → dimensões estáveis do produto
      4. @theme inline    → expõe os tokens como utilitários Tailwind
 
    REGRA: nenhum componente declara cor literal. Tudo vem daqui.
@@ -30,11 +30,11 @@
   /* ── Superfícies ──────────────────────────────────────────────
      0 = fundo da aplicação   1 = painel/card
      2 = alternativa sutil    3 = recuado (headers, trilhos)      */
-  --surface-0: oklch(0.976 0.002 265);
+  --surface-0: oklch(0.974 0.003 70);
   --surface-1: oklch(1 0 0);
-  --surface-2: oklch(0.988 0.002 265);
-  --surface-3: oklch(0.955 0.004 265);
-  --surface-inset: oklch(0.935 0.005 265);
+  --surface-2: oklch(0.989 0.002 70);
+  --surface-3: oklch(0.953 0.004 70);
+  --surface-inset: oklch(0.931 0.006 70);
 
   /* ── Texto ────────────────────────────────────────────────────
      1 = primário   2 = secundário   3 = terciário/desabilitado   */
@@ -76,24 +76,21 @@
   /* ── Marca ────────────────────────────────────────────────────
      Acento raro. Permitido APENAS em: botão primário, anel de
      foco, logo e barra de progresso do projeto.                  */
-  --brand: #b90973;
-  --brand-hover: #a00863;
-  --brand-soft: oklch(0.46 0.23 350 / 0.10);
+  --brand: #e85d12;
+  --brand-hover: #cf4d08;
+  --brand-soft: oklch(0.67 0.18 48 / 0.12);
   --brand-gradient: linear-gradient(
-    135deg,
-    #fe8345 0%,
-    #fa5e42 20%,
-    #f73a40 40%,
-    #e82048 60%,
-    #d0145d 80%,
-    #b90973 100%
+    90deg,
+    #f28a13 0%,
+    #ee7217 48%,
+    #e94f1d 100%
   );
 
   /* ── Elevação ─────────────────────────────────────────────────
      Sombras com tinta neutra fria, nunca preto puro.             */
   --elev-1: 0 1px 2px oklch(0.22 0.011 265 / 0.06);
   --elev-2:
-    0 2px 4px oklch(0.22 0.011 265 / 0.06), 0 4px 12px oklch(0.22 0.011 265 / 0.05);
+    0 1px 2px oklch(0.22 0.011 265 / 0.05), 0 5px 16px oklch(0.22 0.011 265 / 0.06);
   --elev-3:
     0 4px 8px oklch(0.22 0.011 265 / 0.07), 0 12px 28px oklch(0.22 0.011 265 / 0.08);
   --elev-4:
@@ -116,9 +113,9 @@
 
   /* ── Raio ─────────────────────────────────────────────────────
      Menor que o antigo 8/12/20 — raio grande destrói densidade.  */
-  --radius-control: 6px;
-  --radius-card: 10px;
-  --radius-sheet: 14px;
+  --radius-control: 7px;
+  --radius-card: 8px;
+  --radius-sheet: 12px;
   --radius-pill: 9999px;
 
   /* ── Tipografia ───────────────────────────────────────────────
@@ -183,9 +180,9 @@
   --sched-done-soft: oklch(0.700 0.130 155 / 0.20);
   --sched-critical-soft: oklch(0.620 0.215 18 / 0.22);
 
-  --brand: #d81a8b;
-  --brand-hover: #e93a9d;
-  --brand-soft: oklch(0.56 0.22 350 / 0.16);
+  --brand: #ff8736;
+  --brand-hover: #ffa05f;
+  --brand-soft: oklch(0.72 0.17 48 / 0.18);
 
   --elev-1: 0 1px 2px oklch(0 0 0 / 0.40);
   --elev-2: 0 2px 4px oklch(0 0 0 / 0.40), 0 4px 12px oklch(0 0 0 / 0.34);
@@ -199,11 +196,10 @@
 }
 
 /* ───────────────────────────────────────────────────────────────
-   3. DENSIDADE ADAPTATIVA
-   Confortável = leitura executiva · Compacto = trabalho de plano
+   3. DIMENSÕES DO PRODUTO
+   Uma única densidade preserva previsibilidade entre telas e sessões.
    ─────────────────────────────────────────────────────────────── */
-:root,
-[data-density='comfortable'] {
+:root {
   --gantt-row-h: 40px;
   --gantt-header-h: 56px;
   --grid-cell-px: 10px;
@@ -211,16 +207,6 @@
   --density-pad-sm: 10px;
   --control-h: 32px;
   --control-h-sm: 26px;
-}
-
-[data-density='compact'] {
-  --gantt-row-h: 30px;
-  --gantt-header-h: 46px;
-  --grid-cell-px: 7px;
-  --density-pad: 10px;
-  --density-pad-sm: 6px;
-  --control-h: 28px;
-  --control-h-sm: 23px;
 }
 
 /* ───────────────────────────────────────────────────────────────

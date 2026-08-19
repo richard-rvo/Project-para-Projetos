@@ -33,8 +33,8 @@ export default function MiniTimeline({
   items,
   rangeStart,
   rangeEnd,
-  labelWidth = 200,
-  rowHeight = 28,
+  labelWidth = 'clamp(220px, 30%, 360px)',
+  rowHeight = 32,
   onSelect,
   emptyMessage = 'Sem datas para exibir.',
 }) {
@@ -67,8 +67,15 @@ export default function MiniTimeline({
     return {
       from, to, span, months,
       todayPct: todayOffset >= 0 && todayOffset <= span ? (todayOffset / span) * 100 : null,
-      pctOf: (date) => (daysBetween(from, date) / span) * 100,
-      widthOf: (s, e) => Math.max((durationDays(s, e) / span) * 100, 0.6),
+      /* A visão é uma janela. Uma tarefa que começou antes dela deve
+         encostar na borda do gráfico, nunca invadir a coluna do nome. */
+      pctOf: (date) => Math.min(100, Math.max(0, (daysBetween(from, date) / span) * 100)),
+      widthOf: (s, e) => {
+        const start = Math.max(0, daysBetween(from, s));
+        const end = Math.min(span, daysBetween(from, e) + 1);
+        if (end <= start) return 0;
+        return Math.max(((end - start) / span) * 100, 0.6);
+      },
     };
   }, [items, rangeStart, rangeEnd]);
 
@@ -76,11 +83,14 @@ export default function MiniTimeline({
     return <p className="py-6 text-center text-small text-text-3">{emptyMessage}</p>;
   }
 
+  const labelColumn = typeof labelWidth === 'number' ? `${labelWidth}px` : labelWidth;
+  const timelineStyle = { '--mini-timeline-label-width': labelColumn };
+
   return (
-    <div className="overflow-hidden rounded-[8px] border border-line">
+    <div className="overflow-hidden rounded-[8px] border border-line" style={timelineStyle}>
       {/* Faixa de meses */}
       <div className="flex border-b border-line bg-surface-2">
-        <div className="shrink-0" style={{ width: labelWidth }} />
+        <div className="shrink-0" style={{ width: 'var(--mini-timeline-label-width)' }} />
         <div className="relative flex flex-1">
           {model.months.map((m) => (
             <div
@@ -99,7 +109,7 @@ export default function MiniTimeline({
         {model.todayPct !== null && (
           <div
             className="pointer-events-none absolute top-0 bottom-0 z-10 w-px bg-sched-late/60"
-            style={{ left: `calc(${labelWidth}px + ${model.todayPct}% * (100% - ${labelWidth}px) / 100%)` }}
+            style={{ left: `calc(var(--mini-timeline-label-width) + ${model.todayPct}% * (100% - var(--mini-timeline-label-width)) / 100%)` }}
           />
         )}
 
@@ -117,14 +127,14 @@ export default function MiniTimeline({
               title={hasDates ? `${item.label}\n${formatDateLong(item.start)} → ${formatDateLong(item.end)}` : item.label}
             >
               <div
-                className="shrink-0 truncate border-r border-line px-2.5 text-small text-text-1"
-                style={{ width: labelWidth }}
+                className="relative z-20 min-w-0 shrink-0 truncate border-r border-line bg-surface-1 px-3 text-small font-medium text-text-1"
+                style={{ width: 'var(--mini-timeline-label-width)' }}
               >
                 {item.label}
               </div>
 
               <div className="relative h-full flex-1">
-                {hasDates && (
+                {hasDates && model.widthOf(item.start, item.end) > 0 && (
                   item.milestone ? (
                     <span
                       className="absolute top-1/2 size-2.5 -translate-y-1/2 rotate-45 rounded-[1px] bg-text-1"

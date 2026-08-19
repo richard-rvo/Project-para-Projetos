@@ -33,7 +33,7 @@ export default function PortfolioTimeline({ rows, onOpen }) {
     <div className="flex flex-col gap-2">
       <MiniTimeline
         items={items}
-        labelWidth={220}
+        labelWidth="clamp(240px, 30%, 360px)"
         rowHeight={34}
         onSelect={(item) => onOpen(item.id)}
         emptyMessage="Nenhum projeto tem início e término definidos."

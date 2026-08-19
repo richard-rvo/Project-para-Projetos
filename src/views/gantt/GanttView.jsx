@@ -7,7 +7,7 @@ import ViewBar, {
 } from '../../components/shell/ViewBar';
 import {
   DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem,
-  DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenuGroup, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import * as XLSX from 'xlsx';
@@ -30,7 +30,7 @@ import { calculateTaskPlannedProgress } from '../../utils/progress';
 import {
   ZOOM_LEVELS, COLUMNS,
   DEFAULT_GRID_W, MIN_GRID_W, MAX_GRID_W,
-  rowHeightFor, HEADER_H,
+  ROW_H, HEADER_H,
   MIN_DAY_W, MAX_DAY_W, tickForDayWidth, nearestZoomId,
   loadColumnLayout, saveColumnLayout, MIN_COL_W, MAX_COL_W,
   SUBDAY_MIN_DAY_W, DRAG_SNAP_MINUTES,
@@ -71,7 +71,7 @@ export default function GanttView() {
     undo, redo, canUndo, canRedo, openTaskInspector,
   } = useContext(AppContext);
 
-  const rowH = rowHeightFor(state.density);
+  const rowH = ROW_H;
 
   /* ── Estado da view ─────────────────────────────────────────── */
   const [dayWidth, setDayWidth] = useState(32);
@@ -354,7 +354,7 @@ export default function GanttView() {
     else setEditValue(task[col.field] ?? '');
   }, [predecessorLabel, durationLabel]);
 
-  const commitEdit = useCallback(async () => {
+  const commitEdit = useCallback(async (overrideValue) => {
     if (!editingCell) return;
     const task = tasks.find((t) => t.id === editingCell.taskId);
     if (!task) { setEditingCell(null); return; }
@@ -364,10 +364,11 @@ export default function GanttView() {
     let modified;
     let becameManual = false;
     let rejected = null;
+    const valueToCommit = typeof overrideValue === 'string' ? overrideValue : editValue;
 
     switch (editingCell.colId) {
       case 'duration': {
-        const minutes = resolveDuration(editValue, cal, duration);
+        const minutes = resolveDuration(valueToCommit, cal, duration);
         modified = minutes === null || minutes === duration
           ? task
           : { ...task, endDate: addWorkingMinutes(cal, task.startDate, minutes) };
@@ -378,7 +379,7 @@ export default function GanttView() {
         /* Editar o início DESLOCA a tarefa preservando a duração.
            Antes gravava só o campo, então a tarefa mudava de duração
            em vez de andar — e o término ficava onde estava. */
-        const start = snapForward(cal, editValue);
+        const start = snapForward(cal, valueToCommit);
         if (!start) { modified = task; break; }
         modified = { ...task, startDate: start, endDate: addWorkingMinutes(cal, start, duration) };
         /* Fixar o início à mão numa tarefa que TEM predecessora é uma
@@ -399,18 +400,18 @@ export default function GanttView() {
            para terminar domingo 03:00 num calendário Seg–Sex, uma data
            que o motor jamais produziria; e AVISA ao recusar, em vez de
            limpar a célula sem dizer nada. */
-        if (!editValue) { modified = task; break; }
-        if (editValue <= task.startDate) {
+        if (!valueToCommit) { modified = task; break; }
+        if (valueToCommit <= task.startDate) {
           modified = task;
           rejected = 'O término tem que ser depois do início.';
           break;
         }
-        modified = { ...task, endDate: snapBackward(cal, editValue) };
+        modified = { ...task, endDate: snapBackward(cal, valueToCommit) };
         break;
       }
 
       case 'constraintType': {
-        const type = editValue || CONSTRAINT_NONE;
+        const type = valueToCommit || CONSTRAINT_NONE;
         modified = { ...task, constraintType: type };
         /* Uma restrição sem data não restringe nada: semeia com o
            início atual para o efeito ser imediato e visível. */
@@ -427,7 +428,7 @@ export default function GanttView() {
           rejected = 'Escolha primeiro o tipo de restrição na coluna ao lado.';
           break;
         }
-        modified = { ...task, constraintDate: snapForward(cal, editValue) };
+        modified = { ...task, constraintDate: snapForward(cal, valueToCommit) };
         break;
       }
 
@@ -435,7 +436,7 @@ export default function GanttView() {
         /* Antes o parser descartava em silêncio o que não casava e o
            que fecharia ciclo: a célula voltava vazia e parecia um campo
            quebrado. Agora ele conta o que recusou e por quê. */
-        const { deps, invalid, cyclic } = predecessorFromLabel(editValue, task.id);
+        const { deps, invalid, cyclic } = predecessorFromLabel(valueToCommit, task.id);
         modified = { ...task, dependsOn: deps };
         if (cyclic.length) {
           rejected = `Ignorado: ${cyclic.join(', ')} criaria dependência circular.`;
@@ -446,11 +447,11 @@ export default function GanttView() {
       }
 
       case 'progress':
-        modified = { ...task, progress: clampProgress(editValue) };
+        modified = { ...task, progress: clampProgress(valueToCommit) };
         break;
 
       case 'mode':
-        modified = { ...task, scheduleMode: editValue || SCHEDULE_MODES.AUTO };
+        modified = { ...task, scheduleMode: valueToCommit || SCHEDULE_MODES.AUTO };
         break;
 
       case 'calendar': {
@@ -458,12 +459,12 @@ export default function GanttView() {
            recalcula o término: "3 dias" num calendário 24h termina
            antes de "3 dias" num de 8h, e é isso que o planejador quer
            ver ao mudar a equipe da tarefa. */
-        const next = calendarOf(activeProject, { calendarId: editValue });
+        const next = calendarOf(activeProject, { calendarId: valueToCommit });
         const days = duration / minutesPerDay(cal);
         const start = snapForward(next, task.startDate);
         modified = {
           ...task,
-          calendarId: editValue || undefined,
+          calendarId: valueToCommit || undefined,
           startDate: start,
           endDate: addWorkingMinutes(next, start, days * minutesPerDay(next)),
         };
@@ -471,7 +472,7 @@ export default function GanttView() {
       }
 
       default:
-        modified = { ...task, [editingCell.field]: editValue };
+        modified = { ...task, [editingCell.field]: valueToCommit };
     }
 
     /* Só o que mexe no cronograma dispara o forward pass. */
@@ -916,97 +917,109 @@ export default function GanttView() {
   return (
     <div className="gantt-view">
       <ViewBar>
-        <ViewBarSegments
-          options={ZOOM_LEVELS.map((z) => ({ id: z.id, label: z.label }))}
-          value={zoom.id}
-          onChange={(id) => setDayWidth(ZOOM_LEVELS.find((z) => z.id === id).dayWidth)}
-        />
-        <ViewBarButton icon={Maximize2} onClick={fitToProject} title="Ajustar o projeto inteiro à tela">
-          Ajustar
-        </ViewBarButton>
+        <div className="flex items-center gap-1" role="group" aria-label="Escala da timeline">
+          <ViewBarSegments
+            options={ZOOM_LEVELS.map((z) => ({ id: z.id, label: z.label }))}
+            value={zoom.id}
+            onChange={(id) => setDayWidth(ZOOM_LEVELS.find((z) => z.id === id).dayWidth)}
+          />
+          <ViewBarButton icon={Maximize2} onClick={fitToProject} title="Ajustar o projeto inteiro à tela">
+            Ajustar
+          </ViewBarButton>
+        </div>
         <ViewBarDivider />
-        <ViewBarButton
-          icon={AlertCircle}
-          active={showCriticalPath}
-          onClick={() => setShowCriticalPath((v) => !v)}
-          title="Destacar tarefas sem folga"
-        >
-          Caminho crítico
-        </ViewBarButton>
-        <ViewBarButton
-          icon={Hourglass}
-          active={showSlack}
-          onClick={() => setShowSlack((v) => !v)}
-          title="Mostrar folga total de cada tarefa"
-        >
-          Folga
-        </ViewBarButton>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <ViewBarButton icon={Target} active={baselineCount > 0 && showBaseline}>
-              Linha de base
-            </ViewBarButton>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-64">
-            <DropdownMenuLabel className="text-micro uppercase tracking-wide text-text-3">
-              {baselineCount > 0
-                ? `Gravada em ${baselineCount} de ${tasks.length}`
-                : 'Nenhuma linha de base gravada'}
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => saveBaseline('project')}>
-              Gravar do projeto inteiro
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              disabled={selectedIds.size === 0}
-              onSelect={() => saveBaseline('selection')}
-            >
-              Gravar da seleção ({selectedIds.size})
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuCheckboxItem
-              checked={showBaseline}
-              disabled={baselineCount === 0}
-              onCheckedChange={setShowBaseline}
-              onSelect={(e) => e.preventDefault()}
-            >
-              Mostrar na barra
-            </DropdownMenuCheckboxItem>
-            <DropdownMenuItem
-              disabled={baselineCount === 0}
-              onSelect={clearBaseline}
-              className="text-sched-late"
-            >
-              Limpar linha de base
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div className="flex items-center gap-1" role="group" aria-label="Análise do cronograma">
+          <ViewBarButton
+            icon={AlertCircle}
+            active={showCriticalPath}
+            onClick={() => setShowCriticalPath((v) => !v)}
+            title="Destacar tarefas sem folga"
+          >
+            Caminho crítico
+          </ViewBarButton>
+          <ViewBarButton
+            icon={Hourglass}
+            active={showSlack}
+            onClick={() => setShowSlack((v) => !v)}
+            title="Mostrar folga total de cada tarefa"
+          >
+            Folga
+          </ViewBarButton>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <ViewBarButton icon={Target} active={baselineCount > 0 && showBaseline}>
+                Linha de base
+              </ViewBarButton>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-64">
+              <DropdownMenuLabel className="text-micro uppercase tracking-wide text-text-3">
+                {baselineCount > 0
+                  ? `Gravada em ${baselineCount} de ${tasks.length}`
+                  : 'Nenhuma linha de base gravada'}
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuItem onSelect={() => saveBaseline('project')}>
+                  Gravar do projeto inteiro
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={selectedIds.size === 0}
+                  onSelect={() => saveBaseline('selection')}
+                >
+                  Gravar da seleção ({selectedIds.size})
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuCheckboxItem
+                  checked={showBaseline}
+                  disabled={baselineCount === 0}
+                  onCheckedChange={setShowBaseline}
+                  onSelect={(e) => e.preventDefault()}
+                >
+                  Mostrar na barra
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuItem
+                  disabled={baselineCount === 0}
+                  onSelect={clearBaseline}
+                  className="text-sched-late"
+                >
+                  Limpar linha de base
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
         <ViewBarDivider />
-        <ViewBarButton icon={Undo2} onClick={undo} disabled={!canUndo} title="Desfazer (⌘Z)" />
-        <ViewBarButton icon={Redo2} onClick={redo} disabled={!canRedo} title="Refazer (⇧⌘Z)" />
+        <div className="flex items-center gap-0.5" role="group" aria-label="Histórico de edição">
+          <ViewBarButton icon={Undo2} onClick={undo} disabled={!canUndo} title="Desfazer (⌘Z)" />
+          <ViewBarButton icon={Redo2} onClick={redo} disabled={!canRedo} title="Refazer (⇧⌘Z)" />
+        </div>
 
         <div className="ml-auto" />
 
-        <GanttFilterMenu filters={filters} onChange={setFilters} filteredOut={filteredOut} />
-        <ViewBarButton icon={Download} onClick={exportToExcel}>Excel</ViewBarButton>
+        <div className="flex items-center gap-1" role="group" aria-label="Ferramentas da visualização">
+          <GanttFilterMenu filters={filters} onChange={setFilters} filteredOut={filteredOut} />
+          <ViewBarButton icon={Download} onClick={exportToExcel} title="Exportar para Excel" />
 
-        <GanttCalendarMenu
-          project={activeProject}
-          onChange={(patch) => updateProject({ ...activeProject, ...patch })}
-        />
+          <GanttCalendarMenu
+            project={activeProject}
+            onChange={(patch) => updateProject({ ...activeProject, ...patch })}
+          />
 
-        <ViewBarButton
-          icon={Tag}
-          active={showBarLabels}
-          onClick={() => setShowBarLabels((v) => !v)}
-          title="Mostrar o nome da tarefa nas barras"
-        >
-          Rótulos
-        </ViewBarButton>
+          <ViewBarButton
+            icon={Tag}
+            active={showBarLabels}
+            onClick={() => setShowBarLabels((v) => !v)}
+            title="Mostrar o nome da tarefa nas barras"
+          >
+            Rótulos
+          </ViewBarButton>
 
-        <ViewBarButton icon={Plus} variant="primary" onClick={() => newTaskRef.current?.focus()}>
-          Tarefa
-        </ViewBarButton>
+          <ViewBarButton icon={Plus} variant="primary" onClick={() => newTaskRef.current?.focus()}>
+            Tarefa
+          </ViewBarButton>
+        </div>
       </ViewBar>
 
       {/* Ciclo e prazo estourado: a análise já media os dois e nenhum

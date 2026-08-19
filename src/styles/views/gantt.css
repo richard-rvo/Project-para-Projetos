@@ -201,7 +201,9 @@
   .gantt-row-grid {
     position: sticky;
     left: 0;
-    z-index: 4;
+    /* A planilha precisa ficar acima de barras e rótulos externos
+       quando a timeline rola para trás dela. */
+    z-index: 10;
     display: flex;
     align-items: stretch;
     flex-shrink: 0;
@@ -368,7 +370,7 @@
     border-radius: 3px;
   }
 
-  /* O select nativo precisa da seta e do cursor; o resto vem de cima. */
+  /* O seletor inline mantém a geometria exata da célula. */
   .gantt-cell-input.is-select {
     padding-right: 2px;
     cursor: pointer;
@@ -592,14 +594,6 @@
     color: var(--sched-late);
     z-index: 6;
     pointer-events: auto;
-  }
-
-  .gantt-bar.is-blocked {
-    background-image: repeating-linear-gradient(
-      45deg,
-      transparent 0 5px,
-      oklch(0 0 0 / 0.18) 5px 10px
-    );
   }
 
   /* Progresso: faixa interna mais escura, não uma barra branca por

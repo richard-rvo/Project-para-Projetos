@@ -2,11 +2,13 @@ import React, { useContext, useState, useRef } from 'react';
 import { AppContext } from '../context/AppContext';
 import { cn } from '@/lib/utils';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { Button } from '@/components/ui/button';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import {
   exportDB, importDB, clearAllData, getAllProjects, getAllTasks, getAllAnomalies,
 } from '../utils/storage';
 import {
-  Download, Upload, Trash2, Database, Palette, Info, Rows3, Rows4, Sun, Moon,
+  Download, Upload, Trash2, Database, Palette, Info, Sun, Moon,
 } from 'lucide-react';
 
 /* ═══════════════════════════════════════════════════════════════
@@ -24,7 +26,7 @@ const SECTIONS = [
 ];
 
 export default function PageSettings() {
-  const { state, dispatch, ACTIONS, showToast, setTheme, setDensity } = useContext(AppContext);
+  const { state, dispatch, ACTIONS, showToast, setTheme } = useContext(AppContext);
   const [section, setSection] = useState('appearance');
   const [confirmClear, setConfirmClear] = useState(false);
   const fileRef = useRef(null);
@@ -89,19 +91,6 @@ export default function PageSettings() {
                 onChange={setTheme}
               />
             </Row>
-            <Row
-              label="Densidade"
-              description="Compacta cabe mais linhas na tela; confortável é melhor para leitura executiva."
-            >
-              <Choice
-                options={[
-                  { id: 'comfortable', label: 'Confortável', icon: Rows3 },
-                  { id: 'compact', label: 'Compacta', icon: Rows4 },
-                ]}
-                value={state.density}
-                onChange={setDensity}
-              />
-            </Row>
           </Panel>
         )}
 
@@ -113,7 +102,7 @@ export default function PageSettings() {
             >
               <Row label="Exportar" description="Baixa um JSON com projetos, tarefas e anomalias.">
                 <Button
-                  icon={Download}
+                  variant="outline"
                   onClick={async () => {
                     try {
                       await exportDB();
@@ -123,6 +112,7 @@ export default function PageSettings() {
                     }
                   }}
                 >
+                  <Download data-icon="inline-start" />
                   Exportar
                 </Button>
               </Row>
@@ -130,7 +120,9 @@ export default function PageSettings() {
                 label="Importar"
                 description="Substitui TODOS os dados atuais pelos do arquivo. Backups antigos são convertidos automaticamente."
               >
-                <Button icon={Upload} onClick={() => fileRef.current?.click()}>Escolher arquivo</Button>
+                <Button variant="outline" onClick={() => fileRef.current?.click()}>
+                  <Upload data-icon="inline-start" /> Escolher arquivo
+                </Button>
                 <input
                   ref={fileRef}
                   type="file"
@@ -146,7 +138,8 @@ export default function PageSettings() {
                 label="Apagar tudo"
                 description="Remove projetos, tarefas e anomalias deste navegador. Não há como desfazer."
               >
-                <Button icon={Trash2} tone="danger" onClick={() => setConfirmClear(true)}>
+                <Button variant="destructive" onClick={() => setConfirmClear(true)}>
+                  <Trash2 data-icon="inline-start" />
                   Apagar tudo
                 </Button>
               </Row>
@@ -198,7 +191,7 @@ function Panel({ title, hint, tone, children }) {
   return (
     <section
       className={cn(
-        'mb-4 rounded-[10px] border bg-surface-1 p-4',
+        'mb-4 rounded-[8px] border bg-surface-1 p-4',
         tone === 'danger' ? 'border-sched-late/35' : 'border-line'
       )}
     >
@@ -230,41 +223,21 @@ function Row({ label, description, children }) {
 
 function Choice({ options, value, onChange }) {
   return (
-    <div className="flex gap-0.5 rounded-[7px] bg-surface-3 p-0.5">
-      {options.map((opt) => (
-        <button
-          key={opt.id}
-          type="button"
-          onClick={() => onChange(opt.id)}
-          className={cn(
-            'flex items-center gap-1.5 rounded-[5px] px-2.5 py-1 text-small font-medium transition-all',
-            value === opt.id
-              ? 'bg-surface-1 text-text-1 shadow-elev-1'
-              : 'text-text-2 hover:text-text-1'
-          )}
-        >
-          <opt.icon size={13} strokeWidth={1.9} />
-          {opt.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function Button({ icon: Icon, tone, children, ...props }) {
-  return (
-    <button
-      type="button"
-      className={cn(
-        'flex items-center gap-1.5 rounded-[6px] border px-2.5 py-1.5 text-small font-medium transition-colors',
-        tone === 'danger'
-          ? 'border-sched-late/40 text-sched-late hover:bg-sched-late-soft'
-          : 'border-line text-text-2 hover:bg-surface-3 hover:text-text-1'
-      )}
-      {...props}
+    <ToggleGroup
+      type="single"
+      value={value}
+      onValueChange={(next) => next && onChange(next)}
+      size="sm"
     >
-      {Icon && <Icon size={14} strokeWidth={1.8} />}
-      {children}
-    </button>
+      {options.map((opt) => (
+        <ToggleGroupItem
+          key={opt.id}
+          value={opt.id}
+        >
+          <opt.icon data-icon="inline-start" />
+          {opt.label}
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
   );
 }
