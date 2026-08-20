@@ -1081,22 +1081,16 @@ export default function GanttView() {
   }, [activeProject?.name, printOrientation, showToast, tasks.length]);
 
   /* ── Colunas (modelo MS Project) ─────────────────────────────
-     Gerenciadas no próprio cabeçalho: botão direito na coluna,
-     "+" no fim da planilha. Acrescentar uma coluna ALARGA a
-     planilha em vez de roubar espaço do nome da tarefa — era o que
-     fazia o antigo dropdown parecer quebrado. */
+     Gerenciadas no próprio cabeçalho: botão direito na coluna para
+     ocultar, ajustar largura ou inserir vizinhas. Acrescentar uma
+     coluna ALARGA a planilha em vez de roubar espaço do nome da
+     tarefa — era o que fazia o antigo dropdown parecer quebrado. */
   const columnActions = useMemo(() => ({
     hide: (id) => {
       const col = COLUMNS.find((c) => c.id === id);
       if (!col || col.alwaysOn) return;
       commitLayout({ ...layoutCols, order: layoutCols.order.filter((x) => x !== id) });
       setGridWidth((w) => Math.max(MIN_GRID_W, w - (layoutCols.widths[id] || col.width)));
-    },
-    append: (id) => {
-      const col = COLUMNS.find((c) => c.id === id);
-      if (!col || layoutCols.order.includes(id)) return;
-      commitLayout({ ...layoutCols, order: [...layoutCols.order, id] });
-      setGridWidth((w) => Math.min(MAX_GRID_W, w + col.width));
     },
     insert: (id, anchorId, side) => {
       const col = COLUMNS.find((c) => c.id === id);
@@ -1120,11 +1114,6 @@ export default function GanttView() {
   const openColumnMenu = useCallback((e, col) => {
     e.preventDefault();
     setColumnMenu({ x: e.clientX, y: e.clientY, column: col, available: hiddenColumns });
-  }, [hiddenColumns]);
-
-  const openAddColumn = useCallback((e) => {
-    const r = e.currentTarget.getBoundingClientRect();
-    setColumnMenu({ x: r.left, y: r.bottom + 4, mode: 'add', available: hiddenColumns });
   }, [hiddenColumns]);
 
   /* ── Hierarquia ─────────────────────────────────────────────── */
@@ -1555,14 +1544,16 @@ export default function GanttView() {
               visibleDays={vDays}
               onResizeColumn={handleResizeColumn}
               onColumnMenu={openColumnMenu}
-              onAddColumn={openAddColumn}
-              canAddColumn={hiddenColumns.length > 0}
             />
 
             <div className="gantt-rows">
               {/* Fundo da timeline: gradientes em vez de um div por dia */}
               <div
-                className={`gantt-grid-bg ${zoom.tick === 'day' ? 'has-day-lines' : ''}`}
+                className={[
+                  'gantt-grid-bg',
+                  zoom.tick !== 'month' ? 'has-weekends' : '',
+                  zoom.tick === 'day' ? 'has-day-lines' : '',
+                ].filter(Boolean).join(' ')}
                 style={{ left: gridWidth, width: timelineWidth }}
               />
 

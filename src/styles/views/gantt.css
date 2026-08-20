@@ -226,14 +226,6 @@
     flex-shrink: 0;
     background: var(--surface-1);
     overflow: hidden;
-    /* Reserva a MESMA faixa que o botão "+" ocupa no cabeçalho.
-
-       As duas metades recebem `width: gridWidth`, mas só o cabeçalho
-       tem a célula do "+". Como `name` é a única coluna que cresce,
-       ela absorvia a diferença — ficava 34px mais estreita no
-       cabeçalho, e todas as colunas depois dela apareciam deslocadas
-       em relação às células do corpo. */
-    padding-right: var(--gantt-add-col-w);
     border-right: 1px solid var(--line-strong);
     border-bottom: 1px solid var(--line-hairline);
   }
@@ -448,6 +440,9 @@
     bottom: 0;
     z-index: 0;
     pointer-events: none;
+  }
+
+  .gantt-grid-bg.has-weekends {
     background-image: linear-gradient(
       to right,
       transparent 0 calc(var(--gantt-day-w) * 5),
@@ -1150,24 +1145,6 @@
   }
 
   .gantt-minimap-window:active { cursor: grabbing; }
-
-  /* ── Adicionar coluna ────────────────────────────────────────
-     Célula de cabeçalho que é um botão, no fim da planilha —
-     mesmo lugar onde o MS Project põe "Adicionar Nova Coluna". */
-  .gantt-hcell-add {
-    width: var(--gantt-add-col-w);
-    flex: 0 0 var(--gantt-add-col-w);
-    justify-content: center;
-    color: var(--text-3);
-    cursor: pointer;
-    transition: background var(--dur-1) var(--ease-standard),
-      color var(--dur-1) var(--ease-standard);
-  }
-
-  .gantt-hcell-add:hover {
-    background: var(--brand-soft);
-    color: var(--brand);
-  }
 
   /* Título de seção dentro dos menus flutuantes */
   .gantt-ctx-title {

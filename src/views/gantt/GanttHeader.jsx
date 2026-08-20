@@ -1,5 +1,4 @@
 import React from 'react';
-import { Plus } from 'lucide-react';
 import { getDayOfWeekChar, formatDateShort } from '../../utils/schedule';
 import { MONTH_BAND_H, TICK_BAND_H } from './ganttConfig';
 
@@ -11,12 +10,12 @@ import { MONTH_BAND_H, TICK_BAND_H } from './ganttConfig';
    é isso que dispensa qualquer sincronização de scroll em JS.
 
    As colunas são gerenciadas aqui, no próprio cabeçalho: botão
-   direito abre o menu da coluna, e o "+" no fim acrescenta.
+   direito abre o menu da coluna.
    ═══════════════════════════════════════════════════════════════ */
 
 export default function GanttHeader({
   columns, gridWidth, layout, zoom, visibleDays, timelineWidth,
-  onResizeColumn, onColumnMenu, onAddColumn, canAddColumn,
+  onResizeColumn, onColumnMenu,
 }) {
   /* Ticks só da faixa visível; o resto vira um espaçador. Em zoom de
      mês, três anos seriam ~1.100 divs para dezenas visíveis. */
@@ -59,17 +58,6 @@ export default function GanttHeader({
           </div>
         ))}
 
-        {/* "Adicionar coluna" no fim da planilha, como no MS Project */}
-        {canAddColumn && (
-          <button
-            type="button"
-            className="gantt-hcell gantt-hcell-add"
-            onClick={(e) => onAddColumn?.(e)}
-            title="Adicionar coluna"
-          >
-            <Plus size={13} strokeWidth={2} />
-          </button>
-        )}
       </div>
 
       <div className="gantt-head-time" style={{ width: headWidth }}>
