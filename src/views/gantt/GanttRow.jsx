@@ -101,7 +101,7 @@ export default function GanttRow({ task, index, rowNumber, ctx }) {
       onDoubleClick={(e) => {
         if (editingCell) return;
         e.preventDefault();
-        onRowDoubleClick(task);
+        onRowDoubleClick(e, task);
       }}
       onContextMenu={(e) => onContextMenu(e, task)}
       onDragOver={(e) => onRowDragOver(e, index)}

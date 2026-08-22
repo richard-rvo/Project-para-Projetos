@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { applyForwardPass, buildProjectTasks } from '../views/gantt/useGanttTasks';
 import { analyseSchedule } from './cpm';
 import { CALENDAR_PRESETS, DEFAULT_CALENDAR } from './calendar';
-import { upgradeProjectToV4, upgradeTaskToV4 } from './storage';
+import { upgradeProjectToV4, upgradeTaskToV4 } from './legacyMigrations';
 import { SCHEDULE_MODES } from './schedule';
 
 /* 2026-08-10 é SEGUNDA. Padrão: Seg–Sex, 08:00–12:00 / 13:00–17:00. */

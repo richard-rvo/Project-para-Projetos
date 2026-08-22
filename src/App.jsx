@@ -1,4 +1,4 @@
-import React, { useContext } from 'react';
+import React, { useContext, useState } from 'react';
 import { AppContext } from './context/AppContext';
 import { useGlobalShortcuts } from './hooks/useGlobalShortcuts';
 import AppRail from './components/shell/AppRail';
@@ -11,6 +11,8 @@ import PagePortfolio from './pages/PagePortfolio';
 import PageAnomalies from './pages/PageAnomalies';
 import PageReports from './pages/PageReports';
 import PageSettings from './pages/PageSettings';
+import PublicLanding from './pages/PublicLanding';
+import AuthPage from './pages/AuthPage';
 
 /**
  * Contêiner de rolagem para views que são documentos, não superfícies.
@@ -21,8 +23,19 @@ export function PageScroll({ children }) {
 }
 
 function App() {
-  const { state } = useContext(AppContext);
+  const { state, signIn, signUp } = useContext(AppContext);
+  const [authMode, setAuthMode] = useState('landing');
   useGlobalShortcuts();
+
+  if (state.auth.status === 'loading') {
+    return <div className="grid min-h-screen place-items-center bg-surface-0 text-sm text-text-2">Carregando workspace...</div>;
+  }
+
+  if (!state.auth.user) {
+    return authMode === 'landing'
+      ? <PublicLanding onStart={() => setAuthMode('login')} />
+      : <AuthPage mode={authMode} onModeChange={setAuthMode} onBack={() => setAuthMode('landing')} signIn={signIn} signUp={signUp} />;
+  }
 
   const renderPage = () => {
     switch (state.activePage) {

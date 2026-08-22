@@ -22,7 +22,7 @@ import {
 } from '../utils/schedule';
 import { calculateTaskPlannedProgress } from '../utils/progress';
 import { stateOf, viewProgress } from '../utils/taskState';
-import { calendarOf, calendarsOf, defaultCalendarOf } from '../utils/calendar';
+import { calendarOf, calendarsOf, defaultCalendarOf, durationDisplayOf } from '../utils/calendar';
 import {
   addWorkingMinutes, workingMinutesBetween, snapForward, snapBackward, minutesPerDay,
 } from '../utils/worktime';
@@ -189,6 +189,7 @@ export default function TaskInspectorDrawer() {
   const calendar = calendarOf(project, task);
   const calendars = calendarsOf(project);
   const durationMinutes = workingMinutesBetween(calendar, task.startDate, task.endDate);
+  const durationUnit = durationDisplayOf(project);
   const milestone = isMilestone(task);
   const derived = stateOf(task);
   const planned = calculateTaskPlannedProgress(task.baselineStart, task.baselineEnd);
@@ -351,7 +352,7 @@ export default function TaskInspectorDrawer() {
               <Field label="Duração">
                 <Input
                   type="text"
-                  defaultValue={formatDuration(durationMinutes, calendar)}
+                  defaultValue={formatDuration(durationMinutes, calendar, { unit: durationUnit })}
                   disabled={task.isSummary}
                   placeholder="3d · 4h · 90m"
                   title="Aceita 3d, 4h ou 90m"

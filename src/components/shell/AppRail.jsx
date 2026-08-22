@@ -70,9 +70,9 @@ export default function AppRail() {
       >
         <div className="flex h-16 shrink-0 items-center gap-3 px-4">
           <img
-            src="/logo.png"
+            src="/logo-premium.svg"
             alt="RV"
-            className="size-9 shrink-0 rounded-[8px] object-contain shadow-elev-1"
+            className="size-9 shrink-0 rounded-[10px] object-contain shadow-elev-1"
           />
           <div
             className={cn(

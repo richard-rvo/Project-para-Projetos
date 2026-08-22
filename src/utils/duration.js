@@ -33,11 +33,20 @@ export const MIN_MINUTES = 1;
  * nada a ninguém e `1h` diz tudo. Marco mostra `0d`, como no MS
  * Project.
  */
-export function formatDuration(minutes, cal) {
+export function formatDuration(minutes, cal, options = {}) {
   const total = Math.max(0, Math.round(minutes || 0));
-  if (total === 0) return '0d';
+  const displayUnit = options.unit || 'auto';
+  if (total === 0) return displayUnit === 'hours' ? '0h' : '0d';
 
   const perDay = minutesPerDay(cal);
+
+  if (displayUnit === 'hours') {
+    if (total % MINUTES_PER_HOUR === 0) return `${total / MINUTES_PER_HOUR}h`;
+    if (total < MINUTES_PER_HOUR) return `${total}m`;
+    return `${trim(total / MINUTES_PER_HOUR)}h`;
+  }
+
+  if (displayUnit === 'days') return `${trim(total / perDay)}d`;
 
   if (total < perDay) {
     if (total % MINUTES_PER_HOUR === 0) return `${total / MINUTES_PER_HOUR}h`;

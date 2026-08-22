@@ -1,7 +1,7 @@
 import React, { useContext, useState } from 'react';
 import { AppContext } from '@/context/AppContext';
 import { cn } from '@/lib/utils';
-import { exportDB } from '@/utils/storage';
+import { exportWorkspaceBackup } from '@/utils/supabaseRepository';
 import ProjectDialog from '@/components/ProjectDialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -61,7 +61,7 @@ const GLOBAL_TITLES = {
 export default function TopBar() {
   const {
     state, selectProject, setProjectTab, toggleCommandPalette,
-    updateProject, showToast, navigate, verifyLocalSave,
+    updateProject, showToast, navigate, verifyLocalSave, signOut,
   } =
     useContext(AppContext);
   const [editOpen, setEditOpen] = useState(false);
@@ -81,7 +81,7 @@ export default function TopBar() {
   const verifySave = async () => {
     try {
       await verifyLocalSave();
-      showToast('Salvamento local conferido', 'success');
+      showToast('Workspace conferido', 'success');
     } catch (error) {
       showToast(error?.message || 'Falha ao conferir salvamento', 'error');
     }
@@ -89,7 +89,7 @@ export default function TopBar() {
 
   const exportBackup = async () => {
     try {
-      await exportDB();
+      exportWorkspaceBackup(state);
       showToast('Backup exportado', 'success');
     } catch (error) {
       showToast(`Erro ao exportar: ${error.message}`, 'error');
@@ -143,6 +143,9 @@ export default function TopBar() {
             ⌘K
           </kbd>
         </Button>
+        <Button type="button" variant="ghost" size="sm" onClick={signOut} title="Sair">
+          Sair
+        </Button>
       </div>
       </header>
 
@@ -156,7 +159,7 @@ export default function TopBar() {
   );
 }
 
-/* ── Salvamento local ─────────────────────────────────────────── */
+/* ── Salvamento remoto ────────────────────────────────────────── */
 
 function formatSavedTime(value) {
   if (!value) return '';
@@ -174,31 +177,31 @@ function SaveStatus({ save, onVerify, onExport, onOpenSettings }) {
   const copy = {
     saving: {
       label: 'Salvando...',
-      detail: 'Gravando alterações no armazenamento local deste navegador.',
+      detail: 'Gravando alterações no workspace Supabase.',
       Icon: Loader2,
       tone: 'text-text-2',
     },
     checking: {
       label: 'Verificando...',
-      detail: 'Conferindo os dados em tela com o armazenamento local.',
+      detail: 'Conferindo os dados em tela com o workspace remoto.',
       Icon: RefreshCw,
       tone: 'text-text-2',
     },
     error: {
       label: 'Falha ao salvar',
-      detail: save?.error || 'A última gravação local não foi concluída.',
+      detail: save?.error || 'A última gravação remota não foi concluída.',
       Icon: CircleAlert,
       tone: 'text-sched-late',
     },
     saved: {
-      label: savedTime ? `Salvo ${savedTime}` : 'Salvo localmente',
-      detail: 'As alterações são gravadas automaticamente neste navegador.',
+      label: savedTime ? `Salvo ${savedTime}` : 'Salvo no workspace',
+      detail: 'As alterações são gravadas automaticamente no Supabase.',
       Icon: CircleCheck,
       tone: 'text-sched-done',
     },
   }[status] || {
-    label: 'Salvo localmente',
-    detail: 'As alterações são gravadas automaticamente neste navegador.',
+    label: 'Salvo no workspace',
+    detail: 'As alterações são gravadas automaticamente no Supabase.',
     Icon: CircleCheck,
     tone: 'text-sched-done',
   };

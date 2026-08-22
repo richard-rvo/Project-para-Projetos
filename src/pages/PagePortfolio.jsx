@@ -1,5 +1,6 @@
 import React, { useContext, useMemo, useState } from 'react';
 import { AppContext } from '../context/AppContext';
+import { generateId } from '../utils/ids';
 import { cn } from '@/lib/utils';
 import ViewBar, { ViewBarSegments, ViewBarButton } from '../components/shell/ViewBar';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -17,10 +18,6 @@ import {
   Plus, Search, LayoutGrid, Table2, GanttChartSquare, Trash2, FolderOpen,
   CalendarRange, Pencil,
 } from 'lucide-react';
-
-function generateId() {
-  return Date.now() + Math.random().toString(36).slice(2, 9);
-}
 
 const MODES = [
   { id: 'cards', label: 'Cards', icon: LayoutGrid },

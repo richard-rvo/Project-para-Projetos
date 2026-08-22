@@ -156,7 +156,7 @@ Pré-visualização A4 real — folha branca com sombra sobre mesa recuada. Stat
 
 ### 5.9 Persistência
 
-IndexedDB **versão 4**, stores `projects`, `tasks`, `anomalies`.
+Supabase Postgres organiza os dados por workspace, com Auth e RLS aplicados no banco.
 
 - Datas são **instantes** `'YYYY-MM-DDTHH:mm'`, local-ingênuos: string ordenável, sem fuso
 - `task.dependsOn` é uma lista de `{ id, type, lag }`
@@ -167,7 +167,7 @@ IndexedDB **versão 4**, stores `projects`, `tasks`, `anomalies`.
 - Migração v2→v3 converte `dependsOn` e v3→v4 converte datas e calendário. As duas
   **preservam o original** (`dependsOnLegacy`, `datesLegacy`, `calendarLegacy`), e nenhuma data
   anda: o dia é o mesmo, ganhando a abertura no início e o fechamento no término
-- Backup JSON exporta tudo menos fotos; a importação aceita v2, v3 e v4, passando pelas mesmas
+- Backup JSON exporta tudo menos fotos; a conversão de dados legados passa pelas mesmas
   funções de migração — backup antigo não segue caminho diferente de banco antigo
 
 ---
@@ -180,7 +180,7 @@ IndexedDB **versão 4**, stores `projects`, `tasks`, `anomalies`.
 - **Build**: Vite 5
 - **Estilo**: **Tailwind CSS v4** com design tokens em `@theme`, mais CSS semântico para o miolo do Gantt
 - **Componentes**: **shadcn/ui** sobre primitivos Radix (Dialog, Popover, DropdownMenu, ContextMenu, Command, Select, Tooltip, Sonner)
-- **Banco**: IndexedDB via `idb`
+- **Banco**: Supabase Postgres via `@supabase/supabase-js`, com Auth e RLS por workspace
 - **Ícones**: Lucide
 
 > **Nota de arquitetura.** As versões anteriores exigiam "CSS vanilla puro, nenhum framework". A decisão foi revista: o app usa Tailwind e shadcn, **exceto** a grade e a timeline do Gantt, que ficam em CSS semântico com variáveis vindas dos mesmos tokens. Classe utilitária por célula numa grade virtualizada custa caro, e a densidade do Gantt precisa de controle direto.

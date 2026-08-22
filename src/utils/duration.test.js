@@ -31,6 +31,12 @@ describe('formatDuration', () => {
   it('usa vírgula decimal', () => {
     expect(formatDuration(720, PADRAO)).toBe('1,5d');
   });
+
+  it('respeita a unidade de exibição do projeto sem alterar os minutos', () => {
+    expect(formatDuration(240, PADRAO, { unit: 'hours' })).toBe('4h');
+    expect(formatDuration(240, PADRAO, { unit: 'days' })).toBe('0,5d');
+    expect(formatDuration(480, PADRAO, { unit: 'hours' })).toBe('8h');
+  });
 });
 
 describe('parseDuration', () => {

@@ -1,14 +1,11 @@
 import React, { useContext, useMemo } from 'react';
 import { AppContext } from '../context/AppContext';
+import { generateId } from '../utils/ids';
 import AnomalyBoard from '../components/anomalies/AnomalyBoard';
 
 /* Anomalias do projeto ativo. Toda a interface vive em AnomalyBoard,
    compartilhada com a central global — antes eram duas telas com
    código quase igual e comportamentos levemente diferentes. */
-
-function generateId() {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-}
 
 export default function PageProjectAnomalies() {
   const { state, addAnomaly, updateAnomaly, removeAnomaly, showToast } = useContext(AppContext);

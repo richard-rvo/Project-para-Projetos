@@ -3,7 +3,7 @@
 Sistema web executivo, dinâmico e responsivo para gestão visual avançada de múltiplos projetos e atividades. Desenvolvido com padrão de design state-of-the-art e inspirado em ferramentas líderes da indústria como **MS Project**, **Linear** e **Asana**.
 
 ![Versão](https://img.shields.io/badge/Vers%C3%A3o-6.0-ff4757)
-![Tecnologia](https://img.shields.io/badge/Tech-React%20%7C%20Vite%20%7C%20IndexedDB-1c7ed6)
+![Tecnologia](https://img.shields.io/badge/Tech-React%20%7C%20Vite%20%7C%20Supabase-1c7ed6)
 ![Design System](https://img.shields.io/badge/UI%2FUX-Glassmorphism%20%2F%20Dark%20Mode-2f9e44)
 
 ---
@@ -28,9 +28,9 @@ Sistema web executivo, dinâmico e responsivo para gestão visual avançada de m
 - **Planejado vs Realizado**: Gráfico de linha dupla que compara o progresso matemático esperado no tempo (Azul) contra o progresso realizado (Verde).
 - **Indicadores de Desvio**: Painel com cartões que mostram o "Planejado até Hoje", "Realizado Atual" e a margem de **Desvio** (ex: `+13% Adiantado`).
 
-### 4. 🗄️ Persistência Local Avançada (IndexedDB)
-- Todos os dados são salvos localmente e de forma estruturada no IndexedDB do navegador.
-- Suporta múltiplos projetos, listas de tarefas massivas e preserva ordem e dependências sem perda de performance.
+### 4. 🗄️ Persistência compartilhada (Supabase)
+- Projetos, tarefas e anomalias são salvos no workspace Supabase.
+- Autenticação, membros e permissões são aplicados no banco por RLS.
 
 ### 5. ✨ Design Glassmorphism e Temas
 - Interface responsiva utilizando painéis de vidro translúcido (`backdrop-filter`).
@@ -44,7 +44,7 @@ Sistema web executivo, dinâmico e responsivo para gestão visual avançada de m
 - **Vite**: Bundler ultra-rápido para desenvolvimento.
 - **CSS Nativo**: Variáveis CSS e Design System customizado (sem frameworks para máximo controle).
 - **Lucide React**: Ícones minimalistas de alta precisão.
-- **IndexedDB / IDB**: Armazenamento no client-side eficiente.
+- **Supabase**: Auth, Postgres, Storage e RLS para o workspace.
 
 ---
 
@@ -68,10 +68,8 @@ npm run dev
 ```
 4. Acesse no navegador: `http://localhost:5174`
 
-> ⚠️ **A porta é 5174 e não deve mudar.** O app é local-first: todo cronograma
-> vive no IndexedDB do navegador, que é isolado por **origem** — e a porta faz
-> parte da origem. Abrir em outra porta mostra um banco vazio, como se os dados
-> tivessem sumido (eles continuam intactos na porta original).
+> ⚠️ **A porta padrão é 5174.** O app usa Supabase como fonte oficial de dados;
+> a porta não define o banco de projetos.
 >
 > Por isso `vite.config.js` usa `strictPort: true`: se a 5174 estiver ocupada, o
 > Vite falha avisando em vez de subir noutra porta e trocar de banco. Se der esse
@@ -87,7 +85,7 @@ Gantt Dinamico/
 │   ├── components/    # Componentes UI (Sidebar, Modals, Toasts)
 │   ├── context/       # AppContext para estado global (React Context)
 │   ├── pages/         # Telas (PageProjects, PageGantt, PageSCurve)
-│   ├── utils/         # Helpers (cálculo de datas, IndexedDB)
+│   ├── utils/         # Helpers (cálculo de datas e integração Supabase)
 │   ├── index.css      # Design System Global
 │   └── App.jsx        # Roteamento e Layout Base
 ├── index.html         # Entry point do Vite

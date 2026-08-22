@@ -22,12 +22,13 @@ import {
   formatDateTimeShort, clampProgress, isManual, SCHEDULE_MODES, CONSTRAINT_NONE,
 } from '../../utils/schedule';
 import {
-  calendarOf, calendarsOf, defaultCalendarOf, workdayStart, workdayEnd,
+  calendarOf, calendarsOf, defaultCalendarOf, durationDisplayOf, workdayStart, workdayEnd,
 } from '../../utils/calendar';
 import {
   addWorkingMinutes, workingMinutesBetween, snapForward, snapBackward, minutesPerDay,
 } from '../../utils/worktime';
 import { formatDuration, resolveDuration } from '../../utils/duration';
+import { generateId } from '../../utils/ids';
 import { calculateTaskPlannedProgress } from '../../utils/progress';
 import {
   ZOOM_LEVELS, COLUMNS,
@@ -82,10 +83,6 @@ const DOUBLE_CLICK_GUARD_MS = 260;
 const DENSITY_KEY = 'projeta_gantt_density';
 const PROJECT_SUMMARY_KEY = 'projeta_gantt_project_summary';
 const PROJECT_SUMMARY_ID = '__project-summary__';
-
-function generateId() {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-}
 
 function isPastedMetadataCell(value) {
   return (
@@ -153,7 +150,7 @@ function buildProjectSummaryTask(project, tasks, calendarFor) {
 
 export default function GanttView() {
   const {
-    state, addTask, addTasks, updateTasksBatch, removeTasks, showToast, updateProject,
+    state, addTask, addTasks, updateTasksBatch, removeTasks, showToast, updateProjectPatch,
     undo, redo, canUndo, canRedo, openTaskInspector,
   } = useContext(AppContext);
 
@@ -388,8 +385,10 @@ export default function GanttView() {
   );
 
   const durationLabel = useCallback(
-    (task) => formatDuration(durationMinutesOf(task), calendarFor(task)),
-    [durationMinutesOf, calendarFor]
+    (task) => formatDuration(durationMinutesOf(task), calendarFor(task), {
+      unit: durationDisplayOf(activeProject),
+    }),
+    [durationMinutesOf, calendarFor, activeProject]
   );
 
   const calendarLabel = useCallback(
@@ -398,8 +397,10 @@ export default function GanttView() {
   );
 
   const formatMinutes = useCallback(
-    (minutes) => formatDuration(minutes, projectCalendar),
-    [projectCalendar]
+    (minutes) => formatDuration(minutes, projectCalendar, {
+      unit: durationDisplayOf(activeProject),
+    }),
+    [projectCalendar, activeProject]
   );
 
   /* Predecessoras são exibidas como número de linha, não como id. */
@@ -536,18 +537,21 @@ export default function GanttView() {
 
   useEffect(() => cancelPendingCellEdit, [cancelPendingCellEdit]);
 
-  const handleRowDoubleClick = useCallback((task) => {
+  const handleRowDoubleClick = useCallback((e, task) => {
     cancelPendingCellEdit();
     lastCellClickRef.current = { taskId: null, colId: null, time: 0 };
-    openTaskInspector(task.id);
-  }, [cancelPendingCellEdit, openTaskInspector]);
+    const cell = e?.target?.closest?.('[data-col]');
+    if (!cell) return;
+    const colId = cell.getAttribute('data-col');
+    const col = columns.find((item) => item.id === colId);
+    const locked = task.isSummary && col?.summaryLocked;
+    if (!col?.editable || locked) return;
+    document.getSelection?.()?.removeAllRanges?.();
+    startEdit(task, col);
+  }, [cancelPendingCellEdit, columns, startEdit]);
 
   const handleRowClick = useCallback((e, task) => {
     cancelPendingCellEdit();
-    if (e.detail > 1) {
-      handleRowDoubleClick(task);
-      return;
-    }
 
     const cell = e.target.closest?.('[data-col]');
     const colId = cell?.getAttribute('data-col') || 'name';
@@ -576,7 +580,7 @@ export default function GanttView() {
       document.getSelection?.()?.removeAllRanges?.();
       startEdit(task, col);
     }, DOUBLE_CLICK_GUARD_MS);
-  }, [activeCell, cancelPendingCellEdit, columns, handleRowDoubleClick, selectedIds, startEdit]);
+  }, [activeCell, cancelPendingCellEdit, columns, selectedIds, startEdit]);
 
   const toggleCollapse = useCallback((taskId) => {
     setCollapsedIds((prev) => {
@@ -687,18 +691,16 @@ export default function GanttView() {
         break;
 
       case 'calendar': {
-        /* Trocar de calendário mantém o INÍCIO e a duração em dias, e
-           recalcula o término: "3 dias" num calendário 24h termina
-           antes de "3 dias" num de 8h, e é isso que o planejador quer
-           ver ao mudar a equipe da tarefa. */
+        /* Trocar de calendário mantém o início e a duração real em
+           minutos. A jornada muda o encaixe no relógio, mas "4h"
+           continua sendo 4h, independentemente do calendário escolhido. */
         const next = calendarOf(activeProject, { calendarId: valueToCommit });
-        const days = duration / minutesPerDay(cal);
         const start = snapForward(next, task.startDate);
         modified = {
           ...task,
           calendarId: valueToCommit || undefined,
           startDate: start,
-          endDate: addWorkingMinutes(next, start, days * minutesPerDay(next)),
+          endDate: addWorkingMinutes(next, start, duration),
         };
         break;
       }
@@ -1433,7 +1435,7 @@ export default function GanttView() {
           <GanttCalendarMenu
             project={activeProject}
             triggerLabel="Calendário"
-            onChange={(patch) => updateProject({ ...activeProject, ...patch })}
+            onChange={(patch) => updateProjectPatch(state.activeProjectId, patch)}
           />
 
           <GanttFilterMenu filters={filters} onChange={setFilters} filteredOut={filteredOut} />
@@ -1815,7 +1817,7 @@ function GanttPrintReport({
       <header className="gantt-print-cover">
         <div>
           <div className="gantt-print-brand">
-            <img src="/logo.png" alt="RV Planejamento" />
+            <img src="/logo-premium.svg" alt="RV Planejamento" />
             <span>Projeta</span>
           </div>
           <p className="gantt-print-kicker">Cronograma Gantt</p>

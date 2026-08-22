@@ -1,5 +1,6 @@
 import React, { useContext, useMemo, useState } from 'react';
 import { AppContext } from '../context/AppContext';
+import { generateId } from '../utils/ids';
 import { cn } from '@/lib/utils';
 import ViewBar, { ViewBarButton } from '../components/shell/ViewBar';
 import { Plus, Columns3, CalendarDays, Users } from 'lucide-react';
@@ -31,10 +32,6 @@ const COLUMN_TONE = {
   'in-progress': 'bg-sched-on-track',
   done: 'bg-sched-done',
 };
-
-function generateId() {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-}
 
 export default function PageKanban() {
   const { state, addTask, updateTasksBatch, openTaskInspector } = useContext(AppContext);

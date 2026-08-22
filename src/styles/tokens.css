@@ -30,24 +30,24 @@
   /* ── Superfícies ──────────────────────────────────────────────
      0 = fundo da aplicação   1 = painel/card
      2 = alternativa sutil    3 = recuado (headers, trilhos)      */
-  --surface-0: oklch(0.974 0.003 70);
-  --surface-1: oklch(1 0 0);
-  --surface-2: oklch(0.989 0.002 70);
-  --surface-3: oklch(0.953 0.004 70);
-  --surface-inset: oklch(0.931 0.006 70);
+  --surface-0: oklch(0.965 0.004 95);
+  --surface-1: oklch(0.995 0.002 95);
+  --surface-2: oklch(0.982 0.003 95);
+  --surface-3: oklch(0.942 0.006 95);
+  --surface-inset: oklch(0.918 0.008 95);
 
   /* ── Texto ────────────────────────────────────────────────────
      1 = primário   2 = secundário   3 = terciário/desabilitado   */
-  --text-1: oklch(0.22 0.011 265);
-  --text-2: oklch(0.47 0.012 265);
-  --text-3: oklch(0.635 0.012 265);
+  --text-1: oklch(0.205 0.008 75);
+  --text-2: oklch(0.455 0.009 75);
+  --text-3: oklch(0.63 0.008 75);
   --text-on-accent: oklch(1 0 0);
 
   /* ── Traços ───────────────────────────────────────────────────
      hairline = divisórias internas (0.5px em telas @2x)
      strong   = bordas de controle e limites de painel            */
-  --line-hairline: oklch(0.22 0.011 265 / 0.09);
-  --line-strong: oklch(0.22 0.011 265 / 0.17);
+  --line-hairline: oklch(0.205 0.008 75 / 0.10);
+  --line-strong: oklch(0.205 0.008 75 / 0.18);
 
   /* ── Estados de cronograma ────────────────────────────────────
      A ÚNICA fonte de cor semântica do produto. Substitui os
@@ -76,15 +76,10 @@
   /* ── Marca ────────────────────────────────────────────────────
      Acento raro. Permitido APENAS em: botão primário, anel de
      foco, logo e barra de progresso do projeto.                  */
-  --brand: #e85d12;
-  --brand-hover: #cf4d08;
-  --brand-soft: oklch(0.67 0.18 48 / 0.12);
-  --brand-gradient: linear-gradient(
-    90deg,
-    #f28a13 0%,
-    #ee7217 48%,
-    #e94f1d 100%
-  );
+  --brand: #ff6a00;
+  --brand-hover: #e85e00;
+  --brand-soft: oklch(0.70 0.18 55 / 0.13);
+  --brand-gradient: linear-gradient(90deg, #ff7d22 0%, #ff6a00 100%);
 
   /* ── Elevação ─────────────────────────────────────────────────
      Sombras com tinta neutra fria, nunca preto puro.             */
@@ -113,9 +108,9 @@
 
   /* ── Raio ─────────────────────────────────────────────────────
      Menor que o antigo 8/12/20 — raio grande destrói densidade.  */
-  --radius-control: 7px;
-  --radius-card: 8px;
-  --radius-sheet: 12px;
+  --radius-control: 9px;
+  --radius-card: 12px;
+  --radius-sheet: 16px;
   --radius-pill: 9999px;
 
   /* ── Tipografia ───────────────────────────────────────────────
@@ -149,11 +144,11 @@
    2. TEMA ESCURO
    ─────────────────────────────────────────────────────────────── */
 [data-theme='dark'] {
-  --surface-0: oklch(0.168 0.008 265);
-  --surface-1: oklch(0.212 0.009 265);
-  --surface-2: oklch(0.243 0.010 265);
-  --surface-3: oklch(0.280 0.010 265);
-  --surface-inset: oklch(0.140 0.008 265);
+  --surface-0: oklch(0.155 0.005 75);
+  --surface-1: oklch(0.205 0.006 75);
+  --surface-2: oklch(0.245 0.007 75);
+  --surface-3: oklch(0.285 0.008 75);
+  --surface-inset: oklch(0.125 0.005 75);
 
   --text-1: oklch(0.955 0.004 265);
   --text-2: oklch(0.725 0.009 265);
@@ -180,9 +175,9 @@
   --sched-done-soft: oklch(0.700 0.130 155 / 0.20);
   --sched-critical-soft: oklch(0.620 0.215 18 / 0.22);
 
-  --brand: #ff8736;
-  --brand-hover: #ffa05f;
-  --brand-soft: oklch(0.72 0.17 48 / 0.18);
+  --brand: #ff8a3d;
+  --brand-hover: #ffa266;
+  --brand-soft: oklch(0.72 0.17 55 / 0.18);
 
   --elev-1: 0 1px 2px oklch(0 0 0 / 0.40);
   --elev-2: 0 2px 4px oklch(0 0 0 / 0.40), 0 4px 12px oklch(0 0 0 / 0.34);

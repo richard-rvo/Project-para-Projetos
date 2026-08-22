@@ -1,5 +1,6 @@
 import React, { useContext, useMemo, useState } from 'react';
 import { AppContext } from '../context/AppContext';
+import { generateId } from '../utils/ids';
 import { cn } from '@/lib/utils';
 import ViewBar, { ViewBarButton, ViewBarDivider } from '../components/shell/ViewBar';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -22,7 +23,7 @@ import {
 } from '../utils/taskState';
 import { today, SCHEDULE_MODES } from '../utils/schedule';
 import {
-  calendarOf, calendarsOf, defaultCalendarOf, workdayStart,
+  calendarOf, calendarsOf, defaultCalendarOf, workdayStart, durationDisplayOf,
 } from '../utils/calendar';
 import { addWorkingMinutes, workingMinutesBetween, minutesPerDay } from '../utils/worktime';
 import { formatDuration } from '../utils/duration';
@@ -71,16 +72,13 @@ function cellCtx(project) {
     calendarFor,
     calendarLabel: (t) => (t.calendarId ? calendarFor(t).name : ''),
     durationLabel: (t) =>
-      formatDuration(
-        workingMinutesBetween(calendarFor(t), viewStart(t), viewEnd(t)),
-        calendarFor(t)
-      ),
+        formatDuration(
+          workingMinutesBetween(calendarFor(t), viewStart(t), viewEnd(t)),
+          calendarFor(t),
+          { unit: durationDisplayOf(project) }
+        ),
     predecessorLabel: () => '',
   };
-}
-
-function generateId() {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
 export default function PageTaskList() {

@@ -72,6 +72,17 @@ export const DEFAULT_CALENDAR = CALENDAR_PRESETS[0];
 
 export const DEFAULT_CALENDAR_ID = DEFAULT_CALENDAR.id;
 
+export const DURATION_DISPLAY_OPTIONS = [
+  { id: 'auto', label: 'Automático', description: 'Horas abaixo de um dia e dias acima dele' },
+  { id: 'hours', label: 'Sempre em horas', description: 'Mantém a duração visível em horas' },
+  { id: 'days', label: 'Sempre em dias', description: 'Exibe a duração usando a jornada do calendário' },
+];
+
+export function durationDisplayOf(project) {
+  const value = project?.calendarSettings?.durationDisplay;
+  return DURATION_DISPLAY_OPTIONS.some((option) => option.id === value) ? value : 'auto';
+}
+
 /* ── Forma ─────────────────────────────────────────────────────── */
 
 /**

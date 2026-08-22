@@ -7,7 +7,7 @@ import { ViewBarButton } from '../../components/shell/ViewBar';
 import { Calendar, X, Plus, Check, Copy } from 'lucide-react';
 import {
   calendarsOf, defaultCalendarOf, CALENDAR_PRESETS,
-  isValidISODate, isValidTime,
+  DURATION_DISPLAY_OPTIONS, durationDisplayOf, isValidISODate, isValidTime,
 } from '../../utils/calendar';
 import { minutesPerDay } from '../../utils/worktime';
 import { formatDateLong } from '../../utils/schedule';
@@ -72,7 +72,7 @@ export default function GanttCalendarMenu({ project, onChange, triggerLabel = 'C
     onChange({ calendars: nextCalendars, defaultCalendarId: nextDefaultId });
 
   const patch = (changes) =>
-    commit(calendars.map((c) => (c.id === cal.id ? { ...c, ...changes } : c)));
+    onChange({ calendarChanges: { id: cal.id, changes } });
 
   const toggleWeekday = (day) => {
     const next = cal.workdays.includes(day)
@@ -158,6 +158,7 @@ export default function GanttCalendarMenu({ project, onChange, triggerLabel = 'C
   };
 
   const hoursPerDay = Math.round((minutesPerDay(cal) / 60) * 10) / 10;
+  const durationDisplay = durationDisplayOf(project);
 
   return (
     <DropdownMenu>
@@ -234,6 +235,26 @@ export default function GanttCalendarMenu({ project, onChange, triggerLabel = 'C
           >
             <X size={12} />
           </button>
+        </div>
+
+        <DropdownMenuLabel className="text-micro uppercase tracking-wide text-text-3">
+          Exibição de duração
+        </DropdownMenuLabel>
+        <div className="px-2 pb-2">
+          <select
+            value={durationDisplay}
+            onChange={(e) => onChange({
+              calendarSettings: {
+                ...(project?.calendarSettings || {}),
+                durationDisplay: e.target.value,
+              },
+            })}
+            className="h-7 w-full rounded-[5px] border border-line bg-surface-0 px-1.5 text-small text-text-1"
+          >
+            {DURATION_DISPLAY_OPTIONS.map((option) => (
+              <option key={option.id} value={option.id}>{option.label}</option>
+            ))}
+          </select>
         </div>
 
         <DropdownMenuLabel className="text-micro uppercase tracking-wide text-text-3">

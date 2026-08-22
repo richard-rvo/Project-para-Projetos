@@ -6,7 +6,7 @@ import {
 import { calculateProjectMetrics } from './progress';
 import { computeSCurve } from './scurve';
 import { addDays, today } from './schedule';
-import { upgradeTaskToV5 } from './storage';
+import { upgradeTaskToV5 } from './legacyMigrations';
 
 /* Datas fixas em torno de um "hoje" explícito: o teste nunca pode
    depender do relógio da máquina que o roda. */

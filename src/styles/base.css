@@ -26,6 +26,17 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+::placeholder {
+  color: var(--text-3);
+}
+
 /* Números de cronograma nunca podem dançar de largura entre frames.
    Datas, durações e percentuais dependem disso para alinhar. */
 input[type='date'],

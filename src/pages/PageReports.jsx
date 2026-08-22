@@ -14,7 +14,7 @@ import { computeSCurve } from '../utils/scurve';
 import {
   today, formatDateLong, formatDateTimeShort,
 } from '../utils/schedule';
-import { calendarOf } from '../utils/calendar';
+import { calendarOf, durationDisplayOf } from '../utils/calendar';
 import { workingMinutesBetween } from '../utils/worktime';
 import { formatDuration } from '../utils/duration';
 import { formatDatetime } from '../components/anomalies/anomalyConfig';
@@ -102,7 +102,7 @@ export default function PageReports() {
       <div className="min-h-0 flex-1 overflow-auto bg-surface-inset p-6">
         <article className="print-report mx-auto w-[210mm] max-w-full bg-white p-[14mm] text-[#111] shadow-elev-3">
           <header className="mb-6 flex items-start gap-4 border-b-2 border-[#111] pb-4">
-            <img src="/logo.png" alt="" className="h-11 w-11 object-contain" />
+            <img src="/logo-premium.svg" alt="" className="h-11 w-11 object-contain" />
             <div className="flex-1">
               <div className="text-[15px] font-bold tracking-tight">PROJETA</div>
               <div className="text-[10px] uppercase tracking-wide text-[#666]">
@@ -190,7 +190,8 @@ export default function PageReports() {
                         <TableCell className="px-1.5 py-1 tabular-nums">
                           {formatDuration(
                             workingMinutesBetween(calendarOf(project, t), t.startDate, t.endDate),
-                            calendarOf(project, t)
+                            calendarOf(project, t),
+                            { unit: durationDisplayOf(project) }
                           )}
                         </TableCell>
                         <TableCell className="px-1.5 py-1 tabular-nums">{t.progress || 0}%</TableCell>
